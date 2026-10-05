@@ -1,0 +1,25 @@
+# --- Secretos: NUNCA se suben ---
+.env
+*.pem
+*.key
+secrets/
+
+# --- Base de datos local (se regenera con manage.py) ---
+data/*.db
+data/*.db-journal
+
+# --- Entorno virtual de Python ---
+.venv/
+venv/
+
+# --- Archivos generados por Python ---
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# --- Editores y sistema operativo ---
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+.DS_Store
