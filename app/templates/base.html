@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}NOC Syslog{% endblock %} · NOC Syslog Inteligente</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-dot"></span>
+      <strong>NOC Syslog Inteligente</strong>
+      <span class="version">v{{ app_version }}</span>
+    </div>
+    <nav>
+      <a href="{{ url_for('views.inventario') }}" class="{{ 'active' if active == 'inventario' }}">Inventario</a>
+      <a href="{{ url_for('views.eventos') }}" class="{{ 'active' if active == 'eventos' }}">Eventos</a>
+      <span class="nav-soon" title="Fase 3">Dashboard</span>
+      <span class="nav-soon" title="Fase 3">Incidentes</span>
+    </nav>
+  </header>
+
+  <!-- Requisito del curso: los datos simulados deben estar claramente identificados -->
+  <div class="sim-banner">Entorno de pruebas · los equipos y eventos marcados <b>SIM</b> son DATOS SIMULADOS</div>
+
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="{{ url_for('static', filename='common.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

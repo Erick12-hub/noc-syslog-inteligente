@@ -1,0 +1,1371 @@
+﻿################################################################################
+#                                                                              #
+#                       NOC SYSLOG INTELIGENTE                                 #
+#              FASE 1 - PROCESO COMPLETO, COMANDOS Y CÓDIGO COMENTADO          #
+#                                                                              #
+################################################################################
+
+  Proyecto    : NOC Syslog Inteligente (proyecto individual)
+  Asignatura  : Administración y Gestión de Redes - Periodo 2026-2
+  Docente     : Ing. John Harold Pérez Calderón
+  Estudiante  : Erick (GitHub: Erick12-hub)
+  Repositorio : https://github.com/Erick12-hub/noc-syslog-inteligente
+  Versión     : v0.1.0-dev (Fase 1 cerrada)
+  Fechas      : 2026-10-02 a 2026-10-05
+  Entorno     : Windows 11 · Anaconda Prompt · Python 3.14.7 · Git 2.55.0
+                Flask 3.1.3 · python-dotenv 1.2.4 · pytest 9.1.1 · SQLite
+
+  Propósito de este documento:
+    Dejar registrado TODO lo realizado en la Fase 1, en orden: decisiones,
+    comandos ejecutados con su resultado real, errores y soluciones, y el
+    código fuente completo de cada archivo explicado bloque por bloque.
+    Sirve como guía de estudio para la sustentación y como insumo para el
+    informe PDF (secciones 7 Diseño, 8 Desarrollo y 13 Control de versiones).
+
+  Convenciones:
+    >     comando escrito en Anaconda Prompt
+    =>    resultado obtenido
+    [!]   problema encontrado
+    [OK]  verificación superada
+    [E]   evidencia (captura) guardada en docs/evidencias/
+    L12   "línea 12" del archivo que se está explicando
+
+
+================================================================================
+ ÍNDICE
+================================================================================
+   1. Resumen de la Fase 1
+   2. Análisis de requisitos y decisiones de diseño
+   3. Cronología del proceso (paso a paso con comandos reales)
+   4. Estructura final del proyecto
+   5. Código fuente comentado
+        5.1  requirements.txt
+        5.2  .gitignore
+        5.3  .env.example
+        5.4  app/config.py
+        5.5  app/schema.sql
+        5.6  app/db.py
+        5.7  app/seed.py
+        5.8  app/__init__.py
+        5.9  manage.py
+        5.10 run.py
+   6. Documentación de diseño generada
+   7. Control de versiones: comandos y conceptos de Git
+   8. Seguridad aplicada en la Fase 1
+   9. Problemas encontrados y soluciones
+  10. Hallazgos que pasan a la Fase 2
+  11. Preguntas probables de sustentación (con respuesta)
+  12. Pregunta de validación de la Fase 1
+  13. Lista de verificación de cierre
+
+
+================================================================================
+ 1. RESUMEN DE LA FASE 1
+================================================================================
+
+ OBJETIVO
+   Construir la base reproducible del proyecto: estructura, entorno de Python,
+   configuración segura, modelo de datos, documentos de diseño y repositorio
+   en GitHub con historial progresivo.
+
+ RESULTADO
+   [OK] Proyecto con estructura modular (app/, docs/, data/).
+   [OK] Entorno virtual aislado con dependencias de versión fija.
+   [OK] Configuración por variables de entorno; sin secretos en el código.
+   [OK] Base de datos SQLite con 7 tablas y 6 equipos SIMULADOS.
+   [OK] Aplicación Flask respondiendo en http://127.0.0.1:5000/api/health
+   [OK] Requisitos, historias de usuario y diagramas de arquitectura.
+   [OK] Repositorio público con ramas main y develop y 6 commits.
+   [OK] Bitácora con 10 problemas documentados y resueltos.
+
+ RELACIÓN CON LA RÚBRICA DEL CORTE 2
+   Planeación y diseño (1.00) -> requisitos, historias, arquitectura, modelo
+                                 de datos: COMPLETO en esta fase.
+   Código y GitHub (0.75)     -> README, .gitignore, ramas y commits
+                                 progresivos: INICIADO.
+   Syslog y seguridad (1.00)  -> lista permitida, auditoría, datos no
+                                 confiables: BASES en el modelo de datos.
+
+
+================================================================================
+ 2. ANÁLISIS DE REQUISITOS Y DECISIONES DE DISEÑO
+================================================================================
+
+ 2.1 Fuentes analizadas
+   - "Orientaciones para el proyecto individual NOC Syslog Inteligente"
+     (guía del docente, Cortes 2 y 3).
+   - "Prompt maestro" del material interactivo (6 fases sugeridas).
+
+ 2.2 Diferencias detectadas entre el prompt maestro y la guía (y cómo se
+     resolvieron)
+   a) La guía exige "registro de acciones, comandos propuestos, aprobaciones,
+      resultados y responsables". El prompt no lo tenía como módulo.
+      -> Se agregaron desde el modelo de datos las tablas audit_log y
+         action_proposals.
+   b) La guía pide versión alfa v0.1.0 antes de v0.2.0.
+      -> El tag v0.1.0 se pondrá al cerrar la Fase 2.
+   c) La captura E02 pide "rama de desarrollo".
+      -> Estrategia de ramas main (estable) + develop (trabajo diario).
+   d) Requisitos, historias y diagramas se califican (1.00), pero el prompt
+      no los producía.
+      -> Se escribieron en la Fase 1, antes del código funcional.
+
+ 2.3 Decisiones técnicas
+   | Decisión              | Alternativa | Por qué                                 |
+   |-----------------------|-------------|-----------------------------------------|
+   | Flask                 | FastAPI     | Sin dependencias compiladas; instala    |
+   |                       |             | sin problemas en Python 3.14 / Windows; |
+   |                       |             | más fácil de explicar                   |
+   | SQLite                | MySQL/Postg.| Viene con Python, un solo archivo,      |
+   |                       |             | sin servidor; suficiente para el MVP    |
+   | Puerto UDP 5514       | 514         | Puertos < 1024 exigen administrador     |
+   | Fechas en UTC ISO8601 | Hora local  | Correlación entre equipos; con NTP      |
+   | IP RFC 5737           | IP privadas | Garantiza que no son IP de producción   |
+   | 127.0.0.1             | 0.0.0.0     | La app no queda expuesta a la red       |
+
+ 2.4 Plan de fases (entrega sábado 2026-10-10)
+   Fase 1  Base, modelo de datos, diseño y repositorio ......... CERRADA
+   Fase 2  Inventario CRUD + motor Syslog (parser, UDP) ........ -> v0.1.0
+   Fase 3  Dashboard, filtros e incidentes
+   Fase 4  Configuraciones multivendor, consola, política anti-IA
+   Fase 5  Pruebas, integración continua, README, Pull Request . -> v0.2.0
+   Fase 6  Informe PDF con capturas E01-E12
+
+
+================================================================================
+ 3. CRONOLOGÍA DEL PROCESO (PASO A PASO CON COMANDOS REALES)
+================================================================================
+
+ ----- PASO 1. Verificar herramientas -----------------------------------------
+
+ En PowerShell:
+ > python --version
+ => Python was not found; run without arguments to install from the
+    Microsoft Store...
+ [!] Python está instalado por Anaconda y no está en el PATH de PowerShell.
+
+ En Anaconda Prompt:
+ > python --version
+ => Python 3.14.7                                                  [OK]
+ > git --version
+ => git version 2.55.0.windows.5                                   [OK]
+
+ DECISIÓN: todo el proyecto se ejecuta desde Anaconda Prompt.
+
+
+ ----- PASO 2. Ubicarse en la carpeta del proyecto ----------------------------
+
+ > cd "C:\Users\ThinkPad\Documents\Universidad\SEMESTRE 5\GESTION DE REDES\GitHub\noc-syslog-inteligente"
+
+   Las comillas son obligatorias porque la ruta contiene espacios.
+
+
+ ----- PASO 3. Crear y activar el entorno virtual -----------------------------
+
+ > python -m venv .venv
+   "-m venv" ejecuta el módulo venv de Python, que crea la carpeta .venv con
+   un Python aislado solo para este proyecto.
+
+ > .venv\Scripts\activate
+ => (.venv) (base) C:\...\noc-syslog-inteligente>                  [OK]
+   (.venv) = entorno del proyecto activo (el importante)
+   (base)  = entorno de Anaconda que queda debajo; no interfiere
+
+
+ ----- PASO 4. Instalar dependencias (primer intento) -------------------------
+
+ > pip install -r requirements.txt
+ => 'C:\...\.venv\Scripts\pip.exe' ha sido bloqueado por la directiva de
+    Device Guard de su organización.
+ [!] Windows Defender Application Control solo permite ejecutar programas
+     firmados. El pip.exe que genera el entorno virtual no está firmado.
+
+ > python -m pip install -r requirements.txt
+ => ERROR: Could not open requirements file: [Errno 2] No such file or
+    directory: 'requirements.txt'
+ [!] El bloqueo quedó superado (pip sí corrió), pero los archivos del
+     proyecto aún no estaban copiados en la carpeta.
+
+ > dir /a
+   Lista todos los archivos, incluidos los ocultos. Se copiaron los archivos
+   del paquete de la Fase 1 a la raíz y se comprobó de nuevo con dir /a.
+
+
+ ----- PASO 5. Instalar dependencias (correcto) -------------------------------
+
+ > python -m pip install -r requirements.txt
+ => Successfully installed Flask-3.1.3 blinker-1.9.0 click-8.5.0
+    colorama-0.4.6 iniconfig-2.3.0 itsdangerous-2.2.0 jinja2-3.1.6
+    markupsafe-3.0.4 packaging-26.3 pluggy-1.6.0 pygments-2.21.0
+    pytest-9.1.1 python-dotenv-1.2.4 werkzeug-3.1.9               [OK]
+
+   Flask trajo sus propias dependencias: Werkzeug (servidor HTTP), Jinja2
+   (plantillas HTML), Click (línea de comandos), etc.
+
+ > notepad requirements.txt
+   Se cambiaron los rangos (>=) por las versiones exactas instaladas (==).
+   MEJORA: reproducibilidad. Quien clone el repositorio instala lo mismo.
+
+
+ ----- PASO 6. Crear la configuración local -----------------------------------
+
+ > copy .env.example .env
+ => 1 archivo(s) copiado(s).                                       [OK]
+
+
+ ----- PASO 7. Crear la base de datos -----------------------------------------
+
+ > python manage.py init-db --seed
+ => [OK] Base de datos lista en: data\noc.db
+ => [OK] Equipos simulados insertados: 6                           [OK]
+
+ > python manage.py check-db
+ =>  action_proposals       0 registros
+     audit_log              1 registros
+     devices                6 registros
+     incident_notes         0 registros
+     incidents              0 registros
+     severities             8 registros
+     syslog_events          0 registros                            [OK]
+
+ [E] docs/evidencias/F1-01_instalacion_y_check-db.png
+ [!] Hallazgo: la ruta salió relativa (data\noc.db). Ver sección 10.
+
+
+ ----- PASO 8. Probar la aplicación web ---------------------------------------
+
+ > python run.py
+   Navegador: http://127.0.0.1:5000/api/health
+ => { "status": "ok", "tables": 7, "version": "0.1.0-dev" }        [OK]
+ Ctrl + C  (detener el servidor)
+
+ [E] docs/evidencias/F1-02_api_health.png
+
+
+ ----- PASO 9. Bitácora de desarrollo -----------------------------------------
+
+ > notepad docs\bitacora.md
+   "No se encuentra el archivo... ¿Desea crear uno nuevo?" -> Sí
+   Se registraron los problemas y soluciones (sección 9 de este documento).
+
+
+ ----- PASO 10. Iniciar el repositorio Git ------------------------------------
+
+ > git config --global user.name
+ => Erick12-hub
+ > git config --global user.email
+ => (correo configurado)                                           [OK]
+
+ > git init -b main
+ => Initialized empty Git repository in C:/.../noc-syslog-inteligente/.git/
+
+ > git commit --allow-empty -m "chore: inicializar repositorio"
+ => [main (root-commit) c578443] chore: inicializar repositorio
+
+ > git status
+ => On branch main
+    Untracked files:
+          .env.example  .gitignore  README.md  app/  data/  docs/
+          manage.py  requirements.txt  run.py
+ [OK] NO aparecen .env, .venv/ ni data/noc.db -> el .gitignore funciona.
+
+ [E] docs/evidencias/F1-03_git_status.png
+
+
+ ----- PASO 11. Publicar en GitHub --------------------------------------------
+
+ Intento con GitHub Desktop:
+   "Create a New Repository" -> CANCELADO (habría creado OTRO repositorio
+   en otra carpeta, con su propio commit inicial).
+   "Add local repository" -> "This directory does not appear to be a Git
+   repository".
+ [!] GitHub Desktop no reconoció el repositorio creado con Git 2.55.
+
+ Verificación por consola:
+ > git rev-parse --show-toplevel
+ => C:/Users/ThinkPad/Documents/Universidad/SEMESTRE 5/GESTION DE REDES/
+    GitHub/noc-syslog-inteligente                                  [OK]
+   (el repositorio estaba bien; el problema era de GitHub Desktop)
+
+ Solución: publicar por consola.
+   1. En https://github.com/new se creó "noc-syslog-inteligente", público,
+      sin README, sin .gitignore y sin licencia (vacío).
+   2. Conectar el repositorio local con el remoto:
+ > git remote add origin https://github.com/Erick12-hub/noc-syslog-inteligente.git
+   3. Subir la rama main:
+ > git push -u origin main
+ => info: please complete authentication in your browser...
+   Se abrió "Connect to GitHub" -> "Sign in with your browser" ->
+   "Authorize Git Credential Manager" -> "Authentication Succeeded".
+ => * [new branch]      main -> main
+    branch 'main' set up to track 'origin/main'.                   [OK]
+
+
+ ----- PASO 12. Rama develop y commits progresivos ----------------------------
+
+ > git switch -c develop
+ => Switched to a new branch 'develop'
+
+ Commit 1:
+ > git add .env.example .gitignore README.md requirements.txt data/.gitkeep
+ => warning: ... LF will be replaced by CRLF ...  (aviso normal, ver sec. 9)
+ > git status
+ => new file: .env.example, .gitignore, README.md, data/.gitkeep,
+    requirements.txt
+ > git commit -m "chore: estructura inicial, dependencias y gitignore"git commit -m "..."
+ => error: pathspec 'commit' did not match any file(s) known to git
+ [!] El comando se pegó dos veces en la misma línea.
+ > git commit -m "chore: estructura inicial, dependencias y gitignore"
+ => [develop 65b1f42] ...                                          [OK]
+
+ Commit 2:
+ > git add app manage.py run.py
+ > git status
+ > git commit -m "feat(db): modelo de datos SQLite, auditoria y equipos simulados"
+ => [develop fb0dc81] ... 7 files changed, 391 insertions(+)       [OK]
+
+ Commit 3:
+ > git add docs
+ > git status
+ > git commit -m "docs: requisitos, historias de usuario, arquitectura y bitacora"
+ => [develop 885c27c] ... 7 files changed, 337 insertions(+)       [OK]
+
+ > git push -u origin develop
+ => * [new branch]      develop -> develop                         [OK]
+ [E] docs/evidencias/F1-04_commit3_docs_y_push.png
+
+ > git log --oneline --graph --all
+ => * 885c27c (HEAD -> develop, origin/develop) docs: requisitos, ...
+    * fb0dc81 feat(db): modelo de datos SQLite, auditoria y ...
+    * 65b1f42 chore: estructura inicial, dependencias y gitignore
+    * c578443 (origin/main, main) chore: inicializar repositorio  [OK]
+ [E] docs/evidencias/F1-05_git_log_historial.png
+
+
+ ----- PASO 13. Commit de corrección y cierre ---------------------------------
+
+ [!] Una captura quedó como "F1-02_api_health.png.png" (Windows oculta las
+     extensiones y se agregó otra al guardar).
+
+ > git mv docs/evidencias/F1-02_api_health.png.png docs/evidencias/F1-02_api_health.png
+   "git mv" renombra el archivo Y registra el cambio en Git a la vez.
+ > git add docs
+ > git status
+ => modified: docs/bitacora.md
+    renamed:  docs/evidencias/F1-02_api_health.png.png -> ...F1-02_api_health.png
+    new file: docs/evidencias/F1-04_commit3_docs_y_push.png
+    new file: docs/evidencias/F1-05_git_log_historial.png
+ > git commit -m "docs: cierre de fase 1, bitacora completa, guia de comandos y evidencias"
+ => [develop b9065f7] 4 files changed, 94 insertions(+), 8 deletions(-)
+ > git push
+ => 885c27c..b9065f7  develop -> develop                           [OK]
+
+
+ HISTORIAL FINAL DE LA FASE 1
+   c578443  main     chore: inicializar repositorio
+   65b1f42  develop  chore: estructura inicial, dependencias y gitignore
+   fb0dc81  develop  feat(db): modelo de datos SQLite, auditoria y equipos simulados
+   885c27c  develop  docs: requisitos, historias de usuario, arquitectura y bitacora
+   b9065f7  develop  docs: cierre de fase 1, bitacora completa, guia de comandos y evidencias
+   (+ commit de este documento y de la guía de comandos)
+
+
+================================================================================
+ 4. ESTRUCTURA FINAL DEL PROYECTO
+================================================================================
+
+ noc-syslog-inteligente/
+ |-- .git/                      Historial de Git (oculto; lo maneja Git)
+ |-- .venv/                     Entorno virtual            -> NO se sube
+ |-- .env                       Configuración real local   -> NO se sube
+ |-- .env.example               Plantilla de configuración -> SÍ se sube
+ |-- .gitignore                 Qué ignora Git
+ |-- README.md                  Presentación e instalación
+ |-- requirements.txt           Dependencias con versión fija
+ |-- manage.py                  Comandos: init-db, check-db
+ |-- run.py                     Arranca el servidor web
+ |-- app/                       Paquete de la aplicación
+ |   |-- __init__.py            Crea la app Flask y /api/health
+ |   |-- config.py              Configuración desde .env
+ |   |-- db.py                  Conexión SQLite, init_db, auditoría
+ |   |-- schema.sql             Modelo de datos (7 tablas)
+ |   |-- seed.py                6 equipos SIMULADOS
+ |-- data/
+ |   |-- .gitkeep               Mantiene la carpeta en Git
+ |   |-- noc.db                 Base de datos                -> NO se sube
+ |-- docs/
+     |-- 01_requisitos.md
+     |-- 02_historias_usuario.md
+     |-- 03_arquitectura.md
+     |-- bitacora.md
+     |-- guia_fase1_comandos.txt
+     |-- FASE1_proceso_completo.txt   (este documento)
+     |-- evidencias/            F1-01 ... F1-05 (.png)
+
+
+================================================================================
+ 5. CÓDIGO FUENTE COMENTADO
+================================================================================
+
+ Cómo leer esta sección: primero se muestra el archivo completo con números
+ de línea, exactamente como está en el repositorio; después se explica
+ bloque por bloque (L = línea).
+
+
+--------------------------------------------------------------------------------
+ 5.1 requirements.txt  -  Dependencias del proyecto
+--------------------------------------------------------------------------------
+
+  +--- requirements.txt ------------------------------------------------------
+  |   1 | Flask==3.1.3
+  |   2 | python-dotenv==1.2.4
+  |   3 | pytest==9.1.1
+  +-----------------------------------------------------------------------------
+
+ EXPLICACIÓN
+   L1  Flask: framework web. Recibe peticiones HTTP, define rutas (/api/...)
+       y devuelve respuestas (JSON o HTML).
+   L2  python-dotenv: lee el archivo .env y carga sus valores como variables
+       de entorno, para no escribir configuración ni secretos en el código.
+   L3  pytest: ejecuta las pruebas automáticas (se usa desde la Fase 2).
+   "==" fija la versión exacta probada en el equipo. Con ">=" cada
+   instalación podría traer versiones distintas y romper el proyecto.
+   Instalación:  > python -m pip install -r requirements.txt
+
+
+--------------------------------------------------------------------------------
+ 5.2 .gitignore  -  Lo que Git NUNCA debe subir
+--------------------------------------------------------------------------------
+
+  +--- .gitignore ------------------------------------------------------------
+  |   1 | # --- Secretos: NUNCA se suben ---
+  |   2 | .env
+  |   3 | *.pem
+  |   4 | *.key
+  |   5 | secrets/
+  |   6 | 
+  |   7 | # --- Base de datos local (se regenera con manage.py) ---
+  |   8 | data/*.db
+  |   9 | data/*.db-journal
+  |  10 | 
+  |  11 | # --- Entorno virtual de Python ---
+  |  12 | .venv/
+  |  13 | venv/
+  |  14 | 
+  |  15 | # --- Archivos generados por Python ---
+  |  16 | __pycache__/
+  |  17 | *.py[cod]
+  |  18 | .pytest_cache/
+  |  19 | 
+  |  20 | # --- Editores y sistema operativo ---
+  |  21 | .vscode/
+  |  22 | .idea/
+  |  23 | Thumbs.db
+  |  24 | Desktop.ini
+  |  25 | .DS_Store
+  +-----------------------------------------------------------------------------
+
+ EXPLICACIÓN
+   L1-5    Secretos: .env (configuración real), *.pem y *.key (claves
+           privadas/certificados) y la carpeta secrets/. Es un CONTROL DE
+           SEGURIDAD: cumple "no se aceptan credenciales, tokens ni claves
+           visibles en GitHub".
+   L7-9    data/*.db: la base de datos local. Contiene datos de operación y
+           se regenera con "python manage.py init-db --seed".
+   L11-13  .venv/: el entorno virtual pesa mucho y depende de cada equipo;
+           cada persona lo crea con requirements.txt.
+   L15-18  __pycache__ y *.pyc: archivos compilados que Python genera solo.
+   L20-25  Archivos de editores (VS Code, PyCharm) y del sistema operativo.
+   Verificación: "git status" no mostró .env, .venv ni noc.db.
+
+
+--------------------------------------------------------------------------------
+ 5.3 .env.example  -  Plantilla de configuración
+--------------------------------------------------------------------------------
+
+  +--- .env.example ----------------------------------------------------------
+  |   1 | # Copie este archivo como .env y ajuste los valores.
+  |   2 | # El archivo .env NO se sube a GitHub (está en .gitignore).
+  |   3 | 
+  |   4 | # Clave de sesión de Flask. Genere una con:
+  |   5 | #   python -c "import secrets; print(secrets.token_hex(32))"
+  |   6 | SECRET_KEY=cambiar_por_un_valor_aleatorio
+  |   7 | 
+  |   8 | # Ruta de la base de datos SQLite
+  |   9 | DATABASE_PATH=data/noc.db
+  |  10 | 
+  |  11 | # Receptor Syslog UDP (5514 evita requerir permisos de administrador)
+  |  12 | SYSLOG_HOST=127.0.0.1
+  |  13 | SYSLOG_PORT=5514
+  |  14 | 
+  |  15 | # Operador por defecto que aparece en la auditoría
+  |  16 | DEFAULT_OPERATOR=operador_noc
+  +-----------------------------------------------------------------------------
+
+ EXPLICACIÓN
+   Es la plantilla PÚBLICA: documenta qué variables existen, sin valores
+   reales. Cada persona la copia como .env (privado) y la ajusta.
+   L4-6    SECRET_KEY: Flask la usa para firmar las sesiones. Se genera
+           aleatoria con el comando de la línea 5. Nunca se publica.
+   L8-9    DATABASE_PATH: dónde se guarda el archivo SQLite.
+   L11-13  SYSLOG_HOST/PORT: dirección del receptor Syslog (Fase 2).
+           127.0.0.1 = solo este equipo; 5514 en lugar de 514 para no
+           requerir permisos de administrador.
+   L15-16  DEFAULT_OPERATOR: nombre que firma las acciones en la auditoría
+           mientras el MVP no tenga inicio de sesión (Corte 3).
+
+
+--------------------------------------------------------------------------------
+ 5.4 app/config.py  -  Carga de la configuración
+--------------------------------------------------------------------------------
+
+  +--- app/config.py ---------------------------------------------------------
+  |   1 | """
+  |   2 | Configuración de la aplicación.
+  |   3 | 
+  |   4 | Los valores se leen de variables de entorno (archivo .env, que NUNCA se sube
+  |   5 | a GitHub). Si una variable no existe se usa un valor por defecto seguro para
+  |   6 | desarrollo local. Ver .env.example.
+  |   7 | """
+  |   8 | import os
+  |   9 | from pathlib import Path
+  |  10 | 
+  |  11 | from dotenv import load_dotenv
+  |  12 | 
+  |  13 | # Carpeta raíz del proyecto (un nivel arriba de /app)
+  |  14 | BASE_DIR = Path(__file__).resolve().parent.parent
+  |  15 | 
+  |  16 | # Carga .env si existe (no falla si no está)
+  |  17 | load_dotenv(BASE_DIR / ".env")
+  |  18 | 
+  |  19 | 
+  |  20 | class Config:
+  |  21 |     # Clave para sesiones de Flask. En desarrollo se genera una aleatoria
+  |  22 |     # si no se define; nunca se escribe una clave fija en el código.
+  |  23 |     SECRET_KEY = os.getenv("SECRET_KEY") or os.urandom(32).hex()
+  |  24 | 
+  |  25 |     # Ruta del archivo SQLite
+  |  26 |     DATABASE_PATH = Path(os.getenv("DATABASE_PATH", BASE_DIR / "data" / "noc.db"))
+  |  27 | 
+  |  28 |     # Receptor Syslog UDP. Se usa 5514 porque el puerto estándar 514
+  |  29 |     # requiere permisos de administrador.
+  |  30 |     SYSLOG_HOST = os.getenv("SYSLOG_HOST", "127.0.0.1")
+  |  31 |     SYSLOG_PORT = int(os.getenv("SYSLOG_PORT", "5514"))
+  |  32 | 
+  |  33 |     # Nombre del operador por defecto (para auditoría en el MVP sin login)
+  |  34 |     DEFAULT_OPERATOR = os.getenv("DEFAULT_OPERATOR", "operador_noc")
+  +-----------------------------------------------------------------------------
+
+ EXPLICACIÓN
+   L1-7    Docstring: describe el propósito del archivo.
+   L8-11   Importaciones: "os" para leer variables de entorno, "Path" para
+           manejar rutas de forma independiente del sistema operativo y
+           "load_dotenv" para leer el archivo .env.
+   L14     BASE_DIR = raíz del proyecto. __file__ es la ruta de config.py;
+           .resolve() la vuelve absoluta; .parent.parent sube dos niveles
+           (config.py -> app/ -> raíz).
+   L17     Carga el .env de la raíz. Si no existe, no falla: usa los valores
+           por defecto.
+   L20     Clase Config: agrupa toda la configuración en un solo lugar.
+   L23     SECRET_KEY: si no está definida en .env, se genera una aleatoria
+           de 32 bytes con os.urandom. Así NUNCA hay una clave fija escrita
+           en el código.
+   L26     DATABASE_PATH: lee la variable o usa data/noc.db por defecto.
+           [!] Si en .env la ruta es relativa ("data/noc.db"), se resuelve
+           desde la carpeta donde se ejecuta el comando. Se corrige en la
+           Fase 2 (sección 10).
+   L30-31  Dirección y puerto del receptor Syslog. int() convierte el texto
+           "5514" en número.
+   L34     Operador por defecto para la auditoría.
+
+
+--------------------------------------------------------------------------------
+ 5.5 app/schema.sql  -  Modelo de datos (7 tablas)
+--------------------------------------------------------------------------------
+
+  +--- app/schema.sql --------------------------------------------------------
+  |   1 | -- =====================================================================
+  |   2 | -- NOC Syslog Inteligente - Modelo de datos (SQLite)
+  |   3 | -- Versión: v0.1.0 (base) -> v0.2.0 (MVP)
+  |   4 | --
+  |   5 | -- Convenciones:
+  |   6 | --   * Fechas en formato ISO 8601 UTC (texto), p. ej. 2026-10-02T19:30:00Z
+  |   7 | --   * is_simulated = 1 marca TODO dato de prueba (requisito del curso:
+  |   8 | --     los datos simulados deben estar claramente identificados).
+  |   9 | --   * Las tablas se crean solo si no existen (re-ejecutable sin perder datos).
+  |  10 | -- =====================================================================
+  |  11 | 
+  |  12 | PRAGMA foreign_keys = ON;
+  |  13 | 
+  |  14 | -- ---------------------------------------------------------------------
+  |  15 | -- 1. Catálogo de severidades Syslog (RFC 5424, sección 6.2.1)
+  |  16 | --    Tabla de referencia: 0 = más grave, 7 = menos grave.
+  |  17 | -- ---------------------------------------------------------------------
+  |  18 | CREATE TABLE IF NOT EXISTS severities (
+  |  19 |     code        INTEGER PRIMARY KEY CHECK (code BETWEEN 0 AND 7),
+  |  20 |     keyword     TEXT NOT NULL,          -- emerg, alert, crit, ...
+  |  21 |     name        TEXT NOT NULL,          -- Emergency, Alert, ...
+  |  22 |     description TEXT NOT NULL,
+  |  23 |     creates_incident INTEGER NOT NULL DEFAULT 0  -- política: 1 = genera incidente automático
+  |  24 | );
+  |  25 | 
+  |  26 | -- ---------------------------------------------------------------------
+  |  27 | -- 2. Inventario de dispositivos
+  |  28 | --    'authorized' implementa la lista permitida de FUENTES Syslog:
+  |  29 | --    solo se confía en eventos cuya IP origen pertenezca a un equipo autorizado.
+  |  30 | -- ---------------------------------------------------------------------
+  |  31 | CREATE TABLE IF NOT EXISTS devices (
+  |  32 |     id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  |  33 |     name         TEXT NOT NULL UNIQUE,
+  |  34 |     ip           TEXT NOT NULL UNIQUE,
+  |  35 |     vendor       TEXT NOT NULL CHECK (vendor IN ('Cisco', 'Fortinet', 'Huawei', 'Otro')),
+  |  36 |     model        TEXT,
+  |  37 |     version      TEXT,                  -- versión de firmware / sistema operativo
+  |  38 |     location     TEXT,
+  |  39 |     status       TEXT NOT NULL DEFAULT 'desconocido'
+  |  40 |                  CHECK (status IN ('activo', 'alerta', 'caido', 'mantenimiento', 'desconocido')),
+  |  41 |     authorized   INTEGER NOT NULL DEFAULT 1 CHECK (authorized IN (0, 1)),
+  |  42 |     is_simulated INTEGER NOT NULL DEFAULT 0 CHECK (is_simulated IN (0, 1)),
+  |  43 |     created_at   TEXT NOT NULL,
+  |  44 |     updated_at   TEXT NOT NULL
+  |  45 | );
+  |  46 | 
+  |  47 | -- ---------------------------------------------------------------------
+  |  48 | -- 3. Eventos Syslog recibidos o importados
+  |  49 | --    'raw' guarda el mensaje original TAL CUAL llegó. Se trata como DATO
+  |  50 | --    NO CONFIABLE: nunca se interpreta como instrucción ni se ejecuta.
+  |  51 | -- ---------------------------------------------------------------------
+  |  52 | CREATE TABLE IF NOT EXISTS syslog_events (
+  |  53 |     id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  |  54 |     received_at       TEXT NOT NULL,     -- cuándo lo recibió el NOC
+  |  55 |     event_time        TEXT,              -- fecha que trae el propio mensaje (si la trae)
+  |  56 |     source_ip         TEXT NOT NULL,
+  |  57 |     device_id         INTEGER REFERENCES devices(id) ON DELETE SET NULL,
+  |  58 |     vendor            TEXT,              -- copiado del inventario o 'Desconocido'
+  |  59 |     facility          INTEGER CHECK (facility BETWEEN 0 AND 23),
+  |  60 |     severity          INTEGER NOT NULL CHECK (severity BETWEEN 0 AND 7)
+  |  61 |                       REFERENCES severities(code),
+  |  62 |     hostname          TEXT,
+  |  63 |     app_name          TEXT,
+  |  64 |     message           TEXT NOT NULL,
+  |  65 |     raw               TEXT NOT NULL,
+  |  66 |     origin            TEXT NOT NULL CHECK (origin IN ('udp', 'importacion', 'simulador')),
+  |  67 |     authorized_source INTEGER NOT NULL DEFAULT 0 CHECK (authorized_source IN (0, 1)),
+  |  68 |     fingerprint       TEXT,              -- huella para deduplicación
+  |  69 |     dup_count         INTEGER NOT NULL DEFAULT 1,  -- repeticiones agrupadas
+  |  70 |     is_simulated      INTEGER NOT NULL DEFAULT 0 CHECK (is_simulated IN (0, 1))
+  |  71 | );
+  |  72 | 
+  |  73 | CREATE INDEX IF NOT EXISTS idx_events_received ON syslog_events(received_at);
+  |  74 | CREATE INDEX IF NOT EXISTS idx_events_severity ON syslog_events(severity);
+  |  75 | CREATE INDEX IF NOT EXISTS idx_events_device   ON syslog_events(device_id);
+  |  76 | CREATE INDEX IF NOT EXISTS idx_events_fp       ON syslog_events(fingerprint);
+  |  77 | 
+  |  78 | -- ---------------------------------------------------------------------
+  |  79 | -- 4. Incidentes (creación, asignación, seguimiento y cierre)
+  |  80 | -- ---------------------------------------------------------------------
+  |  81 | CREATE TABLE IF NOT EXISTS incidents (
+  |  82 |     id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  |  83 |     title        TEXT NOT NULL,
+  |  84 |     description  TEXT,
+  |  85 |     severity     INTEGER NOT NULL CHECK (severity BETWEEN 0 AND 7),
+  |  86 |     status       TEXT NOT NULL DEFAULT 'abierto'
+  |  87 |                  CHECK (status IN ('abierto', 'asignado', 'en_progreso', 'cerrado')),
+  |  88 |     assigned_to  TEXT,
+  |  89 |     device_id    INTEGER REFERENCES devices(id) ON DELETE SET NULL,
+  |  90 |     event_id     INTEGER REFERENCES syslog_events(id) ON DELETE SET NULL,
+  |  91 |     resolution   TEXT,                   -- obligatoria al cerrar
+  |  92 |     created_by   TEXT NOT NULL,
+  |  93 |     created_at   TEXT NOT NULL,
+  |  94 |     updated_at   TEXT NOT NULL,
+  |  95 |     closed_at    TEXT,
+  |  96 |     is_simulated INTEGER NOT NULL DEFAULT 0 CHECK (is_simulated IN (0, 1))
+  |  97 | );
+  |  98 | 
+  |  99 | -- Bitácora de seguimiento de cada incidente
+  | 100 | CREATE TABLE IF NOT EXISTS incident_notes (
+  | 101 |     id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  | 102 |     incident_id INTEGER NOT NULL REFERENCES incidents(id) ON DELETE CASCADE,
+  | 103 |     author      TEXT NOT NULL,
+  | 104 |     note        TEXT NOT NULL,
+  | 105 |     created_at  TEXT NOT NULL
+  | 106 | );
+  | 107 | 
+  | 108 | -- ---------------------------------------------------------------------
+  | 109 | -- 5. Propuestas de acción (flujo seguro obligatorio)
+  | 110 | --    evento -> validación -> PROPUESTA -> revisión humana -> aprobación
+  | 111 | --    -> ejecución autorizada -> verificación -> auditoría
+  | 112 | --    En el MVP la "ejecución" es simulada; nunca se toca un equipo real.
+  | 113 | -- ---------------------------------------------------------------------
+  | 114 | CREATE TABLE IF NOT EXISTS action_proposals (
+  | 115 |     id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  | 116 |     incident_id   INTEGER REFERENCES incidents(id) ON DELETE CASCADE,
+  | 117 |     proposed_by   TEXT NOT NULL,         -- 'asistente_ia' u operador
+  | 118 |     command       TEXT NOT NULL,
+  | 119 |     justification TEXT,
+  | 120 |     risk          TEXT NOT NULL DEFAULT 'medio' CHECK (risk IN ('bajo', 'medio', 'alto')),
+  | 121 |     status        TEXT NOT NULL DEFAULT 'pendiente'
+  | 122 |                   CHECK (status IN ('pendiente', 'aprobada', 'rechazada', 'ejecutada', 'verificada')),
+  | 123 |     reviewed_by   TEXT,
+  | 124 |     reviewed_at   TEXT,
+  | 125 |     result        TEXT,
+  | 126 |     created_at    TEXT NOT NULL
+  | 127 | );
+  | 128 | 
+  | 129 | -- ---------------------------------------------------------------------
+  | 130 | -- 6. Auditoría: quién hizo qué, cuándo y con qué resultado.
+  | 131 | --    Solo se inserta; la aplicación nunca actualiza ni borra registros aquí.
+  | 132 | -- ---------------------------------------------------------------------
+  | 133 | CREATE TABLE IF NOT EXISTS audit_log (
+  | 134 |     id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  | 135 |     ts        TEXT NOT NULL,
+  | 136 |     actor     TEXT NOT NULL,             -- operador, 'sistema' o 'asistente_ia'
+  | 137 |     action    TEXT NOT NULL,             -- p. ej. device.create, console.blocked
+  | 138 |     entity    TEXT,                      -- tabla/objeto afectado
+  | 139 |     entity_id INTEGER,
+  | 140 |     detail    TEXT,
+  | 141 |     result    TEXT NOT NULL DEFAULT 'ok' -- ok | bloqueado | error
+  | 142 | );
+  | 143 | 
+  | 144 | CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(ts);
+  +-----------------------------------------------------------------------------
+
+ EXPLICACIÓN GENERAL
+   - "CREATE TABLE IF NOT EXISTS": crea la tabla solo si no existe. Por eso
+     init-db se puede ejecutar varias veces sin borrar datos.
+   - "CHECK (...)": regla que la base de datos hace cumplir. Si se intenta
+     guardar un valor inválido (por ejemplo, severidad 9), SQLite lo rechaza
+     aunque el código tenga un error. Es validación en la capa más baja.
+   - "REFERENCES tabla(id)": clave foránea; relaciona tablas.
+   - "ON DELETE SET NULL / CASCADE": qué pasa si se borra el registro padre.
+   - "INDEX": acelera las búsquedas por esa columna (filtros del dashboard).
+
+ L12  PRAGMA foreign_keys = ON: SQLite trae las claves foráneas apagadas
+      por defecto; esta línea las activa.
+
+ TABLA 1 - severities (L18-24): catálogo de severidades de la RFC 5424.
+   code 0-7 (CHECK lo garantiza), keyword (emerg, alert...), name,
+   description y creates_incident: la POLÍTICA de qué severidades generan
+   incidente automático (1 = sí). Tenerla en datos y no en el código
+   permite cambiar la política sin reprogramar.
+
+ TABLA 2 - devices (L31-45): inventario.
+   name e ip son UNIQUE (no se repiten). vendor solo acepta Cisco,
+   Fortinet, Huawei u Otro. status solo acepta 5 estados.
+   authorized (L41): LISTA PERMITIDA DE FUENTES. Solo los equipos con
+   authorized = 1 son fuentes de confianza para generar incidentes.
+   is_simulated (L42): marca los datos de prueba (exigido por el curso).
+   created_at / updated_at: trazabilidad de cambios.
+
+ TABLA 3 - syslog_events (L52-71): eventos recibidos.
+   received_at (cuándo llegó al NOC) vs event_time (la fecha que trae el
+   propio mensaje): pueden diferir si el reloj del equipo está mal; por eso
+   NTP es un control obligatorio.
+   device_id: equipo del inventario al que se asocia (por IP).
+   facility 0-23 y severity 0-7: se calculan del PRI del mensaje.
+   raw (L65): el mensaje ORIGINAL, tal cual llegó. Es DATO NO CONFIABLE:
+   nunca se interpreta como instrucción ni se ejecuta (defensa contra
+   prompt injection).
+   origin: udp, importacion o simulador (trazabilidad del origen).
+   authorized_source: si la IP de origen está en la lista permitida.
+   fingerprint y dup_count: deduplicación. Mensajes idénticos se agrupan
+   con un contador en lugar de llenar la base (control de tormentas).
+   L73-76 Índices por fecha, severidad, equipo y huella.
+
+ TABLA 4 - incidents (L81-97): ciclo de vida de incidentes.
+   status: abierto -> asignado -> en_progreso -> cerrado.
+   assigned_to: responsable. resolution: obligatoria al cerrar.
+   event_id / device_id: de qué evento y equipo nace el incidente.
+   created_by, created_at, updated_at, closed_at: trazabilidad completa.
+
+ TABLA 5 - incident_notes (L100-106): seguimiento.
+   Notas con autor y fecha. ON DELETE CASCADE: si se borra el incidente,
+   se borran sus notas.
+
+ TABLA 6 - action_proposals (L114-127): FLUJO SEGURO OBLIGATORIO.
+   evento -> validación -> PROPUESTA -> revisión humana -> aprobación ->
+   ejecución autorizada -> verificación -> auditoría.
+   proposed_by: quién propone (asistente_ia u operador).
+   status: pendiente -> aprobada/rechazada -> ejecutada -> verificada.
+   reviewed_by / reviewed_at: el HUMANO que aprobó o rechazó.
+   Un agente de IA solo puede PROPONER; no puede aprobar ni ejecutar.
+
+ TABLA 7 - audit_log (L133-142): auditoría.
+   ts, actor, action, entity, entity_id, detail, result (ok, bloqueado,
+   error). Política: solo se INSERTA; la aplicación nunca la modifica ni la
+   borra. Así queda evidencia de quién hizo qué y cuándo.
+
+
+--------------------------------------------------------------------------------
+ 5.6 app/db.py  -  Acceso a la base de datos
+--------------------------------------------------------------------------------
+
+  +--- app/db.py -------------------------------------------------------------
+  |   1 | """
+  |   2 | Acceso a la base de datos SQLite.
+  |   3 | 
+  |   4 | - get_db():   conexión reutilizada durante una petición HTTP de Flask.
+  |   5 | - connect():  conexión independiente (para scripts y el receptor UDP).
+  |   6 | - init_db():  crea las tablas desde schema.sql y carga el catálogo de severidades.
+  |   7 | - audit():    registra una acción en la tabla de auditoría.
+  |   8 | """
+  |   9 | import sqlite3
+  |  10 | from datetime import datetime, timezone
+  |  11 | from pathlib import Path
+  |  12 | 
+  |  13 | from flask import current_app, g
+  |  14 | 
+  |  15 | SCHEMA_FILE = Path(__file__).resolve().parent / "schema.sql"
+  |  16 | 
+  |  17 | # Catálogo de severidades RFC 5424.
+  |  18 | # Última columna = política inicial: severidades 0-3 generan incidente.
+  |  19 | SEVERITIES = [
+  |  20 |     (0, "emerg",   "Emergency",     "El sistema no es utilizable", 1),
+  |  21 |     (1, "alert",   "Alert",         "Se requiere acción inmediata", 1),
+  |  22 |     (2, "crit",    "Critical",      "Condición crítica", 1),
+  |  23 |     (3, "err",     "Error",         "Condición de error", 1),
+  |  24 |     (4, "warning", "Warning",       "Condición de advertencia", 0),
+  |  25 |     (5, "notice",  "Notice",        "Condición normal pero significativa", 0),
+  |  26 |     (6, "info",    "Informational", "Mensaje informativo", 0),
+  |  27 |     (7, "debug",   "Debug",         "Mensaje de depuración", 0),
+  |  28 | ]
+  |  29 | 
+  |  30 | 
+  |  31 | def now_iso() -> str:
+  |  32 |     """Fecha y hora actual en UTC, formato ISO 8601 (ej. 2026-10-02T19:30:00Z)."""
+  |  33 |     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+  |  34 | 
+  |  35 | 
+  |  36 | def connect(db_path) -> sqlite3.Connection:
+  |  37 |     """Abre una conexión SQLite con filas tipo diccionario y claves foráneas activas."""
+  |  38 |     db_path = Path(db_path)
+  |  39 |     db_path.parent.mkdir(parents=True, exist_ok=True)
+  |  40 |     conn = sqlite3.connect(db_path)
+  |  41 |     conn.row_factory = sqlite3.Row          # permite row["columna"]
+  |  42 |     conn.execute("PRAGMA foreign_keys = ON")  # SQLite las trae apagadas por defecto
+  |  43 |     return conn
+  |  44 | 
+  |  45 | 
+  |  46 | def get_db() -> sqlite3.Connection:
+  |  47 |     """Conexión de la petición actual (se crea una sola vez por petición)."""
+  |  48 |     if "db" not in g:
+  |  49 |         g.db = connect(current_app.config["DATABASE_PATH"])
+  |  50 |     return g.db
+  |  51 | 
+  |  52 | 
+  |  53 | def close_db(_exc=None):
+  |  54 |     """Cierra la conexión al terminar la petición."""
+  |  55 |     db = g.pop("db", None)
+  |  56 |     if db is not None:
+  |  57 |         db.close()
+  |  58 | 
+  |  59 | 
+  |  60 | def init_db(conn: sqlite3.Connection):
+  |  61 |     """Crea las tablas (si no existen) y carga/actualiza el catálogo de severidades."""
+  |  62 |     conn.executescript(SCHEMA_FILE.read_text(encoding="utf-8"))
+  |  63 |     conn.executemany(
+  |  64 |         "INSERT OR REPLACE INTO severities "
+  |  65 |         "(code, keyword, name, description, creates_incident) VALUES (?, ?, ?, ?, ?)",
+  |  66 |         SEVERITIES,
+  |  67 |     )
+  |  68 |     conn.commit()
+  |  69 | 
+  |  70 | 
+  |  71 | def audit(conn, actor, action, entity=None, entity_id=None, detail=None, result="ok"):
+  |  72 |     """Agrega un registro de auditoría. Nunca se modifica ni borra después."""
+  |  73 |     conn.execute(
+  |  74 |         "INSERT INTO audit_log (ts, actor, action, entity, entity_id, detail, result) "
+  |  75 |         "VALUES (?, ?, ?, ?, ?, ?, ?)",
+  |  76 |         (now_iso(), actor, action, entity, entity_id, detail, result),
+  |  77 |     )
+  |  78 |     conn.commit()
+  +-----------------------------------------------------------------------------
+
+ EXPLICACIÓN
+   L9-13   Importaciones. sqlite3 viene con Python. "g" y "current_app" son
+           objetos de Flask: g guarda datos durante UNA petición HTTP;
+           current_app es la aplicación en ejecución.
+   L15     Ruta absoluta de schema.sql (junto a db.py).
+   L19-28  Catálogo de severidades como lista de tuplas. La última columna
+           es la política: 1 = genera incidente (0 a 3), 0 = no (4 a 7).
+   L31-33  now_iso(): fecha y hora actual en UTC con formato ISO 8601.
+           Todas las fechas del sistema usan esta función (consistencia).
+   L36-43  connect(): abre una conexión.
+           L39 crea la carpeta data/ si no existe.
+           L41 row_factory = sqlite3.Row: permite leer row["name"] en vez de
+               row[1] (código más legible).
+           L42 activa las claves foráneas en cada conexión.
+   L46-50  get_db(): dentro de una petición web, crea la conexión una sola
+           vez y la reutiliza (patrón recomendado por Flask).
+   L53-57  close_db(): cierra la conexión al terminar la petición.
+           Se registra en __init__.py con teardown_appcontext.
+   L60-68  init_db(): ejecuta todo schema.sql (executescript) y carga las 8
+           severidades. "INSERT OR REPLACE" actualiza si ya existen, así
+           que se puede ejecutar varias veces sin duplicar.
+   L71-78  audit(): inserta un registro de auditoría. Los "?" son
+           PARÁMETROS: SQLite inserta los valores de forma segura. Nunca se
+           arma el SQL pegando texto, lo que evita la INYECCIÓN SQL.
+
+
+--------------------------------------------------------------------------------
+ 5.7 app/seed.py  -  Equipos simulados
+--------------------------------------------------------------------------------
+
+  +--- app/seed.py -----------------------------------------------------------
+  |   1 | """
+  |   2 | Datos SIMULADOS para pruebas y demostración.
+  |   3 | 
+  |   4 | Todas las IP pertenecen a los rangos reservados para documentación por la
+  |   5 | RFC 5737 (192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24): no existen en
+  |   6 | Internet ni corresponden a ninguna red de producción.
+  |   7 | Todos los nombres empiezan por "SIM-" y llevan is_simulated = 1.
+  |   8 | """
+  |   9 | from .db import audit, now_iso
+  |  10 | 
+  |  11 | SIMULATED_DEVICES = [
+  |  12 |     # nombre,          ip,              marca,      modelo,          versión,          ubicación,              estado,   autorizado
+  |  13 |     ("SIM-CORE-RTR01", "192.0.2.1",     "Cisco",    "ISR 4331",      "IOS-XE 17.9.4",  "Sede Bogotá - Rack A",  "activo", 1),
+  |  14 |     ("SIM-DIST-SW01",  "192.0.2.10",    "Cisco",    "Catalyst 9300", "IOS-XE 17.9.4",  "Sede Bogotá - Piso 2",  "activo", 1),
+  |  15 |     ("SIM-EDGE-FW01",  "198.51.100.1",  "Fortinet", "FortiGate 60F", "FortiOS 7.4.3",  "Sede Bogotá - DMZ",     "alerta", 1),
+  |  16 |     ("SIM-BR-RTR02",   "198.51.100.20", "Huawei",   "AR6120",        "VRP V300R022",   "Sede Medellín",         "activo", 1),
+  |  17 |     ("SIM-BR-SW02",    "203.0.113.5",   "Huawei",   "S5735-L",       "VRP V200R022",   "Sede Cali",             "caido",  1),
+  |  18 |     ("SIM-LAB-AP01",   "203.0.113.99",  "Otro",     "AP genérico",   "1.0",            "Laboratorio",           "desconocido", 0),
+  |  19 | ]
+  |  20 | 
+  |  21 | 
+  |  22 | def seed_devices(conn) -> int:
+  |  23 |     """Inserta los equipos simulados que aún no existan. Devuelve cuántos insertó."""
+  |  24 |     inserted = 0
+  |  25 |     for name, ip, vendor, model, version, location, status, authorized in SIMULATED_DEVICES:
+  |  26 |         exists = conn.execute("SELECT 1 FROM devices WHERE name = ?", (name,)).fetchone()
+  |  27 |         if exists:
+  |  28 |             continue
+  |  29 |         ts = now_iso()
+  |  30 |         conn.execute(
+  |  31 |             "INSERT INTO devices (name, ip, vendor, model, version, location, status, "
+  |  32 |             "authorized, is_simulated, created_at, updated_at) "
+  |  33 |             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
+  |  34 |             (name, ip, vendor, model, version, location, status, authorized, ts, ts),
+  |  35 |         )
+  |  36 |         inserted += 1
+  |  37 |     conn.commit()
+  |  38 |     if inserted:
+  |  39 |         audit(conn, "sistema", "seed.devices", "devices", None,
+  |  40 |               f"{inserted} equipos SIMULADOS cargados")
+  |  41 |     return inserted
+  +-----------------------------------------------------------------------------
+
+ EXPLICACIÓN
+   L1-8    Docstring que deja explícito que los datos son SIMULADOS y que
+           las IP son de documentación (RFC 5737): no existen en Internet.
+   L11-19  Lista de 6 equipos: 2 Cisco, 1 Fortinet, 2 Huawei y 1 "Otro".
+           Cubren distintos estados (activo, alerta, caído, desconocido).
+           SIM-LAB-AP01 (L18) tiene authorized = 0: es una FUENTE NO
+           AUTORIZADA a propósito, para probar la lista permitida.
+   L22-41  seed_devices():
+           L26-28 si el equipo ya existe, lo salta (no duplica: idempotente).
+           L30-35 INSERT con parámetros "?" y is_simulated = 1 fijo.
+           L37    commit: confirma los cambios en la base.
+           L38-40 deja registro en la auditoría: actor "sistema", acción
+                  "seed.devices". Por eso check-db mostró audit_log = 1.
+           L41    devuelve cuántos insertó (6 la primera vez, 0 después).
+
+
+--------------------------------------------------------------------------------
+ 5.8 app/__init__.py  -  Creación de la aplicación Flask
+--------------------------------------------------------------------------------
+
+  +--- app/__init__.py -------------------------------------------------------
+  |   1 | """
+  |   2 | NOC Syslog Inteligente - fábrica de la aplicación Flask.
+  |   3 | 
+  |   4 | En la Fase 1 solo expone /api/health para verificar que Flask arranca y que
+  |   5 | la base de datos responde. Los módulos (inventario, eventos, incidentes...)
+  |   6 | se registran en las fases siguientes.
+  |   7 | """
+  |   8 | from flask import Flask, jsonify
+  |   9 | 
+  |  10 | from .config import Config
+  |  11 | from . import db
+  |  12 | 
+  |  13 | APP_VERSION = "0.1.0-dev"
+  |  14 | 
+  |  15 | 
+  |  16 | def create_app(config_class=Config):
+  |  17 |     app = Flask(__name__)
+  |  18 |     app.config.from_object(config_class)
+  |  19 | 
+  |  20 |     # Cerrar la conexión SQLite al final de cada petición
+  |  21 |     app.teardown_appcontext(db.close_db)
+  |  22 | 
+  |  23 |     @app.get("/api/health")
+  |  24 |     def health():
+  |  25 |         """Chequeo de salud: versión y número de tablas en la base de datos."""
+  |  26 |         conn = db.get_db()
+  |  27 |         tables = conn.execute(
+  |  28 |             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+  |  29 |         ).fetchone()[0]
+  |  30 |         return jsonify(status="ok", version=APP_VERSION, tables=tables)
+  |  31 | 
+  |  32 |     return app
+  +-----------------------------------------------------------------------------
+
+ EXPLICACIÓN
+   Este archivo convierte la carpeta app/ en un PAQUETE de Python y
+   contiene la "fábrica de la aplicación" (patrón application factory).
+   L8-11   Importa Flask, jsonify (respuestas JSON), la configuración y db.
+   L13     Versión de la aplicación. Se actualizará en cada release.
+   L16-18  create_app(): crea la aplicación y le carga la configuración.
+           Ventaja del patrón: en las pruebas se puede crear una app con
+           otra configuración (por ejemplo, una base de datos temporal).
+   L21     Registra close_db para que se ejecute al final de cada petición.
+   L23-30  Ruta GET /api/health ("chequeo de salud"):
+           consulta sqlite_master (catálogo interno de SQLite) y cuenta las
+           tablas propias. Responde {"status","version","tables"}.
+           En un NOC real, estos endpoints los consulta el sistema de
+           monitoreo para saber si el servicio está vivo.
+   L32     Devuelve la aplicación lista.
+
+
+--------------------------------------------------------------------------------
+ 5.9 manage.py  -  Comandos de administración
+--------------------------------------------------------------------------------
+
+  +--- manage.py -------------------------------------------------------------
+  |   1 | """
+  |   2 | Utilidades de administración por línea de comandos.
+  |   3 | 
+  |   4 | Uso:
+  |   5 |     python manage.py init-db          Crea las tablas y el catálogo de severidades
+  |   6 |     python manage.py init-db --seed   Además carga equipos SIMULADOS
+  |   7 |     python manage.py check-db         Muestra tablas y cantidad de registros
+  |   8 | """
+  |   9 | import argparse
+  |  10 | 
+  |  11 | from app.config import Config
+  |  12 | from app.db import connect, init_db
+  |  13 | from app.seed import seed_devices
+  |  14 | 
+  |  15 | 
+  |  16 | def cmd_init_db(seed: bool):
+  |  17 |     conn = connect(Config.DATABASE_PATH)
+  |  18 |     init_db(conn)
+  |  19 |     print(f"[OK] Base de datos lista en: {Config.DATABASE_PATH}")
+  |  20 |     if seed:
+  |  21 |         n = seed_devices(conn)
+  |  22 |         print(f"[OK] Equipos simulados insertados: {n}")
+  |  23 |     conn.close()
+  |  24 | 
+  |  25 | 
+  |  26 | def cmd_check_db():
+  |  27 |     conn = connect(Config.DATABASE_PATH)
+  |  28 |     tables = [r["name"] for r in conn.execute(
+  |  29 |         "SELECT name FROM sqlite_master WHERE type='table' "
+  |  30 |         "AND name NOT LIKE 'sqlite_%' ORDER BY name")]
+  |  31 |     if not tables:
+  |  32 |         print("[!] La base de datos está vacía. Ejecute: python manage.py init-db --seed")
+  |  33 |     for t in tables:
+  |  34 |         count = conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+  |  35 |         print(f"  {t:<18} {count:>5} registros")
+  |  36 |     conn.close()
+  |  37 | 
+  |  38 | 
+  |  39 | if __name__ == "__main__":
+  |  40 |     parser = argparse.ArgumentParser(description="Administración NOC Syslog Inteligente")
+  |  41 |     sub = parser.add_subparsers(dest="command", required=True)
+  |  42 |     p_init = sub.add_parser("init-db", help="Crear tablas")
+  |  43 |     p_init.add_argument("--seed", action="store_true", help="Cargar equipos simulados")
+  |  44 |     sub.add_parser("check-db", help="Ver tablas y registros")
+  |  45 |     args = parser.parse_args()
+  |  46 | 
+  |  47 |     if args.command == "init-db":
+  |  48 |         cmd_init_db(args.seed)
+  |  49 |     elif args.command == "check-db":
+  |  50 |         cmd_check_db()
+  +-----------------------------------------------------------------------------
+
+ EXPLICACIÓN
+   L9      argparse: módulo estándar para crear comandos con opciones.
+   L11-13  Importa configuración, funciones de base de datos y el seed.
+   L16-23  cmd_init_db(): conecta, crea las tablas, informa la ruta y, si
+           se pidió --seed, carga los equipos simulados.
+   L26-36  cmd_check_db(): lista las tablas (sqlite_master) y cuenta los
+           registros de cada una. Si no hay tablas, indica qué hacer.
+           Nota: L34 usa f-string con el nombre de tabla; es seguro porque
+           los nombres vienen del catálogo interno, no del usuario.
+   L39     "if __name__ == '__main__'": el bloque solo corre cuando se
+           ejecuta "python manage.py", no cuando otro archivo lo importa.
+   L40-45  Define los subcomandos init-db (con --seed opcional) y check-db.
+   L47-50  Ejecuta el subcomando elegido.
+
+   Uso:
+   > python manage.py init-db --seed
+   > python manage.py check-db
+   > python manage.py --help
+
+
+--------------------------------------------------------------------------------
+ 5.10 run.py  -  Arranque del servidor web
+--------------------------------------------------------------------------------
+
+  +--- run.py ----------------------------------------------------------------
+  |   1 | """
+  |   2 | Punto de entrada de la aplicación web.
+  |   3 | 
+  |   4 | Uso:  python run.py   ->  http://127.0.0.1:5000
+  |   5 | Solo escucha en 127.0.0.1 (el propio equipo); no queda expuesta a la red.
+  |   6 | """
+  |   7 | from app import create_app
+  |   8 | 
+  |   9 | app = create_app()
+  |  10 | 
+  |  11 | if __name__ == "__main__":
+  |  12 |     app.run(host="127.0.0.1", port=5000, debug=True)
+  +-----------------------------------------------------------------------------
+
+ EXPLICACIÓN
+   L7-9    Crea la aplicación usando la fábrica de app/__init__.py.
+   L12     app.run(...):
+           host="127.0.0.1" -> solo accesible desde este equipo; nadie en la
+                               red puede conectarse (RNF-03).
+           port=5000         -> http://127.0.0.1:5000
+           debug=True        -> recarga automática y errores detallados.
+                               SOLO para desarrollo; en el Corte 3 (despliegue)
+                               se desactiva, porque mostraría información
+                               interna a un atacante.
+
+
+================================================================================
+ 6. DOCUMENTACIÓN DE DISEÑO GENERADA
+================================================================================
+
+ docs/01_requisitos.md
+   - Planteamiento del problema: eventos multivendor dispersos, falta de
+     trazabilidad y riesgo de agentes de IA que ejecuten acciones no
+     autorizadas o sean manipulados mediante los logs (prompt injection).
+   - Objetivo general y 7 objetivos específicos.
+   - Alcance y limitaciones (qué entra en v0.2.0 y qué queda para v1.0.0).
+   - 14 requisitos funcionales (RF-01 a RF-14) con prioridad.
+   - 7 requisitos no funcionales (seguridad, reproducibilidad, trazabilidad).
+
+ docs/02_historias_usuario.md
+   - 3 roles: Operador NOC, Administrador de red, Auditor de seguridad.
+   - 7 historias (HU-01 a HU-07) con criterios de aceptación verificables,
+     relacionadas con los RF. Se usarán como casos de prueba en la Fase 5.
+
+ docs/03_arquitectura.md (diagramas Mermaid que GitHub dibuja solo)
+   - Arquitectura general: fuentes -> receptor/importador -> parser ->
+     política de seguridad -> clasificador -> SQLite -> API -> dashboard.
+   - Flujo seguro obligatorio de 8 pasos.
+   - Diagrama entidad-relación de las 7 tablas.
+   - Tabla de módulos por fase y decisiones técnicas.
+
+ docs/bitacora.md
+   - Actividades, historial de commits, evidencias, problemas/soluciones,
+     lecciones aprendidas y próximos pasos.
+
+
+================================================================================
+ 7. CONTROL DE VERSIONES: COMANDOS Y CONCEPTOS DE GIT
+================================================================================
+
+ CONCEPTOS
+   Repositorio   Carpeta con historial (.git).
+   Commit        "Foto" del proyecto en un momento, con mensaje, autor y hash
+                 (ej. fb0dc81).
+   Rama          Línea de trabajo independiente.
+                   main    -> versiones estables y publicadas
+                   develop -> trabajo diario; se une a main por Pull Request
+   Remoto        Copia en GitHub ("origin").
+   Staging       Área de preparación: lo que entrará en el próximo commit.
+
+ COMANDOS USADOS
+   git config --global user.name/email   Identidad del autor de los commits
+   git init -b main                      Crea el repositorio con rama main
+   git commit --allow-empty -m "..."     Commit inicial vacío
+   git status                            Estado: qué cambió, qué está preparado
+   git remote add origin <url>           Conecta con el repositorio en GitHub
+   git push -u origin main               Sube main y recuerda la conexión
+   git switch -c develop                 Crea la rama develop y se cambia a ella
+   git add <archivos>                    Prepara archivos para el commit
+   git commit -m "mensaje"               Crea el commit
+   git push                              Sube los commits nuevos
+   git log --oneline --graph --all       Historial resumido con ramas
+   git mv <origen> <destino>             Renombra y registra el cambio
+   git rev-parse --show-toplevel         Muestra la raíz del repositorio
+
+ FORMATO DE MENSAJES (Conventional Commits)
+   feat:   nueva funcionalidad          fix:   corrección de error
+   docs:   documentación                test:  pruebas
+   chore:  configuración/mantenimiento  refactor: mejora sin cambiar función
+
+ AUTENTICACIÓN
+   Git Credential Manager (incluido en Git para Windows) autorizó el acceso
+   mediante OAuth en el navegador. El token queda en el Administrador de
+   credenciales de Windows; nunca en el proyecto ni en texto plano.
+
+
+================================================================================
+ 8. SEGURIDAD APLICADA EN LA FASE 1
+================================================================================
+
+ | Control de la guía del docente          | Cómo se aplicó en la Fase 1          |
+ |-----------------------------------------|--------------------------------------|
+ | No publicar secretos                    | .env fuera de Git; .env.example sin  |
+ |                                         | valores; SECRET_KEY aleatoria        |
+ | Fuentes autorizadas para enviar eventos | devices.authorized (lista permitida) |
+ | Logs como datos no confiables           | syslog_events.raw guardado tal cual, |
+ |                                         | nunca ejecutado                      |
+ | Registrar acciones y responsables       | audit_log (solo inserción)           |
+ | Aprobación humana antes de cambios      | action_proposals con reviewed_by     |
+ | Deduplicación / control de tormentas    | fingerprint + dup_count (lógica en   |
+ |                                         | Fase 2-4)                            |
+ | Definir qué severidades generan alertas | severities.creates_incident (0-3)    |
+ | Datos simulados identificados           | prefijo SIM-, is_simulated, RFC 5737 |
+ | Servicio no expuesto                    | Flask en 127.0.0.1                   |
+ | Prevención de inyección SQL             | Consultas con parámetros "?"         |
+ | Validación en la base de datos          | Restricciones CHECK, UNIQUE, FK      |
+
+ Hallazgo real: Device Guard (WDAC) bloqueó pip.exe por no estar firmado.
+ Es una lista permitida de aplicaciones, el mismo principio que el NOC
+ aplicará a los comandos de la consola: lo no autorizado se bloquea.
+
+
+================================================================================
+ 9. PROBLEMAS ENCONTRADOS Y SOLUCIONES
+================================================================================
+
+  #  | Problema                          | Causa                        | Solución
+ ----|-----------------------------------|------------------------------|--------------------------------
+  1  | "python" no se reconoce en        | Python de Anaconda fuera del | Usar Anaconda Prompt
+     | PowerShell                        | PATH de PowerShell           |
+  2  | pip.exe bloqueado por Device      | WDAC solo permite ejecuta-   | python -m pip
+     | Guard                             | bles firmados                |
+  3  | requirements.txt no encontrado    | Archivos sin copiar a la raíz| Copiar y verificar con dir /a
+  4  | Versiones con rango (>=)          | Instalaciones distintas      | Fijar versiones (==)
+  5  | Ruta de BD relativa               | DATABASE_PATH relativa al    | Pendiente Fase 2
+     |                                   | directorio de ejecución      |
+  6  | GitHub Desktop no reconoce el     | Versión interna de Git más   | Publicar por consola
+     | repositorio                       | antigua (probable)           | (remote add + push)
+  7  | Autenticación en el primer push   | Primera conexión con GitHub  | Git Credential Manager (OAuth)
+  8  | "pathspec 'commit' did not match" | Comando pegado dos veces     | Un comando a la vez
+  9  | Avisos LF -> CRLF                 | Fin de línea Windows vs Linux| Normal; .gitattributes en Fase 2
+ 10  | Captura ".png.png"                | Extensiones ocultas en       | git mv en commit de corrección
+     |                                   | Windows                      |
+
+
+================================================================================
+ 10. HALLAZGOS QUE PASAN A LA FASE 2
+================================================================================
+
+  1. Ruta de la base de datos: resolver DATABASE_PATH respecto a BASE_DIR
+     cuando sea relativa (app/config.py, L26).
+  2. Agregar .gitattributes para normalizar los finales de línea.
+  3. Actualizar README con la regla "python -m pip" para equipos con
+     restricciones de ejecución (Device Guard).
+  4. Tomar las capturas E01 (perfil + repositorio) y E03 (diagramas en GitHub).
+
+
+================================================================================
+ 11. PREGUNTAS PROBABLES DE SUSTENTACIÓN (CON RESPUESTA)
+================================================================================
+
+ P: ¿Por qué un entorno virtual?
+ R: Aísla las librerías del proyecto, evita conflictos con otros proyectos
+    y, junto con requirements.txt, permite reproducir la instalación.
+
+ P: ¿Por qué el .env no está en GitHub?
+ R: Contiene configuración real y secretos (SECRET_KEY). Se publica solo
+    .env.example como plantilla. El .gitignore lo garantiza y git status lo
+    demostró.
+
+ P: ¿Cómo se calcula la severidad de un mensaje Syslog?
+ R: El mensaje empieza con <PRI>. PRI = facility x 8 + severidad.
+    Severidad = PRI mod 8; facility = PRI div 8.
+    Ejemplo: <187> -> 187 / 8 = 23 (local7), resto 3 (Error).
+
+ P: ¿Por qué SQLite?
+ R: Viene con Python, no requiere servidor y guarda todo en un archivo.
+    Suficiente para un MVP con un operador. Si crece se puede migrar a
+    PostgreSQL con el mismo modelo.
+
+ P: ¿Qué hace un CHECK en la base de datos?
+ R: Impone una regla que la propia base valida: por ejemplo, severidad
+    entre 0 y 7. Aunque el código tenga un error, el dato inválido no entra.
+
+ P: ¿Qué es "is_simulated" y por qué existe?
+ R: Marca cada dato de prueba. El curso exige que lo simulado esté
+    identificado y no se presente como real.
+
+ P: ¿Por qué IP 192.0.2.x, 198.51.100.x y 203.0.113.x?
+ R: La RFC 5737 las reserva para documentación. No se enrutan en Internet,
+    así que no hay riesgo de usar IP reales de producción.
+
+ P: ¿Qué es la auditoría y por qué solo se inserta?
+ R: Es el registro de quién hizo qué, cuándo y con qué resultado. Si se
+    pudiera modificar o borrar, un atacante (o un agente de IA) podría
+    ocultar sus acciones.
+
+ P: ¿Qué es /api/health?
+ R: Un endpoint de chequeo de salud: confirma que la aplicación y la base
+    de datos responden. Los sistemas de monitoreo lo consultan
+    periódicamente.
+
+ P: ¿Por qué 127.0.0.1 y no 0.0.0.0?
+ R: 127.0.0.1 solo acepta conexiones del mismo equipo; 0.0.0.0 expondría
+    la aplicación a toda la red sin autenticación.
+
+ P: ¿Por qué el puerto 5514 y no el 514?
+ R: Los puertos por debajo de 1024 requieren privilegios de administrador.
+    En los equipos de red se configura el puerto destino 5514.
+
+ P: ¿Por qué main y develop?
+ R: main guarda solo versiones estables (releases). develop recibe el
+    trabajo diario y se une a main mediante Pull Request cuando hay una
+    versión lista.
+
+ P: ¿Cómo evitan la inyección SQL?
+ R: Todas las consultas con datos usan parámetros "?". SQLite trata el
+    valor como dato, nunca como parte de la instrucción SQL.
+
+
+================================================================================
+ 12. PREGUNTA DE VALIDACIÓN DE LA FASE 1  (responder con palabras propias)
+================================================================================
+
+ 1) La columna "raw" de syslog_events guarda el mensaje original y se trata
+    como DATO NO CONFIABLE. ¿Qué podría pasar si un asistente de IA leyera
+    esos mensajes y los tratara como instrucciones?
+
+ Respuesta:
+R1: Guarda textos originales de log, estos cualquiera los puede escribir, por esto los logs de tratan como datos no  como información importante ya que si la IA lo reconoce como datos importantes puede a ver una infiltacion de terceros en el sistema y puede atacar la red de equipos.
+
+ 2) La columna "authorized" de devices define qué equipos pueden enviar
+    eventos. ¿Qué podría hacer un atacante (o un agente de IA comprometido)
+    si el NOC aceptara eventos de cualquier IP?
+
+ Respuesta:
+R2:La lista de fuentes autorizadas ayudan a identificar los equipos registrados y evitar ataques de IP de equipos desconocidos, para evitar cualquier evento falso o ataque desde a los equipos 
+
+================================================================================
+ 13. LISTA DE VERIFICACIÓN DE CIERRE DE LA FASE 1
+================================================================================
+
+ [x] Herramientas verificadas (Python 3.14.7, Git 2.55.0)
+ [x] Entorno virtual creado y activado
+ [x] Dependencias instaladas con python -m pip
+ [x] Versiones fijadas en requirements.txt
+ [x] .env creado desde la plantilla (y excluido de Git)
+ [x] Base de datos con 7 tablas, 8 severidades y 6 equipos simulados
+ [x] /api/health responde correctamente
+ [x] Requisitos, historias de usuario y arquitectura documentados
+ [x] Bitácora con problemas, soluciones y lecciones
+ [x] Repositorio público con ramas main y develop
+ [x] Commits progresivos publicados en GitHub
+ [x] Evidencias F1-01 a F1-05
+ [ ] Capturas E01 (perfil + repositorio) y E03 (diagramas en GitHub)
+ [ ] Respuesta a la pregunta de validación
+
+################################################################################
+#                           FIN DEL DOCUMENTO - FASE 1                         #
+################################################################################

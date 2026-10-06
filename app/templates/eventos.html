@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Eventos{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <h1>Eventos Syslog</h1>
+    <p class="muted">Recibidos por UDP, importados o generados por el simulador. El mensaje original se muestra como texto: <b>nunca se ejecuta</b>.</p>
+  </div>
+  <button class="btn" id="btn-refresh">Actualizar</button>
+</section>
+
+<section class="card filters">
+  <form id="frm-filters">
+    <label>Desde<input type="date" name="desde"></label>
+    <label>Hasta<input type="date" name="hasta"></label>
+    <label>Marca
+      <select name="vendor"><option value="">Todas</option><option>Cisco</option><option>Fortinet</option><option>Huawei</option><option>Desconocido</option></select>
+    </label>
+    <label>Equipo<select name="device_id"><option value="">Todos</option></select></label>
+    <label>Severidad
+      <select name="severity">
+        <option value="">Todas</option>
+        <option value="0">0 Emergency</option><option value="1">1 Alert</option>
+        <option value="2">2 Critical</option><option value="3">3 Error</option>
+        <option value="4">4 Warning</option><option value="5">5 Notice</option>
+        <option value="6">6 Informational</option><option value="7">7 Debug</option>
+      </select>
+    </label>
+    <label>Marca de seguridad
+      <select name="flag">
+        <option value="">Todas</option>
+        <option value="fuente_no_autorizada">Fuente no autorizada</option>
+        <option value="posible_prompt_injection">Posible prompt injection</option>
+        <option value="severidad_inconsistente">Severidad inconsistente</option>
+      </select>
+    </label>
+    <div class="filter-actions">
+      <button class="btn primary" type="submit">Filtrar</button>
+      <button class="btn" type="reset" id="btn-clear">Limpiar</button>
+    </div>
+  </form>
+</section>
+
+<section class="card">
+  <div class="table-wrap">
+    <table id="tbl-events">
+      <thead>
+        <tr><th>#</th><th>Recibido</th><th>Sev.</th><th>Equipo</th><th>Marca</th><th>Facility</th><th>Código</th><th>Mensaje</th><th>Origen</th><th>Marcas</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <p class="muted small" id="events-count"></p>
+</section>
+
+<section class="card">
+  <h2>Importar archivo de log</h2>
+  <form id="frm-import" class="import-row">
+    <label>Equipo de origen<select name="device_id" required></select></label>
+    <label>Archivo (.log / .txt, máx. 2 MB)<input type="file" name="file" accept=".log,.txt" required></label>
+    <button class="btn primary" type="submit">Importar</button>
+  </form>
+  <p class="muted small">Ejemplos en la carpeta <code>samples/</code>. Las líneas que empiezan con <code>#</code> se ignoran.</p>
+</section>
+
+<dialog id="dlg-event">
+  <h2>Evento <span id="ev-id"></span></h2>
+  <dl id="ev-detail" class="detail"></dl>
+  <h3>Mensaje original (dato no confiable)</h3>
+  <pre id="ev-raw" class="raw"></pre>
+  <div class="actions"><button class="btn" id="btn-close-ev">Cerrar</button></div>
+</dialog>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='eventos.js') }}"></script>{% endblock %}
