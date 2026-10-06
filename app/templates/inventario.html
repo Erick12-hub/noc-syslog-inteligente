@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Inventario{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <h1>Inventario de dispositivos</h1>
+    <p class="muted">Solo los equipos <b>autorizados</b> son fuentes Syslog de confianza (lista permitida).</p>
+  </div>
+  <button class="btn primary" id="btn-new">+ Nuevo equipo</button>
+</section>
+
+<section class="card">
+  <div class="table-wrap">
+    <table id="tbl-devices">
+      <thead>
+        <tr>
+          <th>Nombre</th><th>IP</th><th>Marca</th><th>Modelo</th><th>Versión</th>
+          <th>Ubicación</th><th>Estado</th><th>Fuente</th><th>Actualizado</th><th></th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <p class="muted small" id="devices-count"></p>
+</section>
+
+<!-- Formulario de creación / edición (se muestra como ventana) -->
+<dialog id="dlg-device">
+  <form id="frm-device" method="dialog" novalidate>
+    <h2 id="dlg-title">Nuevo equipo</h2>
+    <input type="hidden" name="id">
+    <div class="grid2">
+      <label>Nombre *<input name="name" required maxlength="64" placeholder="SIM-CORE-RTR03"></label>
+      <label>IP *<input name="ip" required placeholder="192.0.2.30"></label>
+      <label>Marca *
+        <select name="vendor" required>
+          <option>Cisco</option><option>Fortinet</option><option>Huawei</option><option>Otro</option>
+        </select>
+      </label>
+      <label>Estado
+        <select name="status">
+          <option value="activo">activo</option><option value="alerta">alerta</option>
+          <option value="caido">caído</option><option value="mantenimiento">mantenimiento</option>
+          <option value="desconocido">desconocido</option>
+        </select>
+      </label>
+      <label>Modelo<input name="model" maxlength="100"></label>
+      <label>Versión<input name="version" maxlength="100"></label>
+      <label class="span2">Ubicación<input name="location" maxlength="100"></label>
+      <label class="check"><input type="checkbox" name="authorized" checked> Fuente Syslog autorizada</label>
+      <label class="check"><input type="checkbox" name="is_simulated" checked> Equipo simulado</label>
+    </div>
+    <ul class="errors" id="frm-errors"></ul>
+    <div class="actions">
+      <button type="button" class="btn" id="btn-cancel">Cancelar</button>
+      <button type="submit" class="btn primary">Guardar</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='inventario.js') }}"></script>{% endblock %}
