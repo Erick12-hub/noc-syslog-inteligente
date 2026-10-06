@@ -1338,19 +1338,14 @@
     esos mensajes y los tratara como instrucciones?
 
  Respuesta:
- ______________________________________________________________________________
- ______________________________________________________________________________
- ______________________________________________________________________________
+R1: Guarda textos originales de log, estos cualquiera los puede escribir, por esto los logs de tratan como datos no  como información importante ya que si la IA lo reconoce como datos importantes puede a ver una infiltacion de terceros en el sistema y puede atacar la red de equipos.
 
  2) La columna "authorized" de devices define qué equipos pueden enviar
     eventos. ¿Qué podría hacer un atacante (o un agente de IA comprometido)
     si el NOC aceptara eventos de cualquier IP?
 
  Respuesta:
- ______________________________________________________________________________
- ______________________________________________________________________________
- ______________________________________________________________________________
-
+R2:La lista de fuentes autorizadas ayudan a identificar los equipos registrados y evitar ataques de IP de equipos desconocidos, para evitar cualquier evento falso o ataque desde a los equipos 
 
 ================================================================================
  13. LISTA DE VERIFICACIÓN DE CIERRE DE LA FASE 1

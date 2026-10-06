@@ -67,6 +67,9 @@ solución aplicada. Sirve como evidencia de trazabilidad y alimenta la sección
 | 2026-10-05 | 1 | `error: pathspec 'commit' did not match any file(s)` | El comando se pegó dos veces en la misma línea | Ejecutar un comando a la vez |
 | 2026-10-05 | 1 | Avisos `LF will be replaced by CRLF` | Windows (CRLF) y Linux (LF) terminan las líneas de forma distinta; Git las convierte | No es un error. **Pendiente Fase 2:** agregar `.gitattributes` |
 | 2026-10-05 | 1 | Captura guardada como `F1-02_api_health.png.png` | Windows oculta las extensiones y se agregó otra al guardar | Renombrar con `git mv` en un commit de corrección |
+| 2026-10-05 | 2 | Archivo de muestra con PRI `<185>` (severidad 1) en un mensaje Cisco de severidad 5 | Error al escribir el ejemplo | Se corrigió el ejemplo y se agregó la marca `severidad_inconsistente` para detectar este caso en mensajes reales |
+| 2026-10-05 | 2 | Prueba `test_caracteres_de_control_se_eliminan` falló: los saltos de línea no se eliminaban | La expresión regular excluía `\x0a` (salto de línea) | Se amplió el rango a `[\x00-\x08\x0a-\x1f\x7f]`. Evita *log injection* (líneas falsas dentro de un mensaje) |
+| 2026-10-05 | 2 | El simulador por UDP no puede usar la IP de cada equipo | Desde un PC no se puede falsificar la IP de origen de un paquete | Dos modos: `udp` (origen real 127.0.0.1 = `SIM-GEN-LOCAL`) y `directo` (IP de cada equipo simulado) |
 
 ---
 
@@ -80,21 +83,48 @@ solución aplicada. Sirve como evidencia de trazabilidad y alimenta la sección
 
 ---
 
-## Próximos pasos — Fase 2: Inventario y motor Syslog
+## Fase 2 — Inventario y motor Syslog
 
-**Fecha prevista:** 2026-10-05/06 · **Cierre:** tag **v0.1.0**
+**Fechas:** 2026-10-05 a 2026-10-06 · **Estado:** 🔄 En verificación → cierre con tag **v0.1.0**
 
-| Pendiente | Archivo | Requisito |
-|---|---|---|
-| Corregir la ruta de la BD para que sea absoluta | `app/config.py` | RNF-04 |
-| Normalizar finales de línea | `.gitattributes` | RNF-05 |
-| CRUD de inventario con validación de IP y auditoría | `app/devices.py` | RF-01, RF-14 |
-| Página web del inventario | `app/templates/`, `app/static/` | RF-01 (E04) |
-| Parser PRI → facility y severidad; formatos Cisco, Fortinet y Huawei | `app/syslog_parser.py` | RF-03 |
-| Guardar el evento, asociarlo al equipo y marcar la fuente autorizada | `app/ingest.py` | RF-04, RF-11 |
-| Receptor UDP en el puerto 5514 e importación de archivos `.log` | `app/receiver.py` | RF-02 |
-| Simulador con escenarios (normal, caída, fuerza bruta, inyección) | `scripts/simulador.py` | RF-02 (E06) |
-| Primeras pruebas automáticas | `tests/test_parser.py` | RNF-05 |
+### Qué se realizó
+
+| # | Actividad | Archivo(s) | Requisito |
+|---|---|---|---|
+| 1 | Ruta de la BD resuelta desde la raíz del proyecto (hallazgo de la Fase 1) | `app/config.py` | RNF-04 |
+| 2 | Normalización de finales de línea (avisos LF/CRLF) | `.gitattributes` | RNF-05 |
+| 3 | Migración de esquema sin perder datos (columnas `mnemonic` y `flags`) | `app/db.py`, `app/schema.sql` | RNF-05 |
+| 4 | Parser RFC 3164 / RFC 5424 y formatos Cisco IOS, FortiOS (clave=valor) y Huawei VRP | `app/syslog_parser.py` | RF-03 |
+| 5 | Ingesta: asociación por IP, lista permitida, deduplicación (60 s), auditoría de sospechosos | `app/ingest.py` | RF-04, RF-11, RF-12, RF-14 |
+| 6 | Detección heurística de prompt injection (marca, no bloquea) | `app/security.py` | RNF-02 |
+| 7 | API CRUD del inventario con validación (IP, marca, estado, nombre) | `app/devices.py` | RF-01 |
+| 8 | API de eventos con filtros e importación de archivos | `app/events.py` | RF-02, RF-06 |
+| 9 | Páginas web de inventario y eventos (texto seguro con `textContent`) | `app/templates/`, `app/static/` | RF-01, RF-06 |
+| 10 | Receptor Syslog UDP (127.0.0.1:5514) | `app/receiver.py`, `manage.py` | RF-02 |
+| 11 | Simulador con 6 escenarios (normal, caída, fuerza bruta, cambio de configuración, inyección, no autorizado) | `scripts/simulador.py` | RF-02 |
+| 12 | Archivos de log de ejemplo por fabricante | `samples/` | RF-02 |
+| 13 | 31 pruebas automáticas (parser, ingesta, API) | `tests/` | RNF-05 |
+| 14 | Equipo `SIM-GEN-LOCAL` (127.0.0.1) como fuente autorizada del simulador | `app/seed.py` | — |
+
+### Decisiones de diseño de la Fase 2
+
+- **La IP de origen se toma del paquete UDP, no del texto del mensaje.** El hostname que trae el
+  log lo puede escribir cualquiera; confiar en él permitiría suplantar equipos.
+- **La severidad del PRI manda.** Si la severidad del fabricante (`%LINK-3-...`) no coincide con la
+  del PRI, se marca `severidad_inconsistente` (posible mensaje alterado o equipo mal configurado).
+- **Los eventos de un equipo eliminado se conservan** (`device_id = NULL`) para no perder trazabilidad.
+- **La detección de prompt injection solo marca.** Es heurística; la decisión la toma un humano.
+
+---
+
+## Próximos pasos — Fase 3: Dashboard e incidentes
+
+| Pendiente | Requisito |
+|---|---|
+| Dashboard: equipos por estado, eventos recientes y críticos, incidentes abiertos | RF-05 (E05) |
+| Creación automática de incidentes para severidades 0–3 de fuentes autorizadas | RF-08 |
+| Ciclo de vida de incidentes: crear, asignar, seguimiento con notas, cerrar con resolución | RF-07 (E08) |
+| Correlación: eventos repetidos del mismo equipo → un solo incidente | RF-12 |
 
 ### Calendario restante (entrega: sábado 2026-10-10)
 
