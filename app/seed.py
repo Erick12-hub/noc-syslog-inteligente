@@ -3,7 +3,9 @@ Datos SIMULADOS para pruebas y demostración.
 
 Todas las IP pertenecen a los rangos reservados para documentación por la
 RFC 5737 (192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24): no existen en
-Internet ni corresponden a ninguna red de producción.
+Internet ni corresponden a ninguna red de producción. La única excepción es
+SIM-GEN-LOCAL (127.0.0.1, loopback): representa al simulador que corre en este
+mismo PC y nunca sale a la red.
 Todos los nombres empiezan por "SIM-" y llevan is_simulated = 1.
 """
 from .db import audit, now_iso
@@ -16,6 +18,9 @@ SIMULATED_DEVICES = [
     ("SIM-BR-RTR02",   "198.51.100.20", "Huawei",   "AR6120",        "VRP V300R022",   "Sede Medellín",         "activo", 1),
     ("SIM-BR-SW02",    "203.0.113.5",   "Huawei",   "S5735-L",       "VRP V200R022",   "Sede Cali",             "caido",  1),
     ("SIM-LAB-AP01",   "203.0.113.99",  "Otro",     "AP genérico",   "1.0",            "Laboratorio",           "desconocido", 0),
+    # Fase 2: el simulador envía UDP desde este mismo PC (127.0.0.1, loopback).
+    # Se registra como fuente autorizada para que esos eventos de prueba se acepten.
+    ("SIM-GEN-LOCAL",  "127.0.0.1",     "Otro",     "Simulador",     "scripts/simulador.py", "Este PC - generador de pruebas", "activo", 1),
 ]
 
 

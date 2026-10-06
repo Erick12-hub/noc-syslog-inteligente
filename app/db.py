@@ -57,9 +57,26 @@ def close_db(_exc=None):
         db.close()
 
 
+# Columnas agregadas después de la Fase 1. "CREATE TABLE IF NOT EXISTS" no
+# modifica tablas que ya existen, así que se agregan con ALTER TABLE.
+# Esto es una MIGRACIÓN sencilla: actualiza la base sin borrar los datos.
+MIGRATIONS = [
+    ("syslog_events", "mnemonic", "TEXT"),
+    ("syslog_events", "flags", "TEXT"),
+]
+
+
+def _migrate(conn: sqlite3.Connection):
+    for table, column, decl in MIGRATIONS:
+        existing = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+
+
 def init_db(conn: sqlite3.Connection):
-    """Crea las tablas (si no existen) y carga/actualiza el catálogo de severidades."""
+    """Crea las tablas (si no existen), aplica migraciones y carga las severidades."""
     conn.executescript(SCHEMA_FILE.read_text(encoding="utf-8"))
+    _migrate(conn)
     conn.executemany(
         "INSERT OR REPLACE INTO severities "
         "(code, keyword, name, description, creates_incident) VALUES (?, ?, ?, ?, ?)",

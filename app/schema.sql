@@ -65,6 +65,8 @@ CREATE TABLE IF NOT EXISTS syslog_events (
     raw               TEXT NOT NULL,
     origin            TEXT NOT NULL CHECK (origin IN ('udp', 'importacion', 'simulador')),
     authorized_source INTEGER NOT NULL DEFAULT 0 CHECK (authorized_source IN (0, 1)),
+    mnemonic          TEXT,              -- código del fabricante (ej. LINK-3-UPDOWN)
+    flags             TEXT,              -- alertas de seguridad separadas por coma
     fingerprint       TEXT,              -- huella para deduplicación
     dup_count         INTEGER NOT NULL DEFAULT 1,  -- repeticiones agrupadas
     is_simulated      INTEGER NOT NULL DEFAULT 0 CHECK (is_simulated IN (0, 1))
