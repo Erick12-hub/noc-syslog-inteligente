@@ -22,8 +22,16 @@ class Config:
     # si no se define; nunca se escribe una clave fija en el código.
     SECRET_KEY = os.getenv("SECRET_KEY") or os.urandom(32).hex()
 
-    # Ruta del archivo SQLite
-    DATABASE_PATH = Path(os.getenv("DATABASE_PATH", BASE_DIR / "data" / "noc.db"))
+    # Ruta del archivo SQLite.
+    # CORRECCIÓN FASE 2: si la ruta del .env es relativa ("data/noc.db"), se
+    # resuelve desde la raíz del proyecto (BASE_DIR) y no desde la carpeta
+    # donde se ejecuta el comando. Así siempre se usa la MISMA base de datos.
+    _db_path = Path(os.getenv("DATABASE_PATH", "data/noc.db"))
+    DATABASE_PATH = _db_path if _db_path.is_absolute() else BASE_DIR / _db_path
+
+    # Tamaño máximo de archivo que se puede subir (importación de logs): 2 MB.
+    # Evita que un archivo gigante sature la memoria del servidor.
+    MAX_CONTENT_LENGTH = 2 * 1024 * 1024
 
     # Receptor Syslog UDP. Se usa 5514 porque el puerto estándar 514
     # requiere permisos de administrador.

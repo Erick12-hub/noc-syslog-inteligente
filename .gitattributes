@@ -1,0 +1,11 @@
+# Normaliza los finales de línea: en el repositorio y en la carpeta de trabajo
+# los archivos de texto usan LF (estilo Linux). Elimina los avisos
+# "LF will be replaced by CRLF" en Windows. Python, Flask y el Bloc de notas
+# moderno leen LF sin problema.
+* text=auto eol=lf
+
+# Archivos binarios: Git nunca debe modificarlos
+*.png binary
+*.jpg binary
+*.pdf binary
+*.db  binary
