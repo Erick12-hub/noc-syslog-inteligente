@@ -1,0 +1,12 @@
+# DATOS SIMULADOS - Log de ejemplo de un router Cisco IOS-XE (SIM-CORE-RTR01, 192.0.2.1)
+# Importar con:  python manage.py import-log samples\SIM-CORE-RTR01_cisco.log --ip 192.0.2.1
+<189>101: *Oct  5 08:00:01.112: SIM-CORE-RTR01 %SYS-5-RESTART: System restarted --
+<190>102: *Oct  5 08:00:05.300: SIM-CORE-RTR01 %SYS-6-LOGGINGHOST_STARTSTOP: Logging to host 192.0.2.250 port 5514 started - CLI initiated
+<189>103: *Oct  5 08:01:10.010: SIM-CORE-RTR01 %LINK-5-CHANGED: Interface GigabitEthernet0/0/0, changed state to up
+<189>104: *Oct  5 08:01:11.010: SIM-CORE-RTR01 %LINEPROTO-5-UPDOWN: Line protocol on Interface GigabitEthernet0/0/0, changed state to up
+<187>105: *Oct  5 10:15:42.551: SIM-CORE-RTR01 %LINK-3-UPDOWN: Interface GigabitEthernet0/0/2, changed state to down
+<188>106: *Oct  5 10:16:00.000: SIM-CORE-RTR01 %OSPF-4-ERRRCV: Received invalid packet: mismatched area ID from backbone area
+<186>107: *Oct  5 11:20:13.900: SIM-CORE-RTR01 %ENVMON-2-FAN_FAILED: Fan 2 had a rotation error reported
+<189>108: *Oct  5 14:02:33.123: SIM-CORE-RTR01 %SYS-5-CONFIG_I: Configured from console by noc_admin on vty0 (192.0.2.50)
+<188>109: *Oct  5 23:47:10.001: SIM-CORE-RTR01 %SEC_LOGIN-4-LOGIN_FAILED: Login failed [user: root] [Source: 203.0.113.200] [localport: 22] [Reason: Login Authentication Failed]
+<189>110: *Oct  5 23:59:01.000: SIM-CORE-RTR01 %BGP-5-ADJCHANGE: neighbor 198.51.100.254 Down BGP Notification sent

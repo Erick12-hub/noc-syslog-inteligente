@@ -1,0 +1,7 @@
+# DATOS SIMULADOS - Log de ejemplo de un router Huawei AR6120 (SIM-BR-RTR02, 198.51.100.20)
+# Importar con:  python manage.py import-log samples\SIM-BR-RTR02_huawei.log --ip 198.51.100.20
+<190>Oct 5 2026 08:00:00 SIM-BR-RTR02 %%01NTP/6/NTP_SYNC(l): NTP state changed. (SyncSourceAddress=192.0.2.123)
+<189>Oct 5 2026 09:12:45 SIM-BR-RTR02 %%01SHELL/5/CMDRECORD(s)[0]: Recorded command information. (Task=VT0, Ip=192.0.2.50, User=noc_admin, Command="display interface brief")
+<186>Oct 5 2026 13:05:10 SIM-BR-RTR02 %%01IFNET/2/LINK_STATE(l)[1]: The interface GigabitEthernet0/0/1 changed to DOWN.
+<188>Oct 5 2026 13:05:40 SIM-BR-RTR02 %%01OSPF/4/NBR_CHANGE_E(l)[2]: Neighbor changes event: neighbor status changed. (NeighborAddress=198.51.100.254, NeighborEvent=KillNbr)
+<189>Oct 5 2026 23:58:02 SIM-BR-RTR02 %%01SHELL/5/CMDRECORD(s)[3]: Recorded command information. (Task=VT0, Ip=203.0.113.200, User=svc_backup, Command="undo info-center enable")
