@@ -72,6 +72,8 @@ solución aplicada. Sirve como evidencia de trazabilidad y alimenta la sección
 | 2026-10-05 | 2 | El simulador por UDP no puede usar la IP de cada equipo | Desde un PC no se puede falsificar la IP de origen de un paquete | Dos modos: `udp` (origen real 127.0.0.1 = `SIM-GEN-LOCAL`) y `directo` (IP de cada equipo simulado) |
 | 2026-10-06 | 2 | Dos capturas con el nombre `web_eventos` | Se tomaron antes y después de importar | `F2-02` renombrada a `F2-02_web_eventos_recibidos_udp.png` |
 | 2026-10-06 | 2 | Tras publicar v0.1.0 la consola quedó en `main` | Faltaba volver a la rama de trabajo | `git switch develop` |
+| 2026-10-06 | 3 | El detalle de un incidente no se abría al cambiar solo el `#` de la dirección | Cambiar el `#` no recarga la página, así que el código de arranque no volvía a ejecutarse | Se agregó un detector del evento `hashchange` |
+| 2026-10-06 | 3 | Títulos poco legibles en incidentes de Fortinet (`logid=0100032002 en ...`) | El código de Fortinet es un número de log, no un nombre | Se presenta como `FortiOS logid 0100032002 en ...` |
 
 ---
 
@@ -184,14 +186,49 @@ Documento detallado: [`docs/FASE2_proceso_completo.txt`](FASE2_proceso_completo.
 
 ---
 
-## Próximos pasos — Fase 3: Dashboard e incidentes
+## Fase 3 — Dashboard e incidentes
+
+**Fecha:** 2026-10-06 · **Estado:** 🔄 En curso (paquete entregado, pendiente de verificar en el equipo del estudiante)
+
+### Qué se realizó
+
+| # | Actividad | Archivo(s) | Requisito |
+|---|---|---|---|
+| 1 | API de resumen: equipos por estado, eventos y críticos 24 h, alertas de seguridad, eventos por severidad y por hora | `app/dashboard.py` | RF-05 |
+| 2 | Dashboard como página de inicio, con actualización automática cada 15 s | `app/templates/dashboard.html`, `app/static/dashboard.js` | RF-05 |
+| 3 | Incidentes automáticos: severidad 0–3 (política de la tabla `severities`) **y** fuente autorizada | `app/incidents.py`, `app/ingest.py` | RF-08 |
+| 4 | Correlación: mismo equipo + mismo código de evento → se suma al incidente abierto (`event_count`) | `app/incidents.py` | RF-12 |
+| 5 | Ciclo de vida con transiciones validadas (máquina de estados); cerrar exige resolución; cerrado = inmutable | `app/incidents.py` | RF-07 |
+| 6 | Seguimiento con notas automáticas y manuales (autor + fecha) | `app/incidents.py` | RF-07 |
+| 7 | Página de incidentes (pestañas, detalle, acciones) y botón "Crear incidente" desde un evento | `app/templates/incidentes.html`, `app/static/incidentes.js`, `app/static/eventos.js` | RF-07 |
+| 8 | Migración: columnas `correlation_key`, `event_count`, `last_event_at` en `incidents` | `app/schema.sql`, `app/db.py` | RNF-05 |
+| 9 | 16 pruebas nuevas (47 en total) | `tests/test_incidents.py` | RNF-05 |
+
+### Decisiones de diseño de la Fase 3
+
+- **Una fuente no autorizada nunca crea incidentes.** Así un atacante no puede inundar al equipo
+  con incidentes falsos (en la prueba, la "emergencia" de 203.0.113.200 no abrió ninguno).
+- **El título del incidente lo genera el sistema** a partir de datos estructurados (código y equipo).
+  El texto del log no se copia: un log con *prompt injection* produce el título neutro
+  "Posible prompt injection en log de ...".
+- **Correlación por equipo + código** y no por texto: tres caídas de interfaces distintas del mismo
+  router son un solo problema en curso, no tres.
+- **Un incidente cerrado no se modifica**: es un registro histórico para la auditoría.
+- **Las reglas se validan en el servidor**, no solo en la interfaz: aunque alguien llame a la API
+  directamente, no puede cerrar sin resolución ni saltarse estados.
+
+---
+
+## Próximos pasos — Fase 4: Seguridad y defensa ante agentes de IA
 
 | Pendiente | Requisito |
 |---|---|
-| Dashboard: equipos por estado, eventos recientes y críticos, incidentes abiertos | RF-05 (E05) |
-| Creación automática de incidentes para severidades 0–3 de fuentes autorizadas | RF-08 |
-| Ciclo de vida de incidentes: crear, asignar, seguimiento con notas, cerrar con resolución | RF-07 (E08) |
-| Correlación: eventos repetidos del mismo equipo → un solo incidente | RF-12 |
+| Generador de configuraciones Syslog comentadas para Cisco, Fortinet y Huawei (con NTP y verificación) | RF-09 (E09) |
+| Consola simulada de solo lectura: lista permitida por fabricante, bloqueo por defecto, auditoría | RF-10 (E10) |
+| Límite de frecuencia por fuente (control de tormentas) | RF-12 |
+| Reglas de detección: fuerza bruta, cambio fuera de horario, cuenta de servicio, apagado de logs | RF-11 |
+| Propuestas de acción del asistente con aprobación humana (flujo seguro de 8 pasos) | RF-13 (E11) |
+| Documento de política de defensa frente a agentes de IA | E11 |
 
 ### Calendario restante (entrega: sábado 2026-10-10)
 

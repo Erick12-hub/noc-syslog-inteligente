@@ -5,10 +5,10 @@ eventos Syslog de equipos **Cisco, Fortinet y Huawei**, con controles de segurid
 acciones no autorizadas de agentes de IA.
 
 > Proyecto individual · Administración y Gestión de Redes · 2026-2 · Ing. John Harold Pérez Calderón
-> **Versión:** v0.1.0 (alfa) → en desarrollo hacia v0.2.0 (MVP)
+> **Versión:** v0.1.0 (alfa) publicada · en desarrollo hacia v0.2.0 (MVP)
 > ⚠️ **Todos los equipos y eventos incluidos son DATOS SIMULADOS** (prefijo `SIM-`, IP de documentación RFC 5737).
 
-## Funcionalidades (v0.1.0)
+## Funcionalidades
 
 | Módulo | Estado |
 |---|---|
@@ -19,7 +19,9 @@ acciones no autorizadas de agentes de IA.
 | Clasificación por equipo, fabricante, fecha, facility y severidad (0–7) | ✅ |
 | Filtros por fecha, marca, equipo, severidad y marca de seguridad | ✅ |
 | Lista permitida de fuentes, deduplicación, detección de prompt injection | ✅ |
-| Dashboard e incidentes | Fase 3 |
+| Dashboard: equipos por estado, eventos 24 h, críticos, alertas de seguridad, gráficas | ✅ |
+| Incidentes automáticos (severidad 0–3 de fuente autorizada) con correlación | ✅ |
+| Ciclo de vida de incidentes: asignar, seguimiento con notas, cerrar con resolución | ✅ |
 | Configuraciones multivendor, consola simulada, política anti-IA | Fase 4 |
 
 ## Requisitos
@@ -49,7 +51,7 @@ Se usan **tres consolas**, todas con el entorno activado (`.venv\Scripts\activat
 
 | Consola | Comando | Función |
 |---|---|---|
-| 1 | `python run.py` | Aplicación web → http://127.0.0.1:5000 |
+| 1 | `python run.py` | Aplicación web → http://127.0.0.1:5000 (dashboard) |
 | 2 | `python manage.py receiver` | Receptor Syslog UDP en 127.0.0.1:5514 |
 | 3 | `python scripts\simulador.py --escenario todos` | Envía eventos simulados |
 
@@ -68,8 +70,9 @@ python manage.py check-db
 python -m pytest -v
 ```
 
-31 pruebas automáticas: parser (PRI, Cisco, Huawei, Fortinet, RFC 5424, límites), ingesta
-(lista permitida, deduplicación, prompt injection) y API (CRUD, validaciones, filtros, importación).
+47 pruebas automáticas: parser (PRI, Cisco, Huawei, Fortinet, RFC 5424, límites), ingesta
+(lista permitida, deduplicación, prompt injection), API (CRUD, validaciones, filtros, importación),
+incidentes (creación automática, correlación, transiciones de estado, cierre con resolución) y dashboard.
 
 ## Seguridad
 
@@ -78,6 +81,8 @@ python -m pytest -v
 - **Lista permitida de fuentes:** solo los equipos con `authorized = 1` son fuentes de confianza.
   La IP se toma del paquete UDP, no del nombre que trae el mensaje (evita suplantación).
 - **Detección de prompt injection:** los mensajes con frases típicas de manipulación de IA se marcan.
+- **Incidentes solo desde fuentes de confianza:** una IP no autorizada no puede generar incidentes, y el
+  título de un incidente automático lo escribe el sistema, nunca se copia del texto del log.
 - **Deduplicación:** los mensajes idénticos en 60 s se agrupan con un contador (control de tormentas).
 - **Saneamiento:** se eliminan caracteres de control y saltos de línea (log injection) y se limita la longitud.
 - **XSS:** la interfaz inserta los textos con `textContent`, nunca con `innerHTML`.
