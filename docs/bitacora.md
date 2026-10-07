@@ -70,6 +70,8 @@ solución aplicada. Sirve como evidencia de trazabilidad y alimenta la sección
 | 2026-10-05 | 2 | Archivo de muestra con PRI `<185>` (severidad 1) en un mensaje Cisco de severidad 5 | Error al escribir el ejemplo | Se corrigió el ejemplo y se agregó la marca `severidad_inconsistente` para detectar este caso en mensajes reales |
 | 2026-10-05 | 2 | Prueba `test_caracteres_de_control_se_eliminan` falló: los saltos de línea no se eliminaban | La expresión regular excluía `\x0a` (salto de línea) | Se amplió el rango a `[\x00-\x08\x0a-\x1f\x7f]`. Evita *log injection* (líneas falsas dentro de un mensaje) |
 | 2026-10-05 | 2 | El simulador por UDP no puede usar la IP de cada equipo | Desde un PC no se puede falsificar la IP de origen de un paquete | Dos modos: `udp` (origen real 127.0.0.1 = `SIM-GEN-LOCAL`) y `directo` (IP de cada equipo simulado) |
+| 2026-10-06 | 2 | Dos capturas con el nombre `web_eventos` | Se tomaron antes y después de importar | `F2-02` renombrada a `F2-02_web_eventos_recibidos_udp.png` |
+| 2026-10-06 | 2 | Tras publicar v0.1.0 la consola quedó en `main` | Faltaba volver a la rama de trabajo | `git switch develop` |
 
 ---
 
@@ -85,7 +87,7 @@ solución aplicada. Sirve como evidencia de trazabilidad y alimenta la sección
 
 ## Fase 2 — Inventario y motor Syslog
 
-**Fechas:** 2026-10-05 a 2026-10-06 · **Estado:** 🔄 En verificación → cierre con tag **v0.1.0**
+**Fechas:** 2026-10-05 a 2026-10-06 · **Estado:** ✅ Cerrada · publicada como **v0.1.0** (commit `d7ea1a4`)
 
 ### Qué se realizó
 
@@ -114,6 +116,71 @@ solución aplicada. Sirve como evidencia de trazabilidad y alimenta la sección
   del PRI, se marca `severidad_inconsistente` (posible mensaje alterado o equipo mal configurado).
 - **Los eventos de un equipo eliminado se conservan** (`device_id = NULL`) para no perder trazabilidad.
 - **La detección de prompt injection solo marca.** Es heurística; la decisión la toma un humano.
+
+### Resultados de la prueba en vivo (2026-10-06)
+
+| Prueba | Resultado |
+|---|---|
+| `python -m pytest -v` | **31 passed** en Windows / Python 3.14.7 |
+| Simulador por UDP (todos los escenarios) | 18 mensajes → **13 eventos** (6 intentos de fuerza bruta agrupados en 1 con `x6`) |
+| Clasificación | Cisco, Fortinet y Huawei detectados; severidades 1 a 6 calculadas del PRI |
+| Prompt injection | Evento #13 marcado `posible_prompt_injection`, guardado como dato, **no ejecutado** |
+| Suplantación | Mensajes que decían venir de otros equipos se asociaron a la IP real (`SIM-GEN-LOCAL`) |
+| IP no autorizada (modo directo) | Evento #14 (sev. 0) marcado `equipo_desconocido, fuente_no_autorizada` y auditado |
+| Importación de 3 archivos | 20 eventos nuevos, 1 duplicado agrupado, 6 comentarios ignorados |
+| **Total en la base** | **34 eventos** |
+
+### Historial de commits de la Fase 2
+
+| Hash | Rama | Mensaje |
+|---|---|---|
+| `f7845a2` | develop | docs: documento de proceso completo y guia de comandos de la fase 1 |
+| `1cab10e` | develop | fix: ruta absoluta de la base de datos y normalizacion de finales de linea |
+| `ab00e7d` | develop | feat(syslog): parser multivendor, ingesta, lista permitida, deduplicacion y deteccion de prompt injection |
+| `744966a` | develop | feat(web): API e interfaz de inventario y eventos con filtros |
+| `70d17e1` | develop | feat(receptor): receptor UDP, importacion de logs y simulador con escenarios |
+| `85a00a3` | develop | test: 31 pruebas de parser, ingesta y API |
+| `1f3fc03` | develop | docs: README v0.1.0, bitacora y evidencias de la fase 2 |
+| `d7ea1a4` | **main** | release: v0.1.0 alfa - inventario y motor Syslog · **tag `v0.1.0`** |
+
+### Evidencias de la Fase 2 (`docs/evidencias/`)
+
+| Archivo | Qué muestra | Evidencia del informe |
+|---|---|---|
+| `F2-01_pruebas_31_passed.png` | 31 pruebas en verde | E12 |
+| `F2-02_web_eventos_recibidos_udp.png` | Eventos recibidos por UDP | E06 |
+| `F2-03_consola_eventos.png` | Receptor: deduplicación e inyección | E06 |
+| `F2-05_web_inventario.png` | Inventario | E04 |
+| `F2-06_web_inventario_crear_editar.png` | Crear y editar equipo | E04 |
+| `F2-07_web_validacion_ip.png` | Rechazo de IP inválida | E04 |
+| `F2-08_web_eventos.png` | Eventos después de importar | E06 |
+| `F2-09_web_filtro_severidad.png` | Filtro por severidad | E07 |
+| `F2-10_web_prompt_injection.png` | Evento con prompt injection | E11 |
+| `F2-11_consola_no_autorizado_e_importacion.png` | Fuente no autorizada e importación | E06 |
+| `F2-12_web_fuente_no_autorizada.png` | Detalle de la IP no autorizada | E11 |
+| `F2-13_consola_git_log_v010.png` | Historial y etiqueta v0.1.0 | E02 |
+
+### Pregunta de validación de la Fase 2
+
+> ¿Por qué la deduplicación es un control de seguridad y no solo una forma de ahorrar espacio?
+
+**Respuesta del estudiante:** "La deduplicación es un control ya que con esto puedo mirar si están
+entrando de forma simultánea y camuflando una entrada correcta."
+**Complemento:** evita que el ruido esconda el evento real, protege al NOC de una inundación que
+llene la base (denegación de servicio) y el contador revela patrones como la fuerza bruta.
+Limitación: si cada mensaje varía no se agrupan → límite de frecuencia por fuente en la Fase 4.
+
+### Lecciones aprendidas en la Fase 2
+
+1. **Las pruebas encuentran errores de seguridad reales:** la prueba de caracteres de control detectó
+   que los saltos de línea no se eliminaban (riesgo de *log injection*) antes de publicar.
+2. **Nunca confiar en lo que dice el mensaje:** la identidad de la fuente sale de la IP del paquete.
+3. **UDP no confirma la entrega:** que el simulador diga "enviado" no prueba la recepción; la prueba
+   está en el receptor.
+4. **Migrar, no borrar:** las columnas nuevas se agregaron con `ALTER TABLE` conservando los datos.
+5. **Publicar con trazabilidad:** `merge --no-ff` + `tag -a` dejan la versión identificable en el historial.
+
+Documento detallado: [`docs/FASE2_proceso_completo.txt`](FASE2_proceso_completo.txt)
 
 ---
 
