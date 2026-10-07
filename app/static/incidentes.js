@@ -1,0 +1,157 @@
+/*
+ * Página de incidentes: lista por estado, detalle con seguimiento y acciones
+ * (asignar, en progreso, nota, cerrar). Consume /api/incidents.
+ */
+const INC_LABEL = { abierto: "Abierto", asignado: "Asignado", en_progreso: "En progreso", cerrado: "Cerrado" };
+const tbody = document.getElementById("tbl-incidents");
+const dlg = document.getElementById("dlg-inc");
+let estado = "abiertos";
+let current = null;   // incidente abierto en la ventana de detalle
+
+function incStatus(s) { return el("span", INC_LABEL[s] || s, `inc-status inc-${s}`); }
+
+async function loadList() {
+  const list = await api(`/api/incidents?estado=${estado}`);
+  tbody.replaceChildren();
+  for (const i of list) {
+    const tr = el("tr", "", "clickable");
+    const sev = el("td"); sev.append(severityBadge(i.severity));
+    const title = el("td"); title.append(el("strong", i.title));
+    if (i.created_by === "sistema") title.append(" ", el("span", "automático", "tag dup"));
+    if (i.is_simulated) title.append(" ", el("span", "SIM", "tag sim"));
+    const st = el("td"); st.append(incStatus(i.status));
+    tr.append(el("td", i.id, "mono small"), sev, title, el("td", i.device_name || "—"), st,
+              el("td", i.assigned_to || "—"), el("td", i.event_count, "mono"),
+              el("td", fmtDate(i.created_at), "small"), el("td", fmtDate(i.updated_at), "small"));
+    tr.onclick = () => openIncident(i.id);
+    tbody.append(tr);
+  }
+  document.getElementById("inc-count").textContent = `${list.length} incidentes · clic en una fila para gestionarlo`;
+}
+
+async function openIncident(id) {
+  const data = await api(`/api/incidents/${id}`);
+  current = data.incident;
+  const i = data.incident;
+  document.getElementById("d-title").textContent = `#${i.id} · ${i.title}`;
+
+  const badges = document.getElementById("d-badges");
+  badges.replaceChildren(severityBadge(i.severity), " ", incStatus(i.status));
+  if (i.created_by === "sistema") badges.append(" ", el("span", "creado automáticamente", "tag dup"));
+
+  const info = document.getElementById("d-info");
+  info.replaceChildren();
+  const rows = [
+    ["Equipo", i.device_name || "—"], ["Responsable", i.assigned_to || "sin asignar"],
+    ["Descripción", i.description || "—"], ["Eventos correlacionados", i.event_count],
+    ["Creado", `${fmtDate(i.created_at)} por ${i.created_by}`], ["Último evento", fmtDate(i.last_event_at)],
+  ];
+  if (i.status === "cerrado") rows.push(["Cerrado", fmtDate(i.closed_at)], ["Resolución", i.resolution]);
+  for (const [k, v] of rows) info.append(el("dt", k), el("dd", v));
+
+  // Evento origen: el mensaje crudo se muestra como TEXTO (dato no confiable)
+  const evBox = document.getElementById("d-event");
+  evBox.hidden = !data.event;
+  if (data.event) document.getElementById("d-event-raw").textContent = data.event.raw;
+
+  // Acciones según el estado (las mismas reglas las valida el servidor)
+  const closed = i.status === "cerrado";
+  document.getElementById("d-actions").hidden = closed;
+  document.getElementById("d-closed-msg").hidden = !closed;
+  document.getElementById("btn-progress").disabled = !data.allowed.includes("en_progreso");
+  document.getElementById("in-assign").value = i.assigned_to || "";
+  document.getElementById("d-errors").replaceChildren();
+
+  const ol = document.getElementById("d-notes");
+  ol.replaceChildren();
+  for (const n of data.notes) {
+    const li = el("li");
+    li.append(el("span", `${fmtDate(n.created_at)} · ${n.author}`, "muted small"), el("div", n.note));
+    ol.append(li);
+  }
+  if (location.hash !== `#${i.id}`) history.replaceState(null, "", `#${i.id}`);
+  if (!dlg.open) dlg.showModal();
+}
+
+/** Ejecuta una acción sobre el incidente actual y refresca la vista. */
+async function act(path, body, okMsg) {
+  try {
+    await api(`/api/incidents/${current.id}/${path}`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    toast(okMsg);
+    await openIncident(current.id);
+    loadList();
+    return true;
+  } catch (err) {
+    document.getElementById("d-errors").replaceChildren(...err.message.split("\n").map(m => el("li", m)));
+    return false;
+  }
+}
+
+document.getElementById("frm-assign").addEventListener("submit", (e) => {
+  e.preventDefault();
+  act("assign", { assigned_to: e.target.assigned_to.value.trim() }, "Responsable asignado");
+});
+document.getElementById("frm-progress").addEventListener("submit", (e) => {
+  e.preventDefault();
+  act("status", { status: "en_progreso" }, "Incidente en progreso");
+});
+document.getElementById("frm-note").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (await act("notes", { note: e.target.note.value.trim() }, "Nota agregada")) e.target.reset();
+});
+document.getElementById("frm-closeinc").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (await act("status", { status: "cerrado", resolution: e.target.resolution.value.trim() }, "Incidente cerrado")) e.target.reset();
+});
+document.getElementById("btn-close-inc").onclick = () => { dlg.close(); history.replaceState(null, "", location.pathname); };
+
+// Pestañas Abiertos / Cerrados / Todos
+for (const tab of document.querySelectorAll(".tab")) {
+  tab.onclick = () => {
+    document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t === tab));
+    estado = tab.dataset.estado;
+    loadList();
+  };
+}
+
+// Nuevo incidente manual
+const dlgNew = document.getElementById("dlg-new");
+document.getElementById("btn-new").onclick = async () => {
+  const sel = document.getElementById("new-device");
+  if (sel.options.length === 1) {
+    for (const d of await api("/api/devices")) { const o = el("option", `${d.name} (${d.ip})`); o.value = d.id; sel.append(o); }
+  }
+  document.getElementById("frm-new").reset();
+  document.getElementById("new-errors").replaceChildren();
+  dlgNew.showModal();
+};
+document.getElementById("btn-cancel-new").onclick = () => dlgNew.close();
+document.getElementById("frm-new").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  try {
+    const inc = await api("/api/incidents", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      // f.elements["title"]: "f.title" devolvería el atributo title del formulario, no el campo
+      body: JSON.stringify({ title: f.elements["title"].value.trim(), severity: f.elements["severity"].value,
+                             device_id: f.elements["device_id"].value || null,
+                             description: f.elements["description"].value.trim() }),
+    });
+    dlgNew.close();
+    toast(`Incidente #${inc.id} creado`);
+    loadList();
+  } catch (err) {
+    document.getElementById("new-errors").replaceChildren(...err.message.split("\n").map(m => el("li", m)));
+  }
+});
+
+// Abrir directamente /incidentes#12 (enlace desde el dashboard o desde eventos).
+// "hashchange" cubre el caso en que ya se está en la página y solo cambia el #.
+function openFromHash() {
+  const id = parseInt(location.hash.slice(1), 10);
+  if (id && (!current || current.id !== id || !dlg.open)) openIncident(id).catch(err => toast(err.message, "err"));
+}
+window.addEventListener("hashchange", openFromHash);
+loadList().then(openFromHash).catch(err => toast(err.message, "err"));

@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <h1>Estado de la red</h1>
+    <p class="muted">Últimas 24 horas · se actualiza cada 15 s · <span id="updated">cargando…</span></p>
+  </div>
+  <button class="btn" id="btn-refresh">Actualizar ahora</button>
+</section>
+
+<!-- Indicadores principales -->
+<section class="kpis" aria-label="Indicadores">
+  <a class="kpi" href="/inventario">
+    <span class="kpi-label">Equipos</span>
+    <span class="kpi-value" id="k-devices">—</span>
+    <span class="kpi-sub" id="k-devices-sub"></span>
+  </a>
+  <a class="kpi" href="/eventos">
+    <span class="kpi-label">Eventos 24 h</span>
+    <span class="kpi-value" id="k-events">—</span>
+    <span class="kpi-sub" id="k-events-sub"></span>
+  </a>
+  <a class="kpi kpi-crit" href="/eventos">
+    <span class="kpi-label">Críticos 24 h (sev. 0–3)</span>
+    <span class="kpi-value" id="k-critical">—</span>
+    <span class="kpi-sub">Emergency, Alert, Critical, Error</span>
+  </a>
+  <a class="kpi kpi-inc" href="/incidentes">
+    <span class="kpi-label">Incidentes abiertos</span>
+    <span class="kpi-value" id="k-incidents">—</span>
+    <span class="kpi-sub" id="k-incidents-sub"></span>
+  </a>
+  <a class="kpi kpi-sec" href="/eventos">
+    <span class="kpi-label">Alertas de seguridad 24 h</span>
+    <span class="kpi-value" id="k-security">—</span>
+    <span class="kpi-sub" id="k-security-sub"></span>
+  </a>
+</section>
+
+<section class="dash-grid">
+  <div class="card">
+    <h2>Equipos por estado</h2>
+    <ul class="status-list" id="device-status"></ul>
+  </div>
+  <div class="card">
+    <h2>Eventos por severidad (24 h)</h2>
+    <div class="sev-bars" id="sev-bars"></div>
+  </div>
+  <div class="card span-2">
+    <div class="chart-head">
+      <h2>Eventos por hora (24 h)</h2>
+      <div class="legend">
+        <span><i class="sw sw-total"></i>Todos</span>
+        <span><i class="sw sw-crit"></i>Críticos (0–3)</span>
+      </div>
+    </div>
+    <div class="hour-chart" id="hour-chart" role="img" aria-label="Eventos por hora"></div>
+    <div class="hour-axis" id="hour-axis"></div>
+  </div>
+</section>
+
+<section class="dash-grid">
+  <div class="card">
+    <div class="chart-head"><h2>Incidentes abiertos</h2><a href="/incidentes" class="small">Ver todos →</a></div>
+    <div class="table-wrap">
+      <table class="compact">
+        <thead><tr><th>#</th><th>Sev.</th><th>Incidente</th><th>Estado</th><th>Eventos</th></tr></thead>
+        <tbody id="tbl-incidents"></tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card">
+    <div class="chart-head"><h2>Eventos críticos recientes</h2><a href="/eventos" class="small">Ver todos →</a></div>
+    <div class="table-wrap">
+      <table class="compact">
+        <thead><tr><th>Hora</th><th>Sev.</th><th>Equipo</th><th>Mensaje</th></tr></thead>
+        <tbody id="tbl-critical"></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='dashboard.js') }}"></script>{% endblock %}

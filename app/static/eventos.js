@@ -80,7 +80,23 @@ async function showEvent(id) {
   ];
   for (const [k, v] of rows) dl.append(el("dt", k), el("dd", v));
   document.getElementById("ev-raw").textContent = e.raw;   // texto, nunca HTML
+  document.getElementById("ev-errors").replaceChildren();
+  document.getElementById("btn-ev-incident").onclick = () => incidentFromEvent(e.id);
   document.getElementById("dlg-event").showModal();
+}
+
+/* Crea un incidente a partir del evento. Si ya existe uno abierto, ofrece abrirlo. */
+async function incidentFromEvent(eventId) {
+  const res = await fetch("/api/incidents", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ event_id: eventId }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (res.ok || res.status === 409) {
+    location.href = `/incidentes#${res.ok ? body.id : body.incident_id}`;
+  } else {
+    document.getElementById("ev-errors").replaceChildren(...(body.errors || ["Error"]).map(m => el("li", m)));
+  }
 }
 
 document.getElementById("frm-import").addEventListener("submit", async (ev) => {

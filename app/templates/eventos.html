@@ -68,7 +68,11 @@
   <dl id="ev-detail" class="detail"></dl>
   <h3>Mensaje original (dato no confiable)</h3>
   <pre id="ev-raw" class="raw"></pre>
-  <div class="actions"><button class="btn" id="btn-close-ev">Cerrar</button></div>
+  <ul class="errors" id="ev-errors"></ul>
+  <div class="actions">
+    <button class="btn primary" id="btn-ev-incident">Crear incidente</button>
+    <button class="btn" id="btn-close-ev">Cerrar</button>
+  </div>
 </dialog>
 {% endblock %}
 {% block scripts %}<script src="{{ url_for('static', filename='eventos.js') }}"></script>{% endblock %}

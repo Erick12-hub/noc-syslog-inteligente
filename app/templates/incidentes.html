@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Incidentes{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <h1>Incidentes</h1>
+    <p class="muted">Se crean automáticamente con eventos de severidad 0–3 de fuentes autorizadas, o a mano. Flujo: abierto → asignado → en progreso → cerrado.</p>
+  </div>
+  <button class="btn primary" id="btn-new">+ Nuevo incidente</button>
+</section>
+
+<div class="tabs" role="tablist">
+  <button class="tab active" data-estado="abiertos">Abiertos</button>
+  <button class="tab" data-estado="cerrado">Cerrados</button>
+  <button class="tab" data-estado="todos">Todos</button>
+</div>
+
+<section class="card">
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>#</th><th>Sev.</th><th>Incidente</th><th>Equipo</th><th>Estado</th><th>Responsable</th><th>Eventos</th><th>Creado</th><th>Últ. actualización</th></tr></thead>
+      <tbody id="tbl-incidents"></tbody>
+    </table>
+  </div>
+  <p class="muted small" id="inc-count"></p>
+</section>
+
+<!-- Detalle y acciones -->
+<dialog id="dlg-inc" class="wide">
+  <div class="dlg-head">
+    <h2 id="d-title"></h2>
+    <button class="btn sm" id="btn-close-inc">Cerrar ventana</button>
+  </div>
+  <div id="d-badges" class="badges"></div>
+  <dl class="detail" id="d-info"></dl>
+
+  <div id="d-event" class="linked-event" hidden>
+    <h3>Evento que lo originó</h3>
+    <pre class="raw" id="d-event-raw"></pre>
+  </div>
+
+  <div id="d-actions">
+    <div class="action-grid">
+      <form id="frm-assign" class="inline-form">
+        <label>Asignar a<input name="assigned_to" maxlength="60" placeholder="Nombre del responsable" id="in-assign"></label>
+        <button class="btn" type="submit">Asignar</button>
+      </form>
+      <form id="frm-progress" class="inline-form">
+        <span class="muted small">Indica que alguien ya está trabajando en él</span>
+        <button class="btn" type="submit" id="btn-progress">Marcar en progreso</button>
+      </form>
+      <form id="frm-note" class="inline-form span-2">
+        <label>Nota de seguimiento<input name="note" maxlength="2000" placeholder="Qué se revisó o se hizo" id="in-note"></label>
+        <button class="btn" type="submit">Agregar nota</button>
+      </form>
+      <form id="frm-closeinc" class="inline-form span-2">
+        <label>Resolución (obligatoria para cerrar, mín. 10 caracteres)<textarea name="resolution" rows="2" maxlength="2000" id="in-resolution" placeholder="Causa y solución aplicada"></textarea></label>
+        <button class="btn primary" type="submit">Cerrar incidente</button>
+      </form>
+    </div>
+    <ul class="errors" id="d-errors"></ul>
+  </div>
+  <p class="muted" id="d-closed-msg" hidden>Incidente cerrado: es un registro histórico y no se puede modificar.</p>
+
+  <h3>Seguimiento</h3>
+  <ol class="timeline" id="d-notes"></ol>
+</dialog>
+
+<!-- Nuevo incidente manual -->
+<dialog id="dlg-new">
+  <form id="frm-new" method="dialog" novalidate>
+    <h2>Nuevo incidente</h2>
+    <div class="grid2">
+      <label class="span2">Título *<input name="title" maxlength="200" required id="new-title"></label>
+      <label>Severidad *
+        <select name="severity" id="new-sev">
+          <option value="0">0 Emergency</option><option value="1">1 Alert</option><option value="2">2 Critical</option>
+          <option value="3" selected>3 Error</option><option value="4">4 Warning</option><option value="5">5 Notice</option>
+          <option value="6">6 Informational</option><option value="7">7 Debug</option>
+        </select>
+      </label>
+      <label>Equipo<select name="device_id" id="new-device"><option value="">(ninguno)</option></select></label>
+      <label class="span2">Descripción<textarea name="description" rows="3" maxlength="2000" id="new-desc"></textarea></label>
+    </div>
+    <ul class="errors" id="new-errors"></ul>
+    <div class="actions">
+      <button type="button" class="btn" id="btn-cancel-new">Cancelar</button>
+      <button type="submit" class="btn primary">Crear</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='incidentes.js') }}"></script>{% endblock %}
