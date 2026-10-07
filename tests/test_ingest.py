@@ -59,4 +59,5 @@ def test_importacion_de_archivo(conn):
     lines = ["# comentario", "", CISCO_DOWN, CISCO_DOWN,
              "<189>2: *Oct  5 08:01:10.010: SIM-CORE-RTR01 %LINK-5-CHANGED: Interface Gi0/0/0, changed state to up"]
     stats = import_lines(conn, lines, "192.0.2.1", "tester", "prueba.log")
-    assert stats == {"leidas": 3, "nuevas": 2, "duplicadas": 1, "ignoradas": 2}
+    # El LINK-3-UPDOWN (severidad 3, fuente autorizada) genera 1 incidente
+    assert stats == {"leidas": 3, "nuevas": 2, "duplicadas": 1, "ignoradas": 2, "incidentes_nuevos": 1}
