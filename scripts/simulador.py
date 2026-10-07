@@ -126,6 +126,9 @@ def save_direct(messages):
         r = ingest(conn, raw, ip, "simulador", is_simulated=True)
         tag = f"DUP x{r['dup_count']}" if r["duplicate"] else f"#{r['id']}"
         flags = f"  [{', '.join(r['flags'])}]" if r["flags"] else ""
+        inc = r.get("incident")
+        if inc:
+            flags += f"  -> incidente #{inc['id']}" + (" (correlacionado)" if inc["correlated"] else " NUEVO")
         print(f"  -> {ip:<15} {tag:<8} sev {r['severity']} {r['vendor']:<9} {r['message'][:55]}{flags}")
     conn.close()
 

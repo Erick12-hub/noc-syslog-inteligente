@@ -11,12 +11,14 @@ Ingesta de eventos: el camino que sigue cada mensaje Syslog hasta la base de dat
     5. ¿Repetido en 60 s?      -> deduplica (suma al contador)
     6. Guarda en syslog_events
     7. Si es sospechoso        -> registro en auditoría
+    8. Severidad 0-3 + fuente autorizada -> incidente (o se correlaciona)
 
 Lo usan los tres orígenes: receptor UDP, importación de archivos y simulador.
 """
 from datetime import datetime, timedelta, timezone
 
 from .db import audit, now_iso
+from .incidents import auto_incident_from_event
 from .security import detect_prompt_injection, fingerprint
 from .syslog_parser import parse
 
@@ -75,7 +77,7 @@ def ingest(conn, raw: str, source_ip: str, origin: str, is_simulated: bool = Fal
         return {"id": previous["id"], "duplicate": True, "dup_count": previous["dup_count"] + 1,
                 "severity": p["severity"], "severity_name": p["severity_name"],
                 "vendor": vendor, "device": device["name"] if device else None,
-                "message": p["message"], "flags": flags}
+                "message": p["message"], "flags": flags, "incident": None}
 
     # --- 6. Guardar ---------------------------------------------------------
     cur = conn.execute(
@@ -96,10 +98,17 @@ def ingest(conn, raw: str, source_ip: str, origin: str, is_simulated: bool = Fal
         audit(conn, "sistema", "syslog.sospechoso", "syslog_events", event_id,
               f"origen={source_ip} marcas={','.join(suspicious)}", "alerta")
 
+    # --- 8. Incidente automático / correlación ------------------------------
+    incident = auto_incident_from_event(conn, {
+        "id": event_id, "device_id": device["id"] if device else None,
+        "device_name": device["name"] if device else None, "severity": p["severity"],
+        "mnemonic": p["mnemonic"], "fingerprint": fp, "flags": flags,
+        "authorized": authorized, "is_simulated": is_simulated})
+
     return {"id": event_id, "duplicate": False, "dup_count": 1,
             "severity": p["severity"], "severity_name": p["severity_name"],
             "vendor": vendor, "device": device["name"] if device else None,
-            "message": p["message"], "flags": flags}
+            "message": p["message"], "flags": flags, "incident": incident}
 
 
 def import_lines(conn, lines, source_ip: str, actor: str, filename: str = "") -> dict:
@@ -107,7 +116,7 @@ def import_lines(conn, lines, source_ip: str, actor: str, filename: str = "") ->
     Importa un archivo de log: una línea = un mensaje.
     Ignora líneas vacías y comentarios (#). Máximo MAX_IMPORT_LINES líneas.
     """
-    stats = {"leidas": 0, "nuevas": 0, "duplicadas": 0, "ignoradas": 0}
+    stats = {"leidas": 0, "nuevas": 0, "duplicadas": 0, "ignoradas": 0, "incidentes_nuevos": 0}
     for line in lines:
         if stats["leidas"] >= MAX_IMPORT_LINES:
             break
@@ -118,6 +127,8 @@ def import_lines(conn, lines, source_ip: str, actor: str, filename: str = "") ->
         stats["leidas"] += 1
         r = ingest(conn, line, source_ip, "importacion")
         stats["duplicadas" if r["duplicate"] else "nuevas"] += 1
+        if r.get("incident") and not r["incident"]["correlated"]:
+            stats["incidentes_nuevos"] += 1
     audit(conn, actor, "syslog.import", "syslog_events", None,
           f"archivo={filename or '-'} origen={source_ip} {stats}")
     return stats

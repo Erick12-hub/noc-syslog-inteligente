@@ -95,8 +95,15 @@ CREATE TABLE IF NOT EXISTS incidents (
     created_at   TEXT NOT NULL,
     updated_at   TEXT NOT NULL,
     closed_at    TEXT,
-    is_simulated INTEGER NOT NULL DEFAULT 0 CHECK (is_simulated IN (0, 1))
+    is_simulated INTEGER NOT NULL DEFAULT 0 CHECK (is_simulated IN (0, 1)),
+    -- Fase 3: correlación. Eventos del mismo equipo y mismo tipo se suman al
+    -- incidente abierto en vez de crear uno nuevo por cada evento.
+    correlation_key TEXT,
+    event_count     INTEGER NOT NULL DEFAULT 1,
+    last_event_at   TEXT
 );
+
+CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status);
 
 -- Bitácora de seguimiento de cada incidente
 CREATE TABLE IF NOT EXISTS incident_notes (

@@ -47,6 +47,9 @@ def run_receiver(host: str = Config.SYSLOG_HOST, port: int = Config.SYSLOG_PORT)
             received += 1
             tag = f"DUP x{r['dup_count']}" if r["duplicate"] else f"#{r['id']}"
             flags = f"  [{', '.join(r['flags'])}]" if r["flags"] else ""
+            inc = r.get("incident")
+            if inc:
+                flags += f"  -> incidente #{inc['id']}" + (" (correlacionado)" if inc["correlated"] else " NUEVO")
             print(f"[UDP] {addr[0]:<15} {tag:<8} sev {r['severity']} {r['severity_name']:<13} "
                   f"{r['vendor']:<9} {r['message'][:60]}{flags}")
     except KeyboardInterrupt:
