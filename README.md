@@ -22,7 +22,12 @@ acciones no autorizadas de agentes de IA.
 | Dashboard: equipos por estado, eventos 24 h, críticos, alertas de seguridad, gráficas | ✅ |
 | Incidentes automáticos (severidad 0–3 de fuente autorizada) con correlación | ✅ |
 | Ciclo de vida de incidentes: asignar, seguimiento con notas, cerrar con resolución | ✅ |
-| Configuraciones multivendor, consola simulada, política anti-IA | Fase 4 |
+| Generador de configuraciones Syslog comentadas (Cisco, Fortinet, Huawei) con NTP y verificación | ✅ |
+| Consola simulada de solo lectura: lista permitida por fabricante, bloqueo por defecto, auditoría | ✅ |
+| Reglas de detección: fuerza bruta, cambio fuera de horario, cuenta de servicio, logs deshabilitados | ✅ |
+| Control de tormentas: límite de mensajes por minuto y por fuente | ✅ |
+| Propuestas del asistente de IA con revisión y aprobación humana (flujo seguro de 8 pasos) | ✅ |
+| Registro de auditoría consultable (solo lectura) | ✅ |
 
 ## Requisitos
 
@@ -60,6 +65,7 @@ Otros comandos:
 ```bat
 python scripts\simulador.py --listar                              :: escenarios disponibles
 python scripts\simulador.py --escenario no_autorizado --modo directo
+python scripts\simulador.py --escenario tormenta                 :: 150 mensajes: prueba el límite
 python manage.py import-log samples\SIM-CORE-RTR01_cisco.log --ip 192.0.2.1
 python manage.py check-db
 ```
@@ -70,9 +76,19 @@ python manage.py check-db
 python -m pytest -v
 ```
 
-47 pruebas automáticas: parser (PRI, Cisco, Huawei, Fortinet, RFC 5424, límites), ingesta
+76 pruebas automáticas: parser (PRI, Cisco, Huawei, Fortinet, RFC 5424, límites), ingesta
 (lista permitida, deduplicación, prompt injection), API (CRUD, validaciones, filtros, importación),
-incidentes (creación automática, correlación, transiciones de estado, cierre con resolución) y dashboard.
+incidentes (creación automática, correlación, transiciones de estado, cierre con resolución), dashboard
+y seguridad (configuraciones, consola, reglas, tormentas, propuestas con aprobación humana, auditoría).
+
+## Variables de configuración (`.env`)
+
+| Variable | Valor por defecto | Uso |
+|---|---|---|
+| `STORM_MAX_PER_MINUTE` | `100` | Mensajes UDP por minuto y por fuente antes de descartar el exceso |
+| `BUSINESS_HOURS` | `07-19` | Horario laboral para la regla `cambio_fuera_de_horario` |
+| `LOCAL_UTC_OFFSET` | `-5` | Zona horaria local (Colombia) |
+| `SERVICE_ACCOUNT_PREFIXES` | `svc_` | Prefijos de cuentas de servicio vigiladas |
 
 ## Seguridad
 
@@ -87,13 +103,24 @@ incidentes (creación automática, correlación, transiciones de estado, cierre 
 - **Saneamiento:** se eliminan caracteres de control y saltos de línea (log injection) y se limita la longitud.
 - **XSS:** la interfaz inserta los textos con `textContent`, nunca con `innerHTML`.
 - **SQL injection:** todas las consultas usan parámetros `?`.
-- **Auditoría:** las acciones sobre el inventario, las importaciones y los eventos sospechosos quedan en `audit_log`.
+- **Los agentes de IA proponen, los humanos deciden:** el actor `asistente_ia` no puede ejecutar comandos
+  ni aprobar propuestas; las acciones salen de un catálogo cerrado y requieren aprobación humana con comentario.
+- **Consola de solo lectura simulada:** lista permitida por fabricante, bloqueo por defecto, bloqueo de
+  comandos peligrosos y de encadenamiento (`; | & $ > <`).
+- **Control de tormentas:** más de `STORM_MAX_PER_MINUTE` mensajes por minuto de una fuente → se descarta el exceso,
+  se audita y se abre un incidente.
+- **Auditoría:** inventario, importaciones, eventos sospechosos, reglas, consola, configuraciones y propuestas
+  quedan en `audit_log` (solo inserción), consultable en la página Auditoría.
+
+Política completa: [docs/04_politica_ia.md](docs/04_politica_ia.md).
 - **Exposición mínima:** la aplicación y el receptor escuchan solo en `127.0.0.1`.
 
-## Limitaciones conocidas (v0.1.0)
+## Limitaciones conocidas
 
 - Sin inicio de sesión ni roles (previsto para el Corte 3); las acciones se firman con `DEFAULT_OPERATOR`.
 - La detección de prompt injection es heurística (por patrones): marca, no bloquea.
+- La ejecución de propuestas y la consola son **simuladas**: no se conectan a ningún equipo.
+- El límite de tormentas vive en memoria del receptor (se reinicia con él).
 - Syslog por UDP no cifra ni autentica; en producción se recomienda TLS (RFC 5425) donde el equipo lo soporte.
 
 ## Documentación
@@ -101,4 +128,5 @@ incidentes (creación automática, correlación, transiciones de estado, cierre 
 - [Requisitos, objetivos y alcance](docs/01_requisitos.md)
 - [Historias de usuario](docs/02_historias_usuario.md)
 - [Arquitectura y modelo de datos](docs/03_arquitectura.md)
+- [Política de defensa frente a agentes de IA](docs/04_politica_ia.md)
 - [Bitácora de desarrollo](docs/bitacora.md)

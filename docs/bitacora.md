@@ -188,7 +188,7 @@ Documento detallado: [`docs/FASE2_proceso_completo.txt`](FASE2_proceso_completo.
 
 ## Fase 3 — Dashboard e incidentes
 
-**Fecha:** 2026-10-06 · **Estado:** 🔄 En curso (paquete entregado, pendiente de verificar en el equipo del estudiante)
+**Fecha:** 2026-10-06 / 07 · **Estado:** ✅ Cerrada (47 pruebas pasan en Windows; 4 commits publicados en `develop`, `7af2c3f..672dbbe`)
 
 ### Qué se realizó
 
@@ -219,24 +219,75 @@ Documento detallado: [`docs/FASE2_proceso_completo.txt`](FASE2_proceso_completo.
 
 ---
 
-## Próximos pasos — Fase 4: Seguridad y defensa ante agentes de IA
+### Evidencias de la Fase 3 (`docs/evidencias/`)
+
+Capturas F3-01 a F3-08 (pruebas, dashboard, incidentes, correlación y ciclo de vida), guardadas en
+`docs/evidencias/` y publicadas en el último commit de la Fase 3.
+
+Documento detallado: [`docs/FASE3_proceso_completo.txt`](FASE3_proceso_completo.txt)
+
+---
+
+## Fase 4 — Seguridad y defensa ante agentes de IA
+
+**Fecha:** 2026-10-07 / 08 · **Estado:** 🔄 En curso (paquete entregado, pendiente de verificar en el equipo del estudiante)
+
+### Qué se realizó
+
+| # | Actividad | Archivo(s) | Requisito |
+|---|---|---|---|
+| 1 | Generador de configuraciones Syslog comentadas (7 secciones: NTP, marca de tiempo, servidor, severidad, interfaz de origen, registro de accesos y cambios, verificación) para Cisco, Fortinet y Huawei, con validación de IP, puerto e interfaz | `app/configgen.py`, `configuraciones.html/js` | RF-09 (E09) |
+| 2 | Consola simulada de solo lectura: lista permitida por fabricante, bloqueo por defecto, comandos peligrosos, metacaracteres; el actor "asistente de IA" nunca ejecuta | `app/console.py`, `consola.html/js` | RF-10 (E10) |
+| 3 | Reglas de detección: `fuerza_bruta`, `cambio_fuera_de_horario`, `cuenta_servicio`, `logs_deshabilitados` (crean o correlacionan incidentes) | `app/rules.py`, `app/ingest.py` | RF-11 |
+| 4 | Control de tormentas: `RateLimiter` 100 msg/min por fuente (solo UDP); el exceso se descarta, se audita y abre incidente | `app/security.py`, `app/ingest.py`, `scripts/simulador.py` | RF-12 |
+| 5 | Propuestas del asistente: catálogo cerrado, parámetros validados, revisión humana con comentario, aprobación, ejecución simulada, verificación, auditoría | `app/proposals.py`, `incidentes.html/js` | RF-13 (E11) |
+| 6 | Página de auditoría con filtros (actor, resultado, texto) | `app/audit_api.py`, `auditoria.html/js` | RF-13 |
+| 7 | Política de defensa frente a agentes de IA (amenazas, principios, 11 controles de la guía, flujo, reglas, evidencia) | `docs/04_politica_ia.md` | E11 |
+| 8 | 29 pruebas nuevas (76 en total) | `tests/test_seguridad.py` | RNF-05 |
+
+### Decisiones de diseño de la Fase 4
+
+- **Los agentes de IA proponen, los humanos deciden.** El actor `asistente_ia` recibe 403 al ejecutar
+  en la consola y al aprobar; ejecutar una propuesta no aprobada devuelve 409. Todo intento queda auditado.
+- **Catálogo cerrado:** el asistente no redacta comandos libres a partir del log; elige una acción
+  predefinida y solo toma del log parámetros validados (IP con `ipaddress`, interfaz con expresión regular).
+- **Si el log tenía *prompt injection*, solo se propone escalar a seguridad.**
+- **Denegar por defecto** en la consola: lo que no está en la lista permitida se bloquea.
+- **La tormenta se limita solo por UDP:** la importación de archivos la hace un operador a propósito.
+- **Los comandos `display` que Huawei registra no cuentan como cambios** (evita falsos positivos).
+
+### Resultados de la prueba en vivo (laboratorio, 2026-10-08)
+
+- `escenario todos`: la regla `fuerza_bruta` abrió el incidente al quinto fallo (contando duplicados x5)
+  y propuso bloquear 203.0.113.200; `svc_backup` disparó `cuenta_servicio` y `logs_deshabilitados`.
+- `escenario tormenta`: 150 mensajes → 100 aceptados, 50 descartados, 1 auditoría `syslog.tormenta`, 1 incidente.
+- `cambio_fuera_de_horario` no se dispara en horario laboral (correcto); se demuestra con las pruebas
+  automáticas o ajustando `BUSINESS_HOURS` en `.env`.
+
+### Problemas de la Fase 4
+
+| Problema | Causa | Solución |
+|---|---|---|
+| La tormenta del simulador no superaba el límite | Los 150 mensajes eran iguales salvo números y la huella de deduplicación los agrupaba | Mensajes con palabras distintas (`_word(n)`) |
+| La prueba del flujo de propuestas esperaba menos registros de auditoría | El intento bloqueado (ejecutar sin aprobar) también se audita | Se ajustó lo esperado: el bloqueo es parte de la evidencia |
+| El estado del limitador pasaba de una prueba a otra | Vive en memoria (objeto global) | Fixture `reset_storm` en `conftest.py` |
+
+---
+
+## Próximos pasos — Fase 5: Calidad y publicación de v0.2.0
 
 | Pendiente | Requisito |
 |---|---|
-| Generador de configuraciones Syslog comentadas para Cisco, Fortinet y Huawei (con NTP y verificación) | RF-09 (E09) |
-| Consola simulada de solo lectura: lista permitida por fabricante, bloqueo por defecto, auditoría | RF-10 (E10) |
-| Límite de frecuencia por fuente (control de tormentas) | RF-12 |
-| Reglas de detección: fuerza bruta, cambio fuera de horario, cuenta de servicio, apagado de logs | RF-11 |
-| Propuestas de acción del asistente con aprobación humana (flujo seguro de 8 pasos) | RF-13 (E11) |
-| Documento de política de defensa frente a agentes de IA | E11 |
+| GitHub Actions: ejecutar `pytest` en cada push y Pull Request | RNF-05 |
+| README final y `CHANGELOG.md` | E12 |
+| Prueba de instalación desde cero (clonar → instalar → probar) | RNF-04 |
+| `APP_VERSION = "0.2.0"`, Pull Request `develop → main`, etiqueta y release v0.2.0 | E12 |
 
 ### Calendario restante (entrega: sábado 2026-10-10)
 
 | Día | Fase |
 |---|---|
-| Lun 5 – Mar 6 | Fase 2: inventario y motor Syslog → v0.1.0 |
-| Mar 6 – Mié 7 | Fase 3: dashboard, filtros e incidentes |
-| Mié 7 – Jue 8 | Fase 4: configuraciones, consola y política anti-IA |
-| Jue 8 | Fase 5: pruebas, CI, README, Pull Request → v0.2.0 |
-| Vie 9 | Fase 6: informe PDF con capturas E01–E12 |
+| Jue 8 | Fase 4: aplicar, probar, capturas E09–E11, commits |
+| Vie 9 (mañana) | Fase 5: CI, README, CHANGELOG, PR → v0.2.0 |
+| Vie 9 (tarde) | Fase 6: informe PDF con capturas E01–E12 |
 | Sáb 10 | Revisión final y entrega |
