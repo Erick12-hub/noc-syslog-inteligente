@@ -36,6 +36,7 @@ def run_receiver(host: str = Config.SYSLOG_HOST, port: int = Config.SYSLOG_PORT)
     audit(conn, "sistema", "receiver.start", detail=f"udp://{host}:{port}")
     print(f"[NOC] Receptor Syslog escuchando en udp://{host}:{port}  (Ctrl+C para detener)")
     received = 0
+    dropped = 0
     try:
         while True:
             try:
@@ -45,15 +46,23 @@ def run_receiver(host: str = Config.SYSLOG_HOST, port: int = Config.SYSLOG_PORT)
             raw = data.decode("utf-8", errors="replace")
             r = ingest(conn, raw, addr[0], "udp")
             received += 1
+            if r.get("dropped"):
+                dropped += 1
+                if dropped == 1 or dropped % 25 == 0:
+                    print(f"[TORMENTA] {addr[0]:<15} límite superado: {dropped} mensajes descartados")
+                continue
             tag = f"DUP x{r['dup_count']}" if r["duplicate"] else f"#{r['id']}"
             flags = f"  [{', '.join(r['flags'])}]" if r["flags"] else ""
             inc = r.get("incident")
             if inc:
                 flags += f"  -> incidente #{inc['id']}" + (" (correlacionado)" if inc["correlated"] else " NUEVO")
+            for rule in r.get("rules") or []:
+                flags += f"  -> regla {rule['rule']}: incidente #{rule['id']}" + \
+                    (" (correlacionado)" if rule["correlated"] else " NUEVO")
             print(f"[UDP] {addr[0]:<15} {tag:<8} sev {r['severity']} {r['severity_name']:<13} "
                   f"{r['vendor']:<9} {r['message'][:60]}{flags}")
     except KeyboardInterrupt:
-        print(f"\n[NOC] Receptor detenido. Mensajes procesados: {received}")
+        print(f"\n[NOC] Receptor detenido. Mensajes procesados: {received} (descartados por tormenta: {dropped})")
     finally:
         audit(conn, "sistema", "receiver.stop", detail=f"mensajes={received}")
         sock.close()
