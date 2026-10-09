@@ -25,3 +25,18 @@ def eventos():
 @bp.get("/incidentes")
 def incidentes():
     return render_template("incidentes.html", active="incidentes")
+
+
+@bp.get("/configuraciones")
+def configuraciones():
+    return render_template("configuraciones.html", active="configuraciones")
+
+
+@bp.get("/consola")
+def consola():
+    return render_template("consola.html", active="consola")
+
+
+@bp.get("/auditoria")
+def auditoria():
+    return render_template("auditoria.html", active="auditoria")

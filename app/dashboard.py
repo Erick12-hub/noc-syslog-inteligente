@@ -39,7 +39,11 @@ def summary():
         "SELECT COUNT(*) AS eventos, COALESCE(SUM(dup_count), 0) AS mensajes, "
         "SUM(severity <= ?) AS criticos, "
         "SUM(authorized_source = 0) AS no_autorizados, "
-        "SUM((',' || COALESCE(flags,'') || ',') LIKE '%,posible_prompt_injection,%') AS inyeccion "
+        "SUM((',' || COALESCE(flags,'') || ',') LIKE '%,posible_prompt_injection,%') AS inyeccion, "
+        "SUM((',' || COALESCE(flags,'') || ',') LIKE '%,fuerza_bruta,%' "
+        "    OR (',' || COALESCE(flags,'') || ',') LIKE '%,cambio_fuera_de_horario,%' "
+        "    OR (',' || COALESCE(flags,'') || ',') LIKE '%,cuenta_servicio,%' "
+        "    OR (',' || COALESCE(flags,'') || ',') LIKE '%,logs_deshabilitados,%') AS reglas "
         "FROM syslog_events WHERE received_at >= ?", (CRITICAL_MAX, since)).fetchone()
 
     by_severity = [0] * 8
@@ -79,7 +83,7 @@ def summary():
         devices={"total": devices_total, "authorized": authorized, "by_status": by_status},
         events_24h={"eventos": ev["eventos"], "mensajes": ev["mensajes"],
                     "criticos": ev["criticos"] or 0, "no_autorizados": ev["no_autorizados"] or 0,
-                    "inyeccion": ev["inyeccion"] or 0},
+                    "inyeccion": ev["inyeccion"] or 0, "reglas": ev["reglas"] or 0},
         by_severity=by_severity,
         by_hour=by_hour,
         recent_critical=[dict(r) for r in recent_critical],

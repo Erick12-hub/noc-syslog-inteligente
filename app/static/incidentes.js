@@ -69,6 +69,8 @@ async function openIncident(id) {
     li.append(el("span", `${fmtDate(n.created_at)} · ${n.author}`, "muted small"), el("div", n.note));
     ol.append(li);
   }
+  document.getElementById("btn-suggest").hidden = closed;
+  await loadProposals(i.id, closed);
   if (location.hash !== `#${i.id}`) history.replaceState(null, "", `#${i.id}`);
   if (!dlg.open) dlg.showModal();
 }
@@ -155,3 +157,69 @@ function openFromHash() {
 }
 window.addEventListener("hashchange", openFromHash);
 loadList().then(openFromHash).catch(err => toast(err.message, "err"));
+
+
+/* ---------------- Propuestas de acción (flujo seguro) ---------------- */
+const P_LABEL = { pendiente: "Pendiente de revisión", aprobada: "Aprobada", rechazada: "Rechazada",
+                  ejecutada: "Ejecutada (simulada)", verificada: "Verificada" };
+const P_CLS = { pendiente: "warn", aprobada: "dup", rechazada: "bad", ejecutada: "dup", verificada: "ok" };
+
+async function loadProposals(incidentId, closed) {
+  const list = await api(`/api/incidents/${incidentId}/proposals`);
+  const box = document.getElementById("p-list");
+  box.replaceChildren();
+  if (!list.length) box.append(el("p", "Sin propuestas todavía.", "muted small"));
+  for (const p of list) {
+    const card = el("div", "", "p-card");
+    const head = el("div", "", "p-head");
+    head.append(el("span", `#${p.id}`, "mono small"), el("span", P_LABEL[p.status], `tag ${P_CLS[p.status]}`),
+                el("span", `riesgo ${p.risk}`, `tag ${p.risk === "alto" ? "bad" : p.risk === "medio" ? "warn" : "ok"}`),
+                el("span", `propuesta por ${p.proposed_by}`, "muted small"));
+    card.append(head, el("pre", p.command, "raw p-cmd"), el("div", p.justification || "", "small"));
+    if (p.reviewed_by) card.append(el("div", `Revisó: ${p.reviewed_by} · ${fmtDate(p.reviewed_at)}`, "muted small"));
+    if (p.result) card.append(el("div", p.result, "muted small"));
+    if (!closed) card.append(proposalActions(p, incidentId));
+    box.append(card);
+  }
+}
+
+function proposalActions(p, incidentId) {
+  const wrap = el("div", "", "inline-form");
+  const call = async (path, body, msg) => {
+    try {
+      await api(`/api/proposals/${p.id}/${path}`, { method: "POST", headers: { "Content-Type": "application/json" },
+                                                     body: JSON.stringify(body) });
+      toast(msg); await loadProposals(incidentId, false);
+    } catch (err) {
+      document.getElementById("d-errors").replaceChildren(...err.message.split("\n").map(m => el("li", m)));
+    }
+  };
+  if (p.status === "pendiente") {
+    const input = el("input"); input.placeholder = "Motivo de la decisión (obligatorio)"; input.maxLength = 300;
+    const ok = el("button", "Aprobar", "btn sm primary");
+    const no = el("button", "Rechazar", "btn sm danger");
+    ok.onclick = () => call("review", { decision: "aprobar", comment: input.value }, "Propuesta aprobada");
+    no.onclick = () => call("review", { decision: "rechazar", comment: input.value }, "Propuesta rechazada");
+    const label = el("label"); label.append("Revisión humana", input);
+    wrap.append(label, ok, no);
+  } else if (p.status === "aprobada") {
+    const ex = el("button", "Ejecutar (simulado)", "btn sm primary");
+    ex.onclick = () => call("execute", {}, "Acción ejecutada (simulación)");
+    wrap.append(ex);
+  } else if (p.status === "ejecutada") {
+    const input = el("input"); input.placeholder = "Resultado verificado"; input.maxLength = 300;
+    const v = el("button", "Verificar", "btn sm primary");
+    v.onclick = () => call("verify", { result: input.value }, "Resultado verificado");
+    const label = el("label"); label.append("Verificación", input);
+    wrap.append(label, v);
+  }
+  return wrap;
+}
+
+document.getElementById("btn-suggest").onclick = async () => {
+  try {
+    const r = await api(`/api/incidents/${current.id}/suggest`, { method: "POST" });
+    toast(r.created.length ? `${r.created.length} propuesta(s) nuevas del asistente` : "El asistente no tiene propuestas nuevas");
+    await loadProposals(current.id, false);
+  } catch (err) { toast(err.message, "err"); }
+};

@@ -7,7 +7,11 @@ datos y registra los módulos (blueprints):
     events    -> /api/events      eventos Syslog
     incidents -> /api/incidents   incidentes
     dashboard -> /api/dashboard   resumen para el dashboard
-    views     -> /, /inventario, /eventos, /incidentes   páginas web
+    configgen -> /api/config      generador de configuraciones Syslog (Fase 4)
+    console   -> /api/console     consola simulada de solo lectura (Fase 4)
+    proposals -> /api/proposals   propuestas de acción con aprobación humana (Fase 4)
+    audit     -> /api/audit       consulta de la auditoría (Fase 4)
+    views     -> páginas web
 """
 from flask import Flask, jsonify
 
@@ -31,12 +35,9 @@ def create_app(config_class=Config):
     app.teardown_appcontext(db.close_db)
 
     # Registrar módulos
-    from . import dashboard, devices, events, incidents, views
-    app.register_blueprint(devices.bp)
-    app.register_blueprint(events.bp)
-    app.register_blueprint(incidents.bp)
-    app.register_blueprint(dashboard.bp)
-    app.register_blueprint(views.bp)
+    from . import audit_api, configgen, console, dashboard, devices, events, incidents, proposals, views
+    for module in (devices, events, incidents, dashboard, configgen, console, proposals, audit_api, views):
+        app.register_blueprint(module.bp)
 
     # Variables disponibles en todas las plantillas HTML
     @app.context_processor

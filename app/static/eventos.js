@@ -14,6 +14,12 @@ const FLAG_LABELS = {
   sin_pri: ["sin PRI", "warn"],
   severidad_asumida: ["severidad asumida", "warn"],
   mensaje_recortado: ["recortado", "warn"],
+  login_fallido: ["login fallido", "warn"],
+  cambio_config: ["cambio de configuración", "dup"],
+  fuerza_bruta: ["regla: fuerza bruta", "bad"],
+  cambio_fuera_de_horario: ["regla: fuera de horario", "bad"],
+  cuenta_servicio: ["regla: cuenta de servicio", "bad"],
+  logs_deshabilitados: ["regla: logs deshabilitados", "bad"],
 };
 
 async function loadDeviceOptions() {

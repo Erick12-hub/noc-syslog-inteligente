@@ -39,6 +39,16 @@
     <pre class="raw" id="d-event-raw"></pre>
   </div>
 
+  <section class="proposals" id="d-proposals">
+    <div class="chart-head">
+      <h3>Propuestas de acción del asistente de IA</h3>
+      <button class="btn sm" id="btn-suggest">Pedir sugerencias al asistente</button>
+    </div>
+    <p class="flow small">evento → validación → <b>propuesta</b> → <b>revisión humana</b> → <b>aprobación</b> → <b>ejecución autorizada</b> → <b>verificación</b> → auditoría</p>
+    <p class="muted small">El asistente solo propone acciones de un catálogo cerrado. Nada se ejecuta sin la aprobación de un operador humano. En el MVP la ejecución es simulada.</p>
+    <div id="p-list"></div>
+  </section>
+
   <div id="d-actions">
     <div class="action-grid">
       <form id="frm-assign" class="inline-form">

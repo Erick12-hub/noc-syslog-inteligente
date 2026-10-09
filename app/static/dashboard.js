@@ -19,8 +19,8 @@ function renderKpis(d) {
   setText("k-incidents", d.incidents.open);
   const bs = d.incidents.by_status;
   setText("k-incidents-sub", `${bs.abierto || 0} sin asignar · ${bs.cerrado || 0} cerrados`);
-  setText("k-security", d.events_24h.no_autorizados + d.events_24h.inyeccion);
-  setText("k-security-sub", `${d.events_24h.no_autorizados} fuente no autorizada · ${d.events_24h.inyeccion} posible inyección`);
+  setText("k-security", d.events_24h.no_autorizados + d.events_24h.inyeccion + d.events_24h.reglas);
+  setText("k-security-sub", `${d.events_24h.no_autorizados} no autorizada · ${d.events_24h.inyeccion} inyección · ${d.events_24h.reglas} reglas`);
 }
 
 function renderDeviceStatus(d) {
