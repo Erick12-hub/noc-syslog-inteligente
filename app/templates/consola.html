@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Consola{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <h1>Consola de solo lectura</h1>
+    <p class="muted"><b>SIMULADA:</b> no se conecta a ningún equipo. Solo se ejecutan comandos de la lista permitida; todo lo demás se bloquea por defecto y queda en la auditoría.</p>
+  </div>
+</section>
+
+<section class="console-layout">
+  <div class="card terminal-card">
+    <div class="terminal-bar">
+      <label>Equipo<select id="con-device"></select></label>
+      <label>Origen de la orden
+        <select id="con-actor">
+          <option value="operador">Operador humano</option>
+          <option value="asistente_ia">Asistente de IA</option>
+        </select>
+      </label>
+    </div>
+    <div class="terminal" id="terminal" aria-live="polite"></div>
+    <form id="frm-cmd" class="terminal-input">
+      <span id="prompt" class="mono">#</span>
+      <input id="cmd" autocomplete="off" spellcheck="false" maxlength="120" placeholder="escriba un comando y presione Enter">
+    </form>
+  </div>
+  <aside class="card">
+    <h2>Comandos permitidos</h2>
+    <ul class="allow-list" id="allow-list"></ul>
+    <h3>Pruebe también (se bloquean)</h3>
+    <ul class="allow-list blocked-list">
+      <li><code>configure terminal</code></li>
+      <li><code>reload</code></li>
+      <li><code>show running-config</code></li>
+      <li><code>show clock ; reload</code></li>
+      <li><code>ping 8.8.8.8</code></li>
+    </ul>
+  </aside>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='consola.js') }}"></script>{% endblock %}
