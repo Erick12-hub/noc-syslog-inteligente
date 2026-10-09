@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Configuraciones{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <h1>Generador de configuraciones Syslog</h1>
+    <p class="muted">Configuración comentada para apuntar un equipo al NOC: NTP, servidor, severidad, interfaz de origen, registro de cambios y verificación.</p>
+  </div>
+</section>
+
+<section class="card filters">
+  <form id="frm-config">
+    <label>Equipo (opcional)<select name="device_id" id="cfg-device"><option value="">(sin equipo)</option></select></label>
+    <label>Marca *
+      <select name="vendor" id="cfg-vendor"><option>Cisco</option><option>Fortinet</option><option>Huawei</option></select>
+    </label>
+    <label>IP del servidor Syslog (NOC) *<input name="server_ip" id="cfg-server" value="192.0.2.250"></label>
+    <label>Puerto UDP *<input name="port" id="cfg-port" value="5514" size="6"></label>
+    <label>Severidad mínima *
+      <select name="severity" id="cfg-sev">
+        <option value="0">0 Emergency</option><option value="1">1 Alert</option><option value="2">2 Critical</option>
+        <option value="3">3 Error</option><option value="4">4 Warning</option><option value="5">5 Notice</option>
+        <option value="6" selected>6 Informational</option><option value="7">7 Debug</option>
+      </select>
+    </label>
+    <label>Servidor NTP *<input name="ntp" id="cfg-ntp" value="192.0.2.123"></label>
+    <label>Interfaz de origen *<input name="source" id="cfg-source" value="GigabitEthernet0/0/0"></label>
+    <div class="filter-actions"><button class="btn primary" type="submit">Generar</button></div>
+  </form>
+  <ul class="errors" id="cfg-errors"></ul>
+</section>
+
+<section class="card">
+  <div class="chart-head">
+    <h2 id="cfg-title">Configuración</h2>
+    <button class="btn sm" id="btn-copy" disabled>Copiar</button>
+  </div>
+  <pre class="raw config-out" id="cfg-out">Elija la marca y presione Generar.</pre>
+  <p class="muted small">Plantilla de laboratorio: verifique la sintaxis según la versión del equipo y aplíquela solo en equipos autorizados. La IP de la interfaz de origen debe estar registrada como fuente autorizada en el Inventario.</p>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='configuraciones.js') }}"></script>{% endblock %}
