@@ -1,11 +1,13 @@
 # NOC Syslog Inteligente
 
+[![Pruebas](https://github.com/Erick12-hub/noc-syslog-inteligente/actions/workflows/pruebas.yml/badge.svg)](https://github.com/Erick12-hub/noc-syslog-inteligente/actions/workflows/pruebas.yml)
+
 Aplicación web de administración y monitoreo de redes que recibe, clasifica y gestiona
 eventos Syslog de equipos **Cisco, Fortinet y Huawei**, con controles de seguridad frente a
 acciones no autorizadas de agentes de IA.
 
 > Proyecto individual · Administración y Gestión de Redes · 2026-2 · Ing. John Harold Pérez Calderón
-> **Versión:** v0.1.0 (alfa) publicada · en desarrollo hacia v0.2.0 (MVP)
+> **Versión:** v0.2.0 (MVP) · [CHANGELOG](CHANGELOG.md)
 > ⚠️ **Todos los equipos y eventos incluidos son DATOS SIMULADOS** (prefijo `SIM-`, IP de documentación RFC 5737).
 
 ## Funcionalidades
@@ -130,3 +132,4 @@ Política completa: [docs/04_politica_ia.md](docs/04_politica_ia.md).
 - [Arquitectura y modelo de datos](docs/03_arquitectura.md)
 - [Política de defensa frente a agentes de IA](docs/04_politica_ia.md)
 - [Bitácora de desarrollo](docs/bitacora.md)
+- [Registro de cambios](CHANGELOG.md)

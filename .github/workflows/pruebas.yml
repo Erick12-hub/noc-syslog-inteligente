@@ -1,0 +1,31 @@
+# Integración continua (CI): GitHub ejecuta las pruebas automáticas en cada
+# push y en cada Pull Request. Si una prueba falla, el commit queda marcado en rojo.
+name: Pruebas
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read          # solo lectura: el flujo no necesita escribir en el repositorio
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.14"]
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v4
+      - name: Instalar Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Instalar dependencias (versiones fijadas)
+        run: python -m pip install -r requirements.txt
+      - name: Ejecutar las pruebas
+        # Sin .env: las pruebas usan valores por defecto y una base temporal.
+        run: python -m pytest -v

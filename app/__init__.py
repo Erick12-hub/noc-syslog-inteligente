@@ -18,7 +18,7 @@ from flask import Flask, jsonify
 from .config import Config
 from . import db
 
-APP_VERSION = "0.2.0-dev"
+APP_VERSION = "0.2.0"
 
 
 def create_app(config_class=Config):
