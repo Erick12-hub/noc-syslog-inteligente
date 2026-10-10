@@ -2049,16 +2049,30 @@
 
  RAMA: develop (la v0.2.0 se publicará en main en la Fase 5, con Pull Request)
 
- RANGO PUBLICADO
-   7af2c3f..672dbbe   4 commits nuevos, subidos con git push
-   Ver el detalle:   git log --oneline 7af2c3f..672dbbe
+ COMMITS DE LA FASE 3 (rama develop, del más antiguo al más nuevo)
+   196da34  feat(incidentes): incidentes automaticos por politica de severidad, correlacion y ciclo de vida
+   fac6567  feat(dashboard): dashboard de estado de la red e interfaz de gestion de incidentes
+   c142153  test: pruebas de incidentes, correlacion, transiciones y dashboard (47 en total)
+   672dbbe  docs: README, bitacora y evidencias de la fase 3
 
- ORGANIZACIÓN DE LOS COMMITS (un tema por commit)
-   feat  -> incidentes: modelo, migración, política automática, correlación
-            y ciclo de vida
-   feat  -> dashboard e interfaz (páginas, JS, estilos, menú, botón en eventos)
-   test  -> pruebas de incidentes y dashboard (47 en total)
-   docs  -> bitácora, README y evidencias F3-01..F3-08
+ PUBLICACIÓN
+ > git push
+ => 7af2c3f..672dbbe  develop -> develop
+   7af2c3f era el último commit que GitHub tenía (docs de la Fase 2);
+   672dbbe es el último commit nuevo (docs de la Fase 3).
+
+ VERIFICACIÓN
+ > git log --oneline 7af2c3f..672dbbe
+   --oneline          una línea por commit (código corto + mensaje)
+   7af2c3f..672dbbe   solo los commits posteriores a 7af2c3f hasta 672dbbe
+   (git log muestra primero el más nuevo)
+
+ QUÉ CONTIENE CADA COMMIT (según su mensaje; se comprueba con: git show --stat <código>)
+   196da34  schema.sql, db.py (migración), incidents.py, ingest.py (paso 8),
+            receiver.py y simulador.py (aviso de incidente)
+   fac6567  dashboard.py, __init__.py, views.py, plantillas, JS y estilos
+   c142153  tests/test_incidents.py y el ajuste de tests/test_ingest.py
+   672dbbe  README.md, docs/bitacora.md y docs/evidencias/F3-01..F3-08
 
  ¿POR QUÉ COMMITS PEQUEÑOS Y POR TEMA?
    - Si algo falla, se sabe en qué cambio apareció (git log, git show).
@@ -2068,7 +2082,8 @@
  FLUJO DE RAMAS
    main    ──●(v0.1.0)──────────────────────────────●  ← v0.2.0 (Fase 5)
                                                     │ Pull Request
-   develop ──●──●(7af2c3f)──●──●──●──●(672dbbe)── … ┘
+   develop ──●──●(7af2c3f)──●──────●──────●──────●(672dbbe)── … ┘
+                            196da34 fac6567 c142153
                              Fase 3 (4 commits)
 
 
