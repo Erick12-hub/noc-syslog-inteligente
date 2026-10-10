@@ -63,6 +63,9 @@ def close_db(_exc=None):
 MIGRATIONS = [
     ("syslog_events", "mnemonic", "TEXT"),
     ("syslog_events", "flags", "TEXT"),
+    ("incidents", "correlation_key", "TEXT"),
+    ("incidents", "event_count", "INTEGER NOT NULL DEFAULT 1"),
+    ("incidents", "last_event_at", "TEXT"),
 ]
 
 

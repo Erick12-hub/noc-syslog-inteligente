@@ -17,6 +17,15 @@ from app.db import connect          # noqa: E402
 from app.seed import seed_devices   # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def reset_storm():
+    """El limitador de tormentas guarda estado en memoria: se limpia en cada prueba."""
+    from app.security import STORM
+    STORM.reset()
+    yield
+    STORM.reset()
+
+
 @pytest.fixture
 def app(tmp_path):
     class TestConfig(Config):

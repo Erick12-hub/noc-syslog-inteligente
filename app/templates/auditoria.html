@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Auditoría{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <h1>Auditoría</h1>
+    <p class="muted">Registro de solo lectura: quién hizo qué, cuándo y con qué resultado. Incluye acciones del sistema, del operador y del asistente de IA.</p>
+  </div>
+  <button class="btn" id="btn-refresh">Actualizar</button>
+</section>
+
+<section class="card filters">
+  <form id="frm-audit">
+    <label>Actor<select name="actor" id="au-actor"><option value="">Todos</option></select></label>
+    <label>Resultado
+      <select name="result"><option value="">Todos</option><option value="ok">ok</option><option value="alerta">alerta</option><option value="bloqueado">bloqueado</option></select>
+    </label>
+    <label>Buscar<input name="q" placeholder="console, proposal, regla..."></label>
+    <div class="filter-actions"><button class="btn primary" type="submit">Filtrar</button><button class="btn" type="reset" id="btn-clear">Limpiar</button></div>
+  </form>
+</section>
+
+<section class="card">
+  <div class="table-wrap">
+    <table class="compact">
+      <thead><tr><th>#</th><th>Fecha</th><th>Actor</th><th>Acción</th><th>Detalle</th><th>Resultado</th></tr></thead>
+      <tbody id="tbl-audit"></tbody>
+    </table>
+  </div>
+  <p class="muted small" id="au-count"></p>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='auditoria.js') }}"></script>{% endblock %}

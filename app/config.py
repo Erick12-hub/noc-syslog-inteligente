@@ -40,3 +40,16 @@ class Config:
 
     # Nombre del operador por defecto (para auditoría en el MVP sin login)
     DEFAULT_OPERATOR = os.getenv("DEFAULT_OPERATOR", "operador_noc")
+
+    # --- Fase 4: política de defensa (ver docs/04_politica_ia.md) -----------
+    # Control de tormentas: máximo de mensajes UDP por minuto desde UNA fuente.
+    # Lo que exceda se descarta (y se audita) para proteger al NOC.
+    STORM_MAX_PER_MINUTE = int(os.getenv("STORM_MAX_PER_MINUTE", "100"))
+    # Horario laboral "HH-HH" (hora local). Cambios de configuración fuera de
+    # este horario se marcan como sospechosos.
+    BUSINESS_HOURS = os.getenv("BUSINESS_HOURS", "07-19")
+    # Diferencia de la hora local con UTC (Colombia = -5).
+    LOCAL_UTC_OFFSET = int(os.getenv("LOCAL_UTC_OFFSET", "-5"))
+    # Prefijos de cuentas de servicio: no deberían cambiar configuraciones.
+    SERVICE_ACCOUNT_PREFIXES = tuple(
+        p.strip() for p in os.getenv("SERVICE_ACCOUNT_PREFIXES", "svc_").split(",") if p.strip())

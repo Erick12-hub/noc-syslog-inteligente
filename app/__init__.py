@@ -3,16 +3,22 @@ NOC Syslog Inteligente - fábrica de la aplicación Flask.
 
 create_app() arma la aplicación: carga la configuración, prepara la base de
 datos y registra los módulos (blueprints):
-    devices -> /api/devices   inventario
-    events  -> /api/events    eventos Syslog
-    views   -> /inventario, /eventos   páginas web
+    devices   -> /api/devices     inventario
+    events    -> /api/events      eventos Syslog
+    incidents -> /api/incidents   incidentes
+    dashboard -> /api/dashboard   resumen para el dashboard
+    configgen -> /api/config      generador de configuraciones Syslog (Fase 4)
+    console   -> /api/console     consola simulada de solo lectura (Fase 4)
+    proposals -> /api/proposals   propuestas de acción con aprobación humana (Fase 4)
+    audit     -> /api/audit       consulta de la auditoría (Fase 4)
+    views     -> páginas web
 """
 from flask import Flask, jsonify
 
 from .config import Config
 from . import db
 
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.2.0"
 
 
 def create_app(config_class=Config):
@@ -29,10 +35,9 @@ def create_app(config_class=Config):
     app.teardown_appcontext(db.close_db)
 
     # Registrar módulos
-    from . import devices, events, views
-    app.register_blueprint(devices.bp)
-    app.register_blueprint(events.bp)
-    app.register_blueprint(views.bp)
+    from . import audit_api, configgen, console, dashboard, devices, events, incidents, proposals, views
+    for module in (devices, events, incidents, dashboard, configgen, console, proposals, audit_api, views):
+        app.register_blueprint(module.bp)
 
     # Variables disponibles en todas las plantillas HTML
     @app.context_processor
