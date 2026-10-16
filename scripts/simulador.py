@@ -21,7 +21,7 @@ import argparse
 import socket
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 # Permite importar el paquete "app" al ejecutar: python scripts\simulador.py
@@ -45,14 +45,15 @@ def pri(facility: int, severity: int) -> str:
     return f"<{facility * 8 + severity}>"
 
 
-def ts_3164() -> str:
-    n = datetime.now()
+def ts_3164(ahead: timedelta = timedelta(0)) -> str:
+    # ahead (Fase 7): adelanta el reloj del equipo simulado para probar 'fecha_futura'
+    n = datetime.now() + ahead
     return f"{MONTHS[n.month - 1]} {n.day:>2} {n:%H:%M:%S}"
 
 
-def cisco(host, sev, mnemonic, text, seq=1):
+def cisco(host, sev, mnemonic, text, seq=1, ahead: timedelta = timedelta(0)):
     # local7 (23) es la facility por defecto de Cisco IOS
-    return f"{pri(23, sev)}{seq}: *{ts_3164()}.000: {host} %{mnemonic}: {text}"
+    return f"{pri(23, sev)}{seq}: *{ts_3164(ahead)}.000: {host} %{mnemonic}: {text}"
 
 
 def huawei(host, sev, mnemonic, text):
@@ -61,8 +62,8 @@ def huawei(host, sev, mnemonic, text):
             f"{host} %%01{mnemonic}: {text}")
 
 
-def fortinet(sev, level, logid, subtype, text, extra=""):
-    n = datetime.now()
+def fortinet(sev, level, logid, subtype, text, extra="", ahead: timedelta = timedelta(0)):
+    n = datetime.now() + ahead
     return (f'{pri(23, sev)}date={n:%Y-%m-%d} time={n:%H:%M:%S} devname="SIM-EDGE-FW01" '
             f'devid="FGT60FSIMULADO" logid="{logid}" type="event" subtype="{subtype}" '
             f'level="{level}" {extra}msg="{text}"')
@@ -111,6 +112,14 @@ def scenarios() -> dict:
             # ráfaga: el límite por minuto (STORM_MAX_PER_MINUTE) corta el exceso.
             (CISCO_RTR, cisco("SIM-CORE-RTR01", 6, "SYS-6-FLOOD", f"Mensaje de inundacion clave-{_word(n)}"))
             for n in range(150)
+        ],
+        "reloj_desfasado": [
+            # Fase 7: equipos con el reloj ADELANTADO (NTP caído o mal configurado).
+            # El NOC NO descarta estos eventos: los guarda y los marca 'fecha_futura'.
+            (CISCO_RTR, cisco("SIM-CORE-RTR01", 5, "SYS-5-CONFIG_I", "Configured from console by noc_admin on vty0 (192.0.2.50)",
+                              ahead=timedelta(hours=2))),
+            (FORTI_FW, fortinet(4, "warning", "0100022921", "system", "Interface wan1 bandwidth usage above 85%",
+                                ahead=timedelta(days=1))),
         ],
         "no_autorizado": [
             # IP que NO está en el inventario intenta reportar una emergencia falsa
