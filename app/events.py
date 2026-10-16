@@ -6,7 +6,7 @@ API de eventos Syslog.
     POST /api/events/import   Importar un archivo .log de un equipo
 
 Filtros de GET /api/events (todos opcionales y combinables):
-    desde=AAAA-MM-DD   hasta=AAAA-MM-DD   vendor=Cisco   device_id=3
+    desde=AAAA-MM-DD   hasta=AAAA-MM-DD  (hora de Colombia; nunca posteriores a hoy)   vendor=Cisco   device_id=3
     severity=3         sev_max=3 (de 0 hasta 3)        flag=fuente_no_autorizada
     interface=Gi0/1    port=22 (puerto de origen O de destino)      [Fase 7]
     limit=100 (máx. 500)
@@ -19,6 +19,7 @@ from flask import Blueprint, current_app, jsonify, request
 from .db import get_db
 from .ingest import import_lines
 from .syslog_parser import is_valid_interface, is_valid_port, normalize_interface
+from .timeutil import local_today, validate_date_range
 
 bp = Blueprint("events", __name__, url_prefix="/api/events")
 
@@ -41,12 +42,17 @@ def list_events():
 
     # Cada filtro agrega una condición con parámetro "?": nunca se pega texto
     # del usuario dentro del SQL (prevención de inyección SQL).
-    if a.get("desde"):
+    # --- Fase 7: rango de fechas --------------------------------------------
+    # Se valida (formato, sin fechas futuras, desde <= hasta) y cada día se
+    # convierte de hora de Colombia a UTC, que es como se guarda received_at.
+    date_errors, bounds = validate_date_range(a.get("desde"), a.get("hasta"))
+    errors += date_errors
+    if "desde_utc" in bounds:
         where.append("e.received_at >= ?")
-        params.append(a["desde"] + "T00:00:00Z")
-    if a.get("hasta"):
+        params.append(bounds["desde_utc"])
+    if "hasta_utc" in bounds:
         where.append("e.received_at <= ?")
-        params.append(a["hasta"] + "T23:59:59Z")
+        params.append(bounds["hasta_utc"])
     if a.get("vendor"):
         where.append("e.vendor = ?")
         params.append(a["vendor"])
@@ -124,3 +130,9 @@ def import_file():
     stats = import_lines(conn, text.splitlines(), device["ip"],
                          current_app.config["DEFAULT_OPERATOR"], file.filename)
     return jsonify(stats)
+
+
+@bp.get("/today")
+def today():
+    """Fase 7: fecha de HOY en Colombia según el servidor (la interfaz la usa como máximo del filtro)."""
+    return jsonify(today=local_today().isoformat())

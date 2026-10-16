@@ -11,8 +11,8 @@
 
 <section class="card filters">
   <form id="frm-filters">
-    <label>Desde<input type="date" name="desde"></label>
-    <label>Hasta<input type="date" name="hasta"></label>
+    <label>Desde<input type="date" name="desde" id="f-desde"></label>
+    <label>Hasta<input type="date" name="hasta" id="f-hasta"></label>
     <label>Marca
       <select name="vendor"><option value="">Todas</option><option>Cisco</option><option>Fortinet</option><option>Huawei</option><option>Desconocido</option></select>
     </label>
@@ -39,6 +39,7 @@
         <option value="cambio_fuera_de_horario">Regla: cambio fuera de horario</option>
         <option value="cuenta_servicio">Regla: cuenta de servicio</option>
         <option value="logs_deshabilitados">Regla: logs deshabilitados</option>
+        <option value="fecha_futura">Fecha futura (reloj desfasado)</option>
       </select>
     </label>
     <div class="filter-actions">
@@ -46,6 +47,8 @@
       <button class="btn" type="reset" id="btn-clear">Limpiar</button>
     </div>
   </form>
+  <!-- Fase 7: aviso visible de filtros inválidos (fecha posterior a hoy, puerto, interfaz) -->
+  <p class="filter-warning" id="filter-warning" role="alert" hidden></p>
 </section>
 
 <section class="card">

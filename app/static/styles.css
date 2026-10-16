@@ -89,6 +89,9 @@ dialog::backdrop { background: rgba(0, 0, 0, .6); }
 .span2 { grid-column: span 2; }
 .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 .errors { color: #ffaba5; margin: 12px 0 0; padding-left: 18px; }
+/* Fase 7: aviso de filtros inválidos en la página de eventos */
+.filter-warning { margin: 12px 0 0; padding: 10px 12px; border: 1px solid var(--warn);
+  border-left-width: 4px; border-radius: 6px; color: var(--text); background: rgba(212, 167, 44, .12); }
 .detail { display: grid; grid-template-columns: 170px 1fr; gap: 6px 12px; margin: 0; }
 .detail dt { color: var(--muted); } .detail dd { margin: 0; word-break: break-word; }
 .raw { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 12px;

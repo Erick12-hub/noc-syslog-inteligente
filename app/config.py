@@ -50,6 +50,9 @@ class Config:
     BUSINESS_HOURS = os.getenv("BUSINESS_HOURS", "07-19")
     # Diferencia de la hora local con UTC (Colombia = -5).
     LOCAL_UTC_OFFSET = int(os.getenv("LOCAL_UTC_OFFSET", "-5"))
+    # Fase 7: segundos de tolerancia antes de marcar un evento con 'fecha_futura'.
+    # Cubre la latencia de red y pequeñas diferencias de reloj.
+    FUTURE_TOLERANCE_SECONDS = int(os.getenv("FUTURE_TOLERANCE_SECONDS", "120"))
     # Prefijos de cuentas de servicio: no deberían cambiar configuraciones.
     SERVICE_ACCOUNT_PREFIXES = tuple(
         p.strip() for p in os.getenv("SERVICE_ACCOUNT_PREFIXES", "svc_").split(",") if p.strip())
