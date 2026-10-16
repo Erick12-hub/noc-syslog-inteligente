@@ -1,0 +1,471 @@
+################################################################################
+#                                                                              #
+#                       NOC SYSLOG INTELIGENTE                                 #
+#         FASE 5 - PROCESO COMPLETO, COMANDOS EXPLICADOS Y CÓDIGO COMENTADO    #
+#          Calidad, integración continua y publicación de la versión v0.2.0    #
+#                                                                              #
+################################################################################
+
+  Proyecto    : NOC Syslog Inteligente (proyecto individual)
+  Asignatura  : Administración y Gestión de Redes - Periodo 2026-2
+  Docente     : Ing. John Harold Pérez Calderón
+  Estudiante  : Erick Santiago Castro Linares (GitHub: Erick12-hub)
+  Repositorio : https://github.com/Erick12-hub/noc-syslog-inteligente
+  Versión     : v0.2.0 (MVP) - etiqueta y release publicadas
+  Fecha       : 2026-10-10
+  Entorno     : Windows 11 · Anaconda Prompt · Python 3.14.7 · Git · GitHub
+                GitHub Actions (Python 3.12 y 3.14 en ubuntu-latest)
+
+  Propósito de este documento:
+    Explicar cómo se pasó del código terminado a una VERSIÓN PUBLICADA:
+    integración continua, número de versión, registro de cambios, Pull
+    Request, etiqueta, release y sincronización de ramas. Cada comando con
+    su explicación y su resultado real.
+
+  Convenciones:
+    >     comando escrito en Anaconda Prompt
+    =>    resultado obtenido (copiado de la consola real)
+    [OK]  verificación superada
+    [E]   evidencia (captura) guardada en docs/evidencias/
+
+
+================================================================================
+ ÍNDICE
+================================================================================
+   1. Resumen de la Fase 5
+   2. Conceptos: CI, versionado semántico, Pull Request, etiqueta y release
+   3. Cronología: cada comando y cada paso, explicado
+   4. Archivos de la Fase 5 comentados
+        4.1 .github/workflows/pruebas.yml (integración continua)
+        4.2 app/__init__.py (número de versión)
+        4.3 CHANGELOG.md
+        4.4 README.md (insignia y versión)
+   5. Seguridad aplicada en la Fase 5
+   6. Problemas y observaciones
+   7. Control de versiones: historial final
+   8. Evidencias de la Fase 5
+   9. Preguntas probables de sustentación (con respuesta)
+  10. Lista de verificación de cierre
+
+
+================================================================================
+ 1. RESUMEN DE LA FASE 5
+================================================================================
+
+ OBJETIVO
+   Que la versión entregada sea VERIFICABLE por cualquiera: que las pruebas se
+   ejecuten solas fuera del PC del estudiante, que la versión tenga un número
+   claro y un registro de cambios, y que quede publicada en GitHub como
+   release v0.2.0 a partir de un Pull Request revisado.
+
+ RESULTADO
+   [OK] APP_VERSION = "0.2.0" (antes "0.2.0-dev").
+   [OK] GitHub Actions ejecuta las 76 pruebas en cada push y Pull Request,
+        con Python 3.12 y 3.14: todas en verde.
+   [OK] CHANGELOG.md con las versiones 0.1.0 y 0.2.0.
+   [OK] README con insignia "Pruebas · passing" y versión v0.2.0.
+   [OK] Pull Request #1 develop -> main: 13 commits, 64 archivos,
+        +10 943 / -52 líneas, 4 checks en verde, sin conflictos. Merged.
+   [OK] Etiqueta anotada v0.2.0 sobre el commit a68582e (el merge).
+   [OK] Release "v0.2.0 — MVP (Corte 2)" publicada y marcada Latest.
+   [OK] develop sincronizada con main (fast-forward).
+   [OK] Informe PDF del Corte 2 con las 17 secciones y las evidencias E01-E12.
+
+
+================================================================================
+ 2. CONCEPTOS
+================================================================================
+
+ 2.1 Integración continua (CI)
+   Un servidor ejecuta automáticamente las pruebas cada vez que se sube código.
+   Ventajas:
+   - Demuestra que el proyecto funciona en un equipo LIMPIO (no solo en el PC
+     del estudiante, que puede tener algo instalado que el proyecto no declara).
+   - Detecta errores antes de publicar: un Pull Request con pruebas en rojo no
+     debería fusionarse.
+   GitHub Actions es la CI integrada en GitHub. Lee los archivos YAML de la
+   carpeta .github/workflows/.
+
+ 2.2 Versionado semántico (SemVer): MAYOR.MENOR.PARCHE
+   0.1.0  alfa: primera versión funcional (Fase 2)
+   0.2.0  MVP: nuevas funciones compatibles (Fases 3 y 4)
+   1.0.0  versión madura (Corte 3)
+   "0.x" indica que el proyecto aún está en desarrollo inicial.
+   "-dev" (0.2.0-dev) indica una versión EN CONSTRUCCIÓN; se quita al publicar.
+
+ 2.3 Pull Request (PR)
+   Una solicitud para fusionar una rama en otra (develop -> main), que GitHub
+   muestra con todos los commits, los archivos cambiados y el resultado de las
+   pruebas. Es el punto de REVISIÓN antes de publicar.
+
+ 2.4 Etiqueta (tag) anotada
+   Un nombre fijo para un commit concreto ("v0.2.0" = a68582e). La anotada
+   (git tag -a) guarda autor, fecha y mensaje: es la forma oficial de marcar
+   una versión. Una etiqueta no se mueve aunque lleguen commits nuevos.
+
+ 2.5 Release
+   La página de GitHub que presenta una etiqueta como versión publicada: título,
+   notas y descarga del código (zip y tar.gz). Es lo que el docente revisa como
+   "release o etiqueta v0.2.0".
+
+
+================================================================================
+ 3. CRONOLOGÍA: CADA COMANDO Y CADA PASO, EXPLICADO
+================================================================================
+
+ ----- PASO 1. Copiar el paquete de la Fase 5 ------------------------------------
+ Se descomprimió noc-fase5.zip sobre el proyecto (rama develop). Traía:
+ app/__init__.py (versión 0.2.0), CHANGELOG.md, .github/workflows/pruebas.yml,
+ README.md (insignia), docs/bitacora.md y los documentos de proceso de las
+ fases 3 y 4.
+
+ > python -m pytest -q
+   -q   "quiet": salida corta, solo puntos y el total.
+ => 76 passed                                                           [OK]
+
+ ----- PASO 2. Dos commits y push ---------------------------------------------
+ > git add .github app/__init__.py CHANGELOG.md README.md
+ > git commit -m "chore(release): version 0.2.0, integracion continua y changelog"
+   chore = tarea de mantenimiento que no agrega funciones a la aplicación.
+ > git add docs
+ > git commit -m "docs: proceso completo de las fases 3 y 4 y bitacora"
+ > git push
+ => develop actualizada en GitHub (a435502 y 8b95303).
+
+ ----- PASO 3. Integración continua en verde -----------------------------------
+ GitHub -> pestaña Actions -> flujo "Pruebas".
+ => Pruebas #1 · Commit 8b95303 · develop · Status: Success · 19 s
+    pytest (3.12) ✓   pytest (3.14) ✓   ("2 jobs completed")
+   - Un solo run aunque hubo 2 commits: se subieron en un solo push y GitHub
+     prueba el último commit del push (que contiene a los dos).
+   - Anotaciones "Node.js 20 is deprecated": son AVISOS de GitHub sobre las
+     acciones checkout@v4 y setup-python@v5, no errores del proyecto. Se
+     actualizarán a sus versiones nuevas en el Corte 3 (ver sección 6).
+ [E] F5-01_github_actions_verde.png
+
+ ----- PASO 4. Pull Request develop -> main ------------------------------------
+ GitHub -> Pull requests -> New pull request -> base: main <- compare: develop
+ Título: "Release v0.2.0 — MVP Corte 2" y descripción con las funcionalidades.
+ => "wants to merge 13 commits into main from develop"
+    Checks 4: pytest 3.12 y 3.14, cada uno por push y por pull_request.
+    "All checks have passed" · "No conflicts with base branch"
+   Los 13 commits: 1 de cierre de la Fase 2 (7af2c3f), 4 de la Fase 3, 6 de
+   la Fase 4 y 2 de la Fase 5.
+ [E] F5-02_pull_request.png
+ Merge pull request -> Create a merge commit -> Confirm merge
+   Se eligió "merge commit" (y no squash ni rebase) para conservar los 13
+   commits y dejar un commit de unión visible, igual que el merge --no-ff de
+   la v0.1.0.
+ => "Merged" · 13 commits · 64 archivos · +10 943 −52
+ [E] F5-03_pull_request_merged.png
+   NO se borró la rama develop: es la rama de trabajo del Corte 3.
+
+ ----- PASO 5. Traer el merge al PC y etiquetar --------------------------------
+ > git switch main
+ => Switched to branch 'main'
+ > git pull
+   Descarga de GitHub el commit de merge que se creó en la web.
+ => Updating d7ea1a4..a68582e  Fast-forward ... 64 files changed,
+    10943 insertions(+), 52 deletions(-)
+   d7ea1a4 era la v0.1.0; a68582e es el merge de la v0.2.0.
+ > git log --oneline -3
+ => a68582e (HEAD -> main, origin/main, origin/HEAD) Merge pull request #1 from Erick12-hub/develop
+    8b95303 (origin/develop, develop) docs: proceso completo de las fases 3 y 4 y bitacora
+    a435502 chore(release): version 0.2.0, integracion continua y changelog
+
+ > git tag -a v0.2.0 -m "v0.2.0 MVP Corte 2: dashboard, incidentes, reglas, consola, configuraciones y politica anti-IA"
+   -a   etiqueta ANOTADA (autor, fecha, mensaje).
+   -m   el mensaje de la etiqueta.
+ > git push origin v0.2.0
+   Las etiquetas NO se suben con un git push normal: hay que enviarlas por nombre.
+   (Al repetir los comandos más tarde, Git respondió "fatal: tag 'v0.2.0'
+   already exists" y "Everything up-to-date": la etiqueta ya estaba creada y
+   publicada. Git no permite dos etiquetas con el mismo nombre.)
+
+ > git rev-list -n 1 v0.2.0
+   ¿A qué commit apunta la etiqueta?
+ => a68582ead5ffb2eb1e07455b242cac22cdc82a39                            [OK]
+ > git ls-remote --tags origin
+   ¿Qué etiquetas tiene GitHub?
+ => 36378033...  refs/tags/v0.1.0        (objeto de la etiqueta anotada)
+    d7ea1a41...  refs/tags/v0.1.0^{}     (commit al que apunta)
+    60dc4782...  refs/tags/v0.2.0
+    a68582ea...  refs/tags/v0.2.0^{}     (= el merge del Pull Request) [OK]
+   ^{} significa "lo que hay detrás de la etiqueta". Dos líneas por etiqueta
+   confirman que ambas son anotadas.
+
+ ----- PASO 6. Release en GitHub -----------------------------------------------
+ https://github.com/Erick12-hub/noc-syslog-inteligente/releases/new
+   Tag: v0.2.0 (Existing tag) · Título: "v0.2.0 — MVP (Corte 2)"
+   Notas: secciones Agregado, Seguridad e Instalación del CHANGELOG.
+   Release label: None (no Pre-release) -> GitHub la marca Latest sola.
+   Publish release.
+ => "v0.2.0 — MVP (Corte 2)  Latest" · etiqueta v0.2.0 · commit a68582e ✓
+ [E] F5-04_release_v020.png
+ [E] F5-05_github_repositorio.png  (README con "Pruebas · passing" y
+                                    Releases: v0.2.0 Latest)
+ [E] F5-06_github_commits_develop.png (commits de develop por fecha)
+
+ ----- PASO 7. Sincronizar develop con main ------------------------------------
+ GitHub mostraba en develop: "This branch is 2 commits behind main". Son los
+ dos commits de MERGE que solo existen en main (d7ea1a4 de la v0.1.0 y a68582e
+ de la v0.2.0); no falta código.
+ > git switch develop
+ > git merge --ff-only main
+   --ff-only  "solo avance rápido": mueve develop hasta main sin crear commits.
+              Si no fuera posible, Git se detiene sin cambiar nada.
+ => Updating 8b95303..a68582e  Fast-forward
+ > git push
+ => Total 0 (delta 0) ... 8b95303..a68582e  develop -> develop          [OK]
+   Total 0: no se subió nada nuevo; solo se movió el puntero de develop.
+
+ ESTADO FINAL
+   main    ──●── a68582e   etiqueta v0.2.0 · release Latest
+   develop ──●── a68582e   lista para el Corte 3
+
+
+================================================================================
+ 4. ARCHIVOS DE LA FASE 5 COMENTADOS
+================================================================================
+
+--------------------------------------------------------------------------------
+ 4.1 .github/workflows/pruebas.yml
+--------------------------------------------------------------------------------
+  +--- .github/workflows/pruebas.yml -----------------------------------------
+  |   1 | # Integración continua (CI): GitHub ejecuta las pruebas automáticas en cada
+  |   2 | # push y en cada Pull Request. Si una prueba falla, el commit queda marcado en rojo.
+  |   3 | name: Pruebas
+  |   4 | 
+  |   5 | on:
+  |   6 |   push:
+  |   7 |     branches: [main, develop]
+  |   8 |   pull_request:
+  |   9 |     branches: [main]
+  |  10 | 
+  |  11 | permissions:
+  |  12 |   contents: read          # solo lectura: el flujo no necesita escribir en el repositorio
+  |  13 | 
+  |  14 | jobs:
+  |  15 |   pytest:
+  |  16 |     runs-on: ubuntu-latest
+  |  17 |     strategy:
+  |  18 |       matrix:
+  |  19 |         python-version: ["3.12", "3.14"]
+  |  20 |     steps:
+  |  21 |       - name: Descargar el código
+  |  22 |         uses: actions/checkout@v4
+  |  23 |       - name: Instalar Python ${{ matrix.python-version }}
+  |  24 |         uses: actions/setup-python@v5
+  |  25 |         with:
+  |  26 |           python-version: ${{ matrix.python-version }}
+  |  27 |       - name: Instalar dependencias (versiones fijadas)
+  |  28 |         run: python -m pip install -r requirements.txt
+  |  29 |       - name: Ejecutar las pruebas
+  |  30 |         # Sin .env: las pruebas usan valores por defecto y una base temporal.
+  |  31 |         run: python -m pytest -v
+  +-----------------------------------------------------------------------------
+
+ EXPLICACIÓN
+   L3  name: el nombre que aparece en la pestaña Actions y en la insignia.
+   L5-9  on: CUÁNDO se ejecuta: en cada push a main o develop y en cada
+          Pull Request hacia main.
+   L11-12  permissions: solo lectura. Principio de mínimo privilegio: el flujo
+          no puede modificar el repositorio aunque alguien alterara un paso.
+   L16  runs-on: una máquina virtual Ubuntu nueva y limpia en cada ejecución.
+   L17-19  matrix: el mismo trabajo dos veces, con Python 3.12 y 3.14
+          (de ahí los 2 jobs y los 4 checks del Pull Request).
+   L22  checkout: descarga el código del commit que se está probando.
+   L24  setup-python: instala la versión de Python de la matriz.
+   L28  Instala EXACTAMENTE las versiones fijadas en requirements.txt.
+   L31  Ejecuta las 76 pruebas. Si una falla, el commit queda en rojo.
+          No necesita .env: las pruebas usan valores por defecto y una base
+          temporal. Así la CI no requiere ningún secreto.
+
+--------------------------------------------------------------------------------
+ 4.2 app/__init__.py  (número de versión)
+--------------------------------------------------------------------------------
+  +--- app/__init__.py (fragmento, L21-21) -----------------------------------
+  |  21 | APP_VERSION = "0.2.0"
+  +-----------------------------------------------------------------------------
+
+ EXPLICACIÓN
+   Una sola variable define la versión. Aparece junto al nombre en todas las
+   páginas (context_processor) y en GET /api/health. Debe coincidir con la
+   etiqueta y la release: v0.2.0.
+
+--------------------------------------------------------------------------------
+ 4.3 CHANGELOG.md
+--------------------------------------------------------------------------------
+  +--- CHANGELOG.md ----------------------------------------------------------
+  |   1 | # Registro de cambios
+  |   2 | 
+  |   3 | Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y
+  |   4 | [versionado semántico](https://semver.org/lang/es/). Todos los datos son **SIMULADOS**.
+  |   5 | 
+  |   6 | ## [0.2.0] - 2026-10-10 — MVP (Corte 2)
+  |   7 | 
+  |   8 | ### Agregado
+  |   9 | - Dashboard con indicadores de 24 h, equipos por estado, eventos por severidad y por hora (Fase 3).
+  |  10 | - Incidentes automáticos (severidad 0–3 de fuente autorizada) con correlación por equipo y código (Fase 3).
+  |  11 | - Ciclo de vida de incidentes: asignar, en progreso, notas, cierre con resolución obligatoria (Fase 3).
+  |  12 | - Reglas de detección: fuerza bruta, cambio fuera de horario, cuenta de servicio, logs deshabilitados (Fase 4).
+  |  13 | - Control de tormentas: límite de mensajes por minuto y por fuente en el receptor UDP (Fase 4).
+  |  14 | - Generador de configuraciones Syslog comentadas para Cisco, Fortinet y Huawei (Fase 4).
+  |  15 | - Consola simulada de solo lectura con lista permitida y bloqueo por defecto (Fase 4).
+  |  16 | - Propuestas del asistente de IA con revisión y aprobación humana, ejecución simulada y verificación (Fase 4).
+  |  17 | - Página de auditoría y política de defensa frente a agentes de IA (`docs/04_politica_ia.md`) (Fase 4).
+  |  18 | - Integración continua con GitHub Actions (`.github/workflows/pruebas.yml`) (Fase 5).
+  |  19 | - 76 pruebas automáticas.
+  |  20 | 
+  |  21 | ### Seguridad
+  |  22 | - Una fuente no autorizada nunca crea incidentes ni dispara reglas.
+  |  23 | - Los títulos de incidentes y las propuestas se generan desde datos estructurados, nunca desde el texto del log.
+  |  24 | - Un agente de IA no puede ejecutar comandos ni aprobar propuestas.
+  |  25 | 
+  |  26 | ## [0.1.0] - 2026-10-06 — Alfa
+  |  27 | 
+  |  28 | ### Agregado
+  |  29 | - Estructura del proyecto, modelo de datos SQLite y equipos simulados (Fase 1).
+  |  30 | - Inventario editable con validación y auditoría (Fase 2).
+  |  31 | - Receptor Syslog UDP, importación de archivos y simulador de escenarios (Fase 2).
+  |  32 | - Parser RFC 3164 / RFC 5424 y formatos Cisco IOS, FortiOS y Huawei VRP (Fase 2).
+  |  33 | - Lista permitida de fuentes, deduplicación, detección de prompt injection y saneamiento (Fase 2).
+  |  34 | - 31 pruebas automáticas.
+  +-----------------------------------------------------------------------------
+
+ EXPLICACIÓN
+   Formato "Keep a Changelog": una sección por versión, de la más nueva a la
+   más antigua, con fecha y secciones Agregado / Seguridad. Las notas de la
+   release se tomaron de aquí.
+
+--------------------------------------------------------------------------------
+ 4.4 README.md  (insignia y versión)
+--------------------------------------------------------------------------------
+  +--- README.md (fragmento, L1-11) ------------------------------------------
+  |   1 | # NOC Syslog Inteligente
+  |   2 | 
+  |   3 | [![Pruebas](https://github.com/Erick12-hub/noc-syslog-inteligente/actions/workflows/pruebas.yml/badge.svg)](https://github.com/Erick12-hub/noc-syslog-inteligente/actions/workflows/pruebas.yml)
+  |   4 | 
+  |   5 | Aplicación web de administración y monitoreo de redes que recibe, clasifica y gestiona
+  |   6 | eventos Syslog de equipos **Cisco, Fortinet y Huawei**, con controles de seguridad frente a
+  |   7 | acciones no autorizadas de agentes de IA.
+  |   8 | 
+  |   9 | > Proyecto individual · Administración y Gestión de Redes · 2026-2 · Ing. John Harold Pérez Calderón
+  |  10 | > **Versión:** v0.2.0 (MVP) · [CHANGELOG](CHANGELOG.md)
+  |  11 | > ⚠️ **Todos los equipos y eventos incluidos son DATOS SIMULADOS** (prefijo `SIM-`, IP de documentación RFC 5737).
+  +-----------------------------------------------------------------------------
+
+ EXPLICACIÓN
+   La insignia es una imagen que GitHub genera según el último resultado del
+   flujo "Pruebas": "passing" (verde) o "failing" (rojo). Al hacer clic lleva
+   a la pestaña Actions. La línea de versión enlaza al CHANGELOG.
+
+
+================================================================================
+ 5. SEGURIDAD APLICADA EN LA FASE 5
+================================================================================
+ - La CI no usa secretos: no hay .env ni tokens en el flujo; permissions:
+   contents: read (mínimo privilegio).
+ - Dependencias fijadas: la CI instala las mismas versiones que el PC.
+ - Ninguna captura de la Fase 5 muestra credenciales; en el informe se
+   difuminó el correo que aparecía en la captura F1-03.
+ - La release se publica desde una etiqueta ANOTADA verificada
+   (git rev-list y git ls-remote) antes de publicar.
+ - Revisión previa al merge: el Pull Request exige ver los 4 checks en verde.
+
+
+================================================================================
+ 6. PROBLEMAS Y OBSERVACIONES
+================================================================================
+  #  | Situación                                | Explicación / acción
+ ----|------------------------------------------|----------------------------------
+  1  | No aparecía "Draft a new release"        | Se estaba en la página del Pull
+     |                                          | Request; Releases está en la
+     |                                          | pestaña Code. Se usó el enlace
+     |                                          | directo .../releases/new
+  2  | "fatal: tag 'v0.2.0' already exists"     | La etiqueta ya se había creado;
+     |                                          | se verificó con git rev-list
+     |                                          | que apunta a a68582e
+  3  | "This branch is 2 commits behind main"   | Commits de merge solo en main;
+     |                                          | git merge --ff-only main
+  4  | Aviso "Node.js 20 is deprecated" en CI   | Aviso de GitHub, no error. Pasar
+     |                                          | a actions/checkout y setup-python
+     |                                          | más recientes en el Corte 3
+  5  | La nueva interfaz de releases no tiene   | Release label: None -> se marca
+     | la casilla "Set as the latest release"   | Latest automáticamente
+
+
+================================================================================
+ 7. CONTROL DE VERSIONES: HISTORIAL FINAL
+================================================================================
+ FASE 5 (develop)
+   a435502  chore(release): version 0.2.0, integracion continua y changelog
+   8b95303  docs: proceso completo de las fases 3 y 4 y bitacora
+ PUBLICACIÓN (main)
+   a68582e  Merge pull request #1 from Erick12-hub/develop   <- tag v0.2.0
+
+ FLUJO COMPLETO DEL CORTE 2
+   main    ──c578443──────d7ea1a4(v0.1.0)────────────────────a68582e(v0.2.0)
+                \          /                                  /  PR #1
+   develop       ●─●─●─●─●─●─●─●─●─●─●  7af2c3f ─ Fase 3 ─ Fase 4 ─ Fase 5
+   Total: 27 commits (2 de ellos de merge a main), 2 versiones publicadas.
+
+
+================================================================================
+ 8. EVIDENCIAS DE LA FASE 5 (docs/evidencias/)
+================================================================================
+ | Archivo                              | Qué muestra                          | Informe  |
+ |--------------------------------------|--------------------------------------|----------|
+ | F5-01_github_actions_verde.png       | CI en verde, Python 3.12 y 3.14      | E12      |
+ | F5-02_pull_request.png               | PR con 4 checks en verde             | E02/E12  |
+ | F5-03_pull_request_merged.png        | PR fusionado (Merged)                | E12      |
+ | F5-04_release_v020.png               | Release v0.2.0 Latest                | E12      |
+ | F5-05_github_repositorio.png         | Repositorio, insignia y release      | E01      |
+ | F5-06_github_commits_develop.png     | Historial de commits de develop      | E02      |
+
+
+================================================================================
+ 9. PREGUNTAS PROBABLES DE SUSTENTACIÓN (CON RESPUESTA)
+================================================================================
+ P: ¿Para qué sirve GitHub Actions en tu proyecto?
+ R: Ejecuta las 76 pruebas en un equipo limpio en cada push y Pull Request.
+    Demuestra que el proyecto se instala y funciona solo con requirements.txt,
+    no únicamente en mi PC.
+
+ P: ¿Por qué dos versiones de Python?
+ R: Para comprobar compatibilidad: 3.14 es la que uso y 3.12 es una versión
+    anterior todavía muy usada. Si algo dependiera de la versión, se vería.
+
+ P: ¿Qué diferencia hay entre etiqueta y release?
+ R: La etiqueta es la marca en Git de un commit (v0.2.0 = a68582e). La release
+    es la página de GitHub que publica esa etiqueta con notas y descargas.
+
+ P: ¿Por qué un Pull Request si trabajas solo?
+ R: Porque es el punto de control antes de publicar: muestra todos los cambios
+    y el resultado de las pruebas, y deja registro de qué entró en la versión.
+
+ P: ¿Por qué merge commit y no squash?
+ R: Squash juntaría los 13 commits en uno y se perdería la evidencia del avance
+    progresivo que pide la guía. El merge commit conserva todos.
+
+ P: ¿Cómo sabes que la release corresponde al código probado?
+ R: La etiqueta apunta a a68582e (verificado con git rev-list), el merge del PR
+    cuyos 4 checks pasaron; la release muestra ese mismo commit con ✓.
+
+
+================================================================================
+ 10. LISTA DE VERIFICACIÓN DE CIERRE DE LA FASE 5
+================================================================================
+ [x] APP_VERSION = 0.2.0
+ [x] Integración continua en verde (Python 3.12 y 3.14)
+ [x] CHANGELOG.md y README con insignia
+ [x] Pull Request develop -> main con 4 checks en verde, fusionado
+ [x] Etiqueta anotada v0.2.0 en a68582e, publicada
+ [x] Release v0.2.0 publicada (Latest)
+ [x] develop sincronizada con main
+ [x] 6 evidencias F5 guardadas
+ [x] Informe PDF del Corte 2 generado
+
+################################################################################
+#                           FIN DEL DOCUMENTO - FASE 5                         #
+################################################################################

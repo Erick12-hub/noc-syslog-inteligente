@@ -324,19 +324,74 @@ Documento detallado: [`docs/FASE4_proceso_completo.txt`](FASE4_proceso_completo.
 
 ## Fase 5 — Calidad y publicación de v0.2.0
 
-**Fecha:** 2026-10-10 · **Estado:** 🔄 En curso
+**Fecha:** 2026-10-10 · **Estado:** ✅ Cerrada (release v0.2.0 publicada)
 
-| # | Actividad | Archivo(s) |
+### Qué se realizó
+
+| # | Actividad | Archivo(s) / lugar |
 |---|---|---|
 | 1 | Versión de la aplicación `0.2.0` (antes `0.2.0-dev`) | `app/__init__.py` |
-| 2 | Integración continua: GitHub Actions ejecuta `pytest` en cada push y Pull Request (Python 3.12 y 3.14) | `.github/workflows/pruebas.yml` |
-| 3 | Registro de cambios v0.1.0 y v0.2.0 | `CHANGELOG.md` |
-| 4 | README con insignia de pruebas, versión y enlaces | `README.md` |
-| 5 | Pull Request `develop → main`, etiqueta `v0.2.0` y release en GitHub | GitHub |
+| 2 | Integración continua: GitHub Actions ejecuta las 76 pruebas en cada push y Pull Request (Python 3.12 y 3.14), con permisos de solo lectura | `.github/workflows/pruebas.yml` |
+| 3 | Registro de cambios de v0.1.0 y v0.2.0 | `CHANGELOG.md` |
+| 4 | README con la insignia "Pruebas · passing" y la versión | `README.md` |
+| 5 | Pull Request #1 `develop → main`: 13 commits, 64 archivos, +10 943/−52, 4 checks en verde, merge commit | GitHub |
+| 6 | Etiqueta anotada `v0.2.0` sobre `a68582e`, verificada con `git rev-list` y `git ls-remote` | Git |
+| 7 | Release "v0.2.0 — MVP (Corte 2)", marcada Latest | GitHub |
+| 8 | `develop` sincronizada con `main` (`git merge --ff-only main`) | Git |
 
-### Calendario restante (entrega: sábado 2026-10-10)
+### Historial de commits de la Fase 5
 
-| Momento | Actividad |
+| Commit | Mensaje |
 |---|---|
-| Sáb 10 (tarde) | Fase 5: commit de cierre, CI en verde, Pull Request y release v0.2.0 |
-| Sáb 10 (tarde/noche) | Fase 6: informe PDF de 17 secciones con capturas E01–E12 y entrega |
+| a435502 | chore(release): version 0.2.0, integracion continua y changelog |
+| 8b95303 | docs: proceso completo de las fases 3 y 4 y bitacora |
+| a68582e | Merge pull request #1 from Erick12-hub/develop (`main`, etiqueta v0.2.0) |
+
+### Evidencias de la Fase 5 (`docs/evidencias/`)
+
+| Archivo | Qué muestra | Informe |
+|---|---|---|
+| F5-01_github_actions_verde | CI en verde con Python 3.12 y 3.14 | E12 |
+| F5-02_pull_request | Pull Request con 4 checks en verde | E02 / E12 |
+| F5-03_pull_request_merged | Pull Request fusionado | E12 |
+| F5-04_release_v020 | Release v0.2.0 Latest | E12 |
+| F5-05_github_repositorio | Repositorio, insignia "passing" y release | E01 |
+| F5-06_github_commits_develop | Historial de commits de develop | E02 |
+
+### Observaciones de la Fase 5
+
+| Situación | Explicación / acción |
+|---|---|
+| "fatal: tag 'v0.2.0' already exists" | La etiqueta ya existía; se verificó que apunta a `a68582e` |
+| "This branch is 2 commits behind main" | Son los commits de merge que solo existían en `main`; se resolvió con `merge --ff-only` |
+| Aviso "Node.js 20 is deprecated" en Actions | Es un aviso de GitHub, no un error; se actualizarán las acciones en el Corte 3 |
+
+Documento detallado: [`docs/FASE5_proceso_completo.txt`](FASE5_proceso_completo.txt)
+
+---
+
+## Fase 6 — Informe del Corte 2
+
+**Fecha:** 2026-10-10 · **Estado:** ✅ Generado
+
+- Informe `Corte2_NOC_Syslog_Castro_Erick.pdf` con las 17 secciones de la guía.
+- 3 diagramas: arquitectura, flujo seguro y modelo de datos.
+- 46 figuras con pie obligatorio (qué muestra, requisito, resultado, datos simulados o reales, versión), agrupadas por evidencia E01–E12.
+- Configuraciones de Cisco, Fortinet y Huawei generadas por la aplicación.
+- Tablas de pruebas, resultados frente a la rúbrica, conclusiones y bibliografía.
+- En la copia de la captura F1-03 usada en el informe se difuminó el correo del estudiante.
+
+---
+
+## Próximos pasos — Corte 3 (v1.0.0)
+
+| Pendiente | Origen |
+|---|---|
+| Inicio de sesión y roles (operador, auditor, administrador); el actor sale de la sesión | Guía · limitación del MVP |
+| Gestor SSH a través del backend, con lista de hosts y comandos permitidos | Guía Corte 3 |
+| Alertas por Telegram sin exponer el token (`.env`) | Guía Corte 3 |
+| Syslog sobre TLS (RFC 5425), retención, respaldo e integridad encadenada de la auditoría | Guía · controles |
+| Marcha blanca con equipos autorizados y bitácora de resultados | Guía Corte 3 |
+| Servidor WSGI sin modo depuración, despliegue y rollback | Guía Corte 3 |
+| Actualizar `actions/checkout` y `actions/setup-python` (aviso de Node.js 20) | Fase 5 |
+| Manual técnico y manual de usuario | Guía Corte 3 |
