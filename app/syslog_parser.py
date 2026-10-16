@@ -113,19 +113,139 @@ def _detect_vendor(result: dict, text: str):
             result["event_time"] = f'{kv["date"]} {kv["time"]}'
 
 
+# ---------------------------------------------------------------------------
+# Fase 7: interfaz y puertos involucrados en el evento
+# ---------------------------------------------------------------------------
+# Nombres LARGOS de interfaz (Cisco y Huawei). El número admite ranuras
+# (0/0/1) y subinterfaces (.100).   ej. GigabitEthernet0/0/2, Vlanif10, Eth-Trunk1
+RE_IFACE_LONG = re.compile(
+    r"\b(?P<name>(?:Ten|Twenty[Ff]ive|Forty|Hundred)?GigabitEthernet|XGigabitEthernet|"
+    r"FastEthernet|Ethernet|Serial|Vlanif|Vlan|Loopback|Port-channel|Eth-Trunk|Tunnel|MEth|NULL)"
+    r"\s?(?P<num>\d+(?:/\d+)*(?:\.\d+)?)\b")
+
+# Nombres CORTOS de Cisco/Huawei, solo después de la palabra "Interface"
+# para no confundirlos con otras palabras.   ej. "Interface Gi0/1", "interface GE0/0/1"
+RE_IFACE_SHORT = re.compile(
+    r"\b[Ii]nterface\s+(?P<abbr>Gi|Fa|Te|Et|Se|Po|Lo|Tu|Vl|GE|XGE|Eth)(?P<num>\d+(?:/\d+)*(?:\.\d+)?)\b")
+
+# Interfaz de FortiGate en texto libre:  "Interface wan1 bandwidth ..."
+RE_IFACE_FORTI_TEXT = re.compile(r'\b[Ii]nterface\s+"?(?P<name>[A-Za-z][\w.\-]{0,14})"?')
+
+# Abreviatura -> nombre largo (para guardar siempre el mismo nombre y luego
+# poder compararlo con la lista de interfaces reales del equipo, Fase 8/9).
+IFACE_ABBR = {
+    "Gi": "GigabitEthernet", "Fa": "FastEthernet", "Te": "TenGigabitEthernet",
+    "Et": "Ethernet", "Se": "Serial", "Po": "Port-channel", "Lo": "Loopback",
+    "Tu": "Tunnel", "Vl": "Vlan", "GE": "GigabitEthernet", "XGE": "XGigabitEthernet",
+    "Eth": "Eth-Trunk",
+}
+
+# ACL de Cisco:  "denied tcp 203.0.113.200(51515) -> 192.0.2.1(22)"
+RE_ACL_PORTS = re.compile(
+    r"(?P<src>\d{1,3}(?:\.\d{1,3}){3})\((?P<sport>\d+)\)\s*->\s*"
+    r"(?P<dst>\d{1,3}(?:\.\d{1,3}){3})\((?P<dport>\d+)\)")
+# Login de Cisco:  "[Source: 203.0.113.200] [localport: 22]"  -> puerto atacado
+RE_LOCALPORT = re.compile(r"\[localport:\s*(?P<port>\d+)\]")
+# Estilo sshd/Linux:  "from 203.0.113.200 port 51515"  -> puerto de origen
+RE_FROM_PORT = re.compile(r"\bfrom\s+\d{1,3}(?:\.\d{1,3}){3}\s+port\s+(?P<port>\d+)")
+
+# Sintaxis permitida de una interfaz (sirve también para validar filtros):
+# empieza con letra; luego letras, números, / . - _ :   (máx. 48 caracteres)
+RE_IFACE_VALID = re.compile(r"^[A-Za-z][A-Za-z0-9_./:\-]{0,47}$")
+
+
+def is_valid_port(value) -> bool:
+    """Un puerto TCP/UDP válido es un entero entre 1 y 65535."""
+    try:
+        return 1 <= int(value) <= 65535
+    except (TypeError, ValueError):
+        return False
+
+
+def is_valid_interface(name) -> bool:
+    """Valida solo la SINTAXIS del nombre (si existe en el equipo se valida en la Fase 9)."""
+    return isinstance(name, str) and bool(RE_IFACE_VALID.match(name))
+
+
+def normalize_interface(name: str) -> str:
+    """'Gi0/1' -> 'GigabitEthernet0/1'. Si no es una abreviatura conocida, se deja igual."""
+    m = re.match(r"^(?P<abbr>[A-Za-z\-]+?)(?P<num>\d.*)$", name or "")
+    if m and m["abbr"] in IFACE_ABBR:
+        return IFACE_ABBR[m["abbr"]] + m["num"]
+    return name
+
+
+def extract_network(text: str, vendor_hint: str | None) -> dict:
+    """
+    Busca en el mensaje la interfaz y los puertos involucrados.
+
+    Devuelve {"interface", "src_port", "dst_port", "flags"}. Un valor que no
+    se encuentra queda en None. Un puerto fuera de 1-65535 NO se guarda y se
+    marca con 'puerto_invalido' (el mensaje pudo ser alterado).
+    """
+    out = {"interface": None, "src_port": None, "dst_port": None, "flags": []}
+    sport = dport = None
+
+    if vendor_hint == "Fortinet":
+        # FortiOS trae los datos como clave=valor: srcintf, srcport, dstport
+        kv = {k: (q if v.startswith('"') else v) for k, v, q in RE_KV.findall(text)}
+        out["interface"] = kv.get("srcintf") or kv.get("intf") or kv.get("interface")
+        sport, dport = kv.get("srcport"), kv.get("dstport")
+        if not out["interface"]:
+            m = RE_IFACE_FORTI_TEXT.search(kv.get("msg") or "")
+            if m:
+                out["interface"] = m["name"]
+    else:
+        m = RE_IFACE_LONG.search(text)
+        if m:
+            out["interface"] = m["name"] + m["num"]
+        else:
+            m = RE_IFACE_SHORT.search(text)
+            if m:
+                out["interface"] = IFACE_ABBR[m["abbr"]] + m["num"]
+
+        m = RE_ACL_PORTS.search(text)
+        if m:
+            sport, dport = m["sport"], m["dport"]
+        else:
+            m = RE_LOCALPORT.search(text)
+            if m:
+                dport = m["port"]
+            m = RE_FROM_PORT.search(text)
+            if m:
+                sport = m["port"]
+
+    # Validación: solo se guardan puertos dentro del rango permitido
+    for key, val in (("src_port", sport), ("dst_port", dport)):
+        if val is None:
+            continue
+        if is_valid_port(val):
+            out[key] = int(val)
+        elif "puerto_invalido" not in out["flags"]:
+            out["flags"].append("puerto_invalido")
+
+    # Una interfaz con caracteres extraños se descarta (dato no confiable)
+    if out["interface"] and not is_valid_interface(out["interface"]):
+        out["interface"] = None
+        out["flags"].append("interfaz_invalida")
+    return out
+
+
 def parse(raw: str) -> dict:
     """
     Analiza un mensaje Syslog crudo.
 
     Devuelve un diccionario con: pri, facility, facility_name, severity,
     severity_name, format, event_time, hostname, app_name, message, mnemonic,
-    vendor_hint, vendor_severity y parse_flags (lista de observaciones).
+    vendor_hint, vendor_severity, interface, src_port, dst_port y
+    parse_flags (lista de observaciones).
     """
     text = raw.strip("\r\n\x00 ")
     result = {
         "pri": None, "facility": None, "severity": None, "format": "desconocido",
         "event_time": None, "hostname": None, "app_name": None, "message": text,
         "mnemonic": None, "vendor_hint": None, "vendor_severity": None,
+        "interface": None, "src_port": None, "dst_port": None,
         "parse_flags": [],
     }
 
@@ -190,7 +310,12 @@ def parse(raw: str) -> dict:
     if result["facility"] is None:
         result["facility"] = 1  # "user", valor por defecto de la RFC 3164
 
-    # 5) Limpieza del mensaje (caracteres de control y longitud)
+    # 5) Fase 7: interfaz y puertos (se buscan en el texto completo)
+    net = extract_network(rest, result["vendor_hint"])
+    result.update(interface=net["interface"], src_port=net["src_port"], dst_port=net["dst_port"])
+    result["parse_flags"] += net["flags"]
+
+    # 6) Limpieza del mensaje (caracteres de control y longitud)
     result["message"], truncated = sanitize(result["message"] or "")
     if truncated:
         result["parse_flags"].append("mensaje_recortado")

@@ -10,3 +10,4 @@
 <189>108: *Oct  5 14:02:33.123: SIM-CORE-RTR01 %SYS-5-CONFIG_I: Configured from console by noc_admin on vty0 (192.0.2.50)
 <188>109: *Oct  5 23:47:10.001: SIM-CORE-RTR01 %SEC_LOGIN-4-LOGIN_FAILED: Login failed [user: root] [Source: 203.0.113.200] [localport: 22] [Reason: Login Authentication Failed]
 <189>110: *Oct  5 23:59:01.000: SIM-CORE-RTR01 %BGP-5-ADJCHANGE: neighbor 198.51.100.254 Down BGP Notification sent
+<190>111: *Oct  5 23:47:30.000: SIM-CORE-RTR01 %SEC-6-IPACCESSLOGP: list 101 denied tcp 203.0.113.200(51515) -> 192.0.2.1(23), 1 packet

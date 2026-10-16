@@ -17,6 +17,9 @@
       <select name="vendor"><option value="">Todas</option><option>Cisco</option><option>Fortinet</option><option>Huawei</option><option>Desconocido</option></select>
     </label>
     <label>Equipo<select name="device_id"><option value="">Todos</option></select></label>
+    <label>Interfaz<input type="text" name="interface" placeholder="Gi0/1, port1" maxlength="48"
+           pattern="[A-Za-z][A-Za-z0-9_./:\-]{0,47}" title="Letras, números y / . - _ :"></label>
+    <label>Puerto<input type="number" name="port" min="1" max="65535" placeholder="22"></label>
     <label>Severidad
       <select name="severity">
         <option value="">Todas</option>
@@ -49,7 +52,7 @@
   <div class="table-wrap">
     <table id="tbl-events">
       <thead>
-        <tr><th>#</th><th>Recibido</th><th>Sev.</th><th>Equipo</th><th>Marca</th><th>Facility</th><th>Código</th><th>Mensaje</th><th>Origen</th><th>Marcas</th></tr>
+        <tr><th>#</th><th>Recibido</th><th>Sev.</th><th>Equipo</th><th>Marca</th><th>Facility</th><th>Código</th><th>Interfaz / puerto</th><th>Mensaje</th><th>Origen</th><th>Marcas</th></tr>
       </thead>
       <tbody></tbody>
     </table>

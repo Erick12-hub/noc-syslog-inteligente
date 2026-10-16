@@ -20,7 +20,17 @@ const FLAG_LABELS = {
   cambio_fuera_de_horario: ["regla: fuera de horario", "bad"],
   cuenta_servicio: ["regla: cuenta de servicio", "bad"],
   logs_deshabilitados: ["regla: logs deshabilitados", "bad"],
+  puerto_invalido: ["puerto inválido", "warn"],
+  interfaz_invalida: ["interfaz inválida", "warn"],
 };
+
+/* Fase 7: texto de interfaz y puertos.  ej. "wan1 · 51520 → 3389" */
+function netText(e) {
+  const parts = [];
+  if (e.interface) parts.push(e.interface);
+  if (e.src_port || e.dst_port) parts.push(`${e.src_port ?? "?"} → ${e.dst_port ?? "?"}`);
+  return parts.join(" · ") || "—";
+}
 
 async function loadDeviceOptions() {
   const devices = await api("/api/devices");
@@ -61,7 +71,7 @@ async function loadEvents() {
     if (e.dup_count > 1) msg.prepend(el("span", `x${e.dup_count}`, "tag dup"), " ");
     tr.append(el("td", e.id, "mono small"), el("td", fmtDate(e.received_at), "small"), sev, dev,
               el("td", e.vendor), el("td", FACILITIES[e.facility] ?? e.facility, "small"),
-              el("td", e.mnemonic || "—", "mono small"), msg, el("td", e.origin, "small"),
+              el("td", e.mnemonic || "—", "mono small"), el("td", netText(e), "mono small"), msg, el("td", e.origin, "small"),
               flagChips(e.flags));
     tr.onclick = () => showEvent(e.id);
     evBody.append(tr);
@@ -81,6 +91,8 @@ async function showEvent(id) {
     ["Fuente autorizada", e.authorized_source ? "Sí" : "NO"], ["Marca", e.vendor],
     ["Facility", `${e.facility} (${FACILITIES[e.facility]})`], ["Severidad", `${e.severity} (${e.severity_name})`],
     ["Código fabricante", e.mnemonic || "—"], ["Aplicación", e.app_name || "—"],
+    ["Interfaz", e.interface || "—"], ["Puerto de origen", e.src_port ?? "—"],
+    ["Puerto de destino", e.dst_port ?? "—"],
     ["Repeticiones", e.dup_count], ["Origen", e.origin], ["Marcas", e.flags || "ninguna"],
     ["Simulado", e.is_simulated ? "Sí" : "No"],
   ];

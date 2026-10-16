@@ -8,12 +8,17 @@ API de eventos Syslog.
 Filtros de GET /api/events (todos opcionales y combinables):
     desde=AAAA-MM-DD   hasta=AAAA-MM-DD   vendor=Cisco   device_id=3
     severity=3         sev_max=3 (de 0 hasta 3)        flag=fuente_no_autorizada
+    interface=Gi0/1    port=22 (puerto de origen O de destino)      [Fase 7]
     limit=100 (máx. 500)
+
+Fase 7: los filtros nuevos (interface, port) se VALIDAN. Si el valor no es
+válido se responde 400 con la lista de errores, en vez de ignorarlo en silencio.
 """
 from flask import Blueprint, current_app, jsonify, request
 
 from .db import get_db
 from .ingest import import_lines
+from .syslog_parser import is_valid_interface, is_valid_port, normalize_interface
 
 bp = Blueprint("events", __name__, url_prefix="/api/events")
 
@@ -32,7 +37,7 @@ def _int(value, default=None, lo=None, hi=None):
 @bp.get("")
 def list_events():
     a = request.args
-    where, params = [], []
+    where, params, errors = [], [], []
 
     # Cada filtro agrega una condición con parámetro "?": nunca se pega texto
     # del usuario dentro del SQL (prevención de inyección SQL).
@@ -57,6 +62,24 @@ def list_events():
     if a.get("flag"):
         where.append("(',' || e.flags || ',') LIKE ?")
         params.append(f"%,{a['flag']},%")
+
+    # --- Fase 7: interfaz y puerto -----------------------------------------
+    if a.get("interface"):
+        iface = a["interface"].strip()
+        if not is_valid_interface(iface):
+            errors.append("Interfaz inválida: use letras, números y / . - _ : (ej. Gi0/1, port1)")
+        else:
+            # Se compara con el nombre normalizado: 'Gi0/1' encuentra 'GigabitEthernet0/1'
+            where.append("e.interface = ? COLLATE NOCASE")
+            params.append(normalize_interface(iface))
+    if a.get("port"):
+        if not is_valid_port(a["port"]):
+            errors.append("Puerto inválido: debe ser un número entre 1 y 65535")
+        else:
+            where.append("(e.src_port = ? OR e.dst_port = ?)")
+            params += [int(a["port"])] * 2
+    if errors:
+        return jsonify(errors=errors), 400
 
     limit = _int(a.get("limit"), 100, 1, 500)
     sql = ("SELECT e.*, d.name AS device_name, s.name AS severity_name "

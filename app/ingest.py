@@ -9,7 +9,7 @@ Ingesta de eventos: el camino que sigue cada mensaje Syslog hasta la base de dat
     3. ¿Equipo autorizado?     -> lista permitida de fuentes
     4. ¿Prompt injection?      -> marca (NO ejecuta nada)
     5. ¿Repetido en 60 s?      -> deduplica (suma al contador)
-    6. Guarda en syslog_events
+    6. Guarda en syslog_events (incluye interfaz y puertos, Fase 7)
     0. (solo UDP) ¿La fuente supera el límite por minuto? -> se descarta (tormenta)
     7. Si es sospechoso        -> registro en auditoría
     8. Severidad 0-3 + fuente autorizada -> incidente (o se correlaciona)
@@ -108,12 +108,13 @@ def ingest(conn, raw: str, source_ip: str, origin: str, is_simulated: bool = Fal
     cur = conn.execute(
         "INSERT INTO syslog_events (received_at, event_time, source_ip, device_id, vendor, "
         "facility, severity, hostname, app_name, message, raw, origin, authorized_source, "
-        "mnemonic, flags, fingerprint, dup_count, is_simulated) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)",
+        "mnemonic, flags, fingerprint, dup_count, is_simulated, interface, src_port, dst_port) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)",
         (now_iso(), p["event_time"], source_ip, device["id"] if device else None, vendor,
          p["facility"], p["severity"], p["hostname"], p["app_name"], p["message"],
          raw[:4000], origin, int(authorized), p["mnemonic"],
-         ",".join(flags) or None, fp, int(is_simulated)))
+         ",".join(flags) or None, fp, int(is_simulated),
+         p["interface"], p["src_port"], p["dst_port"]))   # Fase 7
     conn.commit()
     event_id = cur.lastrowid
 
@@ -145,7 +146,8 @@ def ingest(conn, raw: str, source_ip: str, origin: str, is_simulated: bool = Fal
             "severity": p["severity"], "severity_name": p["severity_name"],
             "vendor": vendor, "device": device["name"] if device else None,
             "message": p["message"], "flags": flags + hits, "incident": incident,
-            "rules": rule_incidents}
+            "rules": rule_incidents, "interface": p["interface"],
+            "src_port": p["src_port"], "dst_port": p["dst_port"]}
 
 
 def _storm_alert(conn, source_ip: str):

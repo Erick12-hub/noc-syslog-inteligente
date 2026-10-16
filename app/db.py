@@ -66,6 +66,14 @@ MIGRATIONS = [
     ("incidents", "correlation_key", "TEXT"),
     ("incidents", "event_count", "INTEGER NOT NULL DEFAULT 1"),
     ("incidents", "last_event_at", "TEXT"),
+    # Fase 7: puerto/interfaz en eventos y tiempos de respuesta en incidentes.
+    # (ALTER TABLE no admite CHECK con rango en columnas nuevas de forma segura
+    #  en todas las versiones; el rango 1-65535 lo valida el parser antes de guardar.)
+    ("syslog_events", "interface", "TEXT"),
+    ("syslog_events", "src_port", "INTEGER"),
+    ("syslog_events", "dst_port", "INTEGER"),
+    ("incidents", "assigned_at", "TEXT"),
+    ("incidents", "started_at", "TEXT"),
 ]
 
 
