@@ -46,7 +46,11 @@ async function openIncident(id) {
     ["Descripción", i.description || "—"], ["Eventos correlacionados", i.event_count],
     ["Creado", `${fmtDate(i.created_at)} por ${i.created_by}`], ["Último evento", fmtDate(i.last_event_at)],
   ];
-  if (i.status === "cerrado") rows.push(["Cerrado", fmtDate(i.closed_at)], ["Resolución", i.resolution]);
+  // Fase 7: tiempos de respuesta desde la creación (base de MTTA/MTTR)
+  if (i.assigned_at) rows.push(["Asignado", `${fmtDate(i.assigned_at)} (${elapsed(i.created_at, i.assigned_at)} después)`]);
+  if (i.started_at) rows.push(["En progreso desde", `${fmtDate(i.started_at)} (${elapsed(i.created_at, i.started_at)} después)`]);
+  if (i.status === "cerrado") rows.push(["Cerrado", `${fmtDate(i.closed_at)} (${elapsed(i.created_at, i.closed_at)} después)`],
+                                        ["Resolución", i.resolution]);
   for (const [k, v] of rows) info.append(el("dt", k), el("dd", v));
 
   // Evento origen: el mensaje crudo se muestra como TEXTO (dato no confiable)
@@ -223,3 +227,12 @@ document.getElementById("btn-suggest").onclick = async () => {
     await loadProposals(current.id, false);
   } catch (err) { toast(err.message, "err"); }
 };
+
+/* Fase 7: diferencia entre dos fechas ISO en texto corto: "45 s", "12 min", "3 h 5 min". */
+function elapsed(fromIso, toIso) {
+  const sec = Math.max(0, Math.round((new Date(toIso) - new Date(fromIso)) / 1000));
+  if (sec < 60) return `${sec} s`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min} min`;
+  return `${Math.floor(min / 60)} h ${min % 60} min`;
+}

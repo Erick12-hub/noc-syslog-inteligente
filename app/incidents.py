@@ -16,6 +16,13 @@ CICLO DE VIDA (máquina de estados). Solo se permiten estas transiciones:
 
 Un incidente cerrado no se puede modificar: queda como registro histórico.
 
+TIEMPOS DE RESPUESTA (Fase 7, para MTTA/MTTR en la Fase 10):
+    created_at  -> assigned_at  = tiempo hasta asignar   (MTTA)
+    created_at  -> started_at   = tiempo hasta empezar
+    created_at  -> closed_at    = tiempo hasta cerrar    (MTTR)
+assigned_at y started_at guardan la PRIMERA vez (COALESCE): reasignar o
+volver a guardar no borra la medición original.
+
 SEGURIDAD: el título y la descripción de un incidente automático los escribe
 el SISTEMA a partir de datos estructurados (equipo, código, severidad). Nunca se
 copia el texto del log, porque es un dato no confiable: si un atacante escribe
@@ -231,8 +238,11 @@ def assign(incident_id):
         return jsonify(errors=["Indique el responsable (2 a 60 caracteres)"]), 400
 
     new_status = "asignado" if inc["status"] == "abierto" else inc["status"]
-    conn.execute("UPDATE incidents SET assigned_to = ?, status = ?, updated_at = ? WHERE id = ?",
-                 (who, new_status, now_iso(), incident_id))
+    ts = now_iso()
+    # COALESCE(assigned_at, ?) = si ya tenía fecha de asignación, se conserva
+    conn.execute("UPDATE incidents SET assigned_to = ?, status = ?, updated_at = ?, "
+                 "assigned_at = COALESCE(assigned_at, ?) WHERE id = ?",
+                 (who, new_status, ts, ts, incident_id))
     add_note(conn, incident_id, _operator(), f"Asignado a {who}")
     conn.commit()
     audit(conn, _operator(), "incident.assign", "incidents", incident_id, f"responsable={who}")
@@ -263,8 +273,11 @@ def change_status(incident_id):
                      "updated_at = ? WHERE id = ?", (resolution[:MAX_TEXT], ts, ts, incident_id))
         add_note(conn, incident_id, _operator(), f"Cerrado. Resolución: {resolution[:MAX_TEXT]}")
     else:
-        conn.execute("UPDATE incidents SET status = ?, updated_at = ? WHERE id = ?",
-                     (new, ts, incident_id))
+        # started_at se fija la primera vez que el incidente pasa a 'en_progreso'
+        conn.execute("UPDATE incidents SET status = ?, updated_at = ?, "
+                     "started_at = CASE WHEN ? = 'en_progreso' THEN COALESCE(started_at, ?) "
+                     "ELSE started_at END WHERE id = ?",
+                     (new, ts, new, ts, incident_id))
         add_note(conn, incident_id, _operator(), f"Estado: {inc['status']} → {new}")
     conn.commit()
     audit(conn, _operator(), "incident.status", "incidents", incident_id, f"{inc['status']}->{new}")
