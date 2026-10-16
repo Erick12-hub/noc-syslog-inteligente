@@ -5,6 +5,7 @@ Ingesta de eventos: el camino que sigue cada mensaje Syslog hasta la base de dat
        |
        v
     1. parse()                 -> facility, severidad, fabricante, mensaje
+    1b. ¿Fecha del mensaje en el futuro? -> marca 'fecha_futura' (Fase 7)
     2. ¿IP en el inventario?   -> asocia el equipo
     3. ¿Equipo autorizado?     -> lista permitida de fuentes
     4. ¿Prompt injection?      -> marca (NO ejecuta nada)
@@ -25,6 +26,7 @@ from .incidents import auto_incident_from_event, create_incident
 from .rules import apply_rule_hits, evaluate, info_flags
 from .security import STORM, detect_prompt_injection, fingerprint
 from .syslog_parser import parse
+from .timeutil import event_time_to_utc, is_future, now_utc, to_iso_utc
 
 DEDUP_WINDOW_SECONDS = 60
 MAX_IMPORT_LINES = 5000
@@ -54,6 +56,13 @@ def ingest(conn, raw: str, source_ip: str, origin: str, is_simulated: bool = Fal
 
     p = parse(raw)
     flags = list(p["parse_flags"])
+
+    # --- 1b. Fase 7: fecha del mensaje -------------------------------------
+    # Si el equipo envía una fecha posterior a la recepción, NO se rechaza el
+    # evento (es evidencia): se marca 'fecha_futura' = reloj desfasado / NTP.
+    event_utc = event_time_to_utc(p["event_time"])
+    if is_future(event_utc, now_utc()):
+        flags.append("fecha_futura")
 
     # --- 2 y 3. Equipo del inventario y lista permitida --------------------
     device = conn.execute(
@@ -108,13 +117,15 @@ def ingest(conn, raw: str, source_ip: str, origin: str, is_simulated: bool = Fal
     cur = conn.execute(
         "INSERT INTO syslog_events (received_at, event_time, source_ip, device_id, vendor, "
         "facility, severity, hostname, app_name, message, raw, origin, authorized_source, "
-        "mnemonic, flags, fingerprint, dup_count, is_simulated, interface, src_port, dst_port) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)",
+        "mnemonic, flags, fingerprint, dup_count, is_simulated, interface, src_port, dst_port, "
+        "event_time_utc) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)",
         (now_iso(), p["event_time"], source_ip, device["id"] if device else None, vendor,
          p["facility"], p["severity"], p["hostname"], p["app_name"], p["message"],
          raw[:4000], origin, int(authorized), p["mnemonic"],
          ",".join(flags) or None, fp, int(is_simulated),
-         p["interface"], p["src_port"], p["dst_port"]))   # Fase 7
+         p["interface"], p["src_port"], p["dst_port"],      # Fase 7
+         to_iso_utc(event_utc) if event_utc else None))
     conn.commit()
     event_id = cur.lastrowid
 

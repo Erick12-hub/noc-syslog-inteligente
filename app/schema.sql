@@ -73,7 +73,9 @@ CREATE TABLE IF NOT EXISTS syslog_events (
     -- Fase 7: puerto e interfaz involucrados (extraídos del mensaje por el parser)
     interface         TEXT,              -- ej. GigabitEthernet0/0/2, port1, wan1
     src_port          INTEGER CHECK (src_port BETWEEN 1 AND 65535),  -- puerto de origen
-    dst_port          INTEGER CHECK (dst_port BETWEEN 1 AND 65535)   -- puerto de destino (atacado)
+    dst_port          INTEGER CHECK (dst_port BETWEEN 1 AND 65535),  -- puerto de destino (atacado)
+    -- Fase 7: fecha del mensaje convertida a UTC (base del cálculo de desfase NTP)
+    event_time_utc    TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_received ON syslog_events(received_at);

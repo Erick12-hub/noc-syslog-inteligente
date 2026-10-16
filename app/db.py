@@ -72,6 +72,7 @@ MIGRATIONS = [
     ("syslog_events", "interface", "TEXT"),
     ("syslog_events", "src_port", "INTEGER"),
     ("syslog_events", "dst_port", "INTEGER"),
+    ("syslog_events", "event_time_utc", "TEXT"),
     ("incidents", "assigned_at", "TEXT"),
     ("incidents", "started_at", "TEXT"),
 ]
