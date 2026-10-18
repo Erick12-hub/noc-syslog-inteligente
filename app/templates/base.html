@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}NOC Syslog{% endblock %} · NOC Syslog Inteligente</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <!-- Fase 7: tema claro/oscuro. Va en el <head> para aplicar el tema antes de dibujar la página -->
+  <script src="{{ url_for('static', filename='theme.js') }}"></script>
 </head>
 <body>
   <header class="topbar">
@@ -22,6 +24,10 @@
       <a href="{{ url_for('views.consola') }}" class="{{ 'active' if active == 'consola' }}">Consola</a>
       <a href="{{ url_for('views.auditoria') }}" class="{{ 'active' if active == 'auditoria' }}">Auditoría</a>
     </nav>
+    <!-- Fase 7: selector de tema (el texto lo pone theme.js según el tema actual) -->
+    <button class="btn sm theme-toggle" id="theme-toggle" type="button" aria-label="Cambiar tema">
+      <span class="icon" aria-hidden="true">☀</span><span class="label">Claro</span>
+    </button>
   </header>
 
   <!-- Requisito del curso: los datos simulados deben estar claramente identificados -->
