@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS syslog_events (
 CREATE INDEX IF NOT EXISTS idx_events_received ON syslog_events(received_at);
 CREATE INDEX IF NOT EXISTS idx_events_severity ON syslog_events(severity);
 CREATE INDEX IF NOT EXISTS idx_events_device   ON syslog_events(device_id);
-CREATE INDEX IF NOT EXISTS idx_events_fp       ON syslog_events(fingerprint);
+-- (Fase 7.4: el índice por huella pasó a ser compuesto; ver INDEXES en app/db.py)
 
 -- ---------------------------------------------------------------------
 -- 4. Incidentes (creación, asignación, seguimiento y cierre)

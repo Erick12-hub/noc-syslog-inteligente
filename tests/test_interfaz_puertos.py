@@ -175,7 +175,9 @@ def test_migracion_agrega_columnas_sin_borrar_datos(conn):
     ingest(conn, "<187>12: *Oct  5 10:15:42.551: SIM-CORE-RTR01 %LINK-3-UPDOWN: "
                  "Interface Gi0/1, changed state to down", "192.0.2.1", "simulador")
     before = conn.execute("SELECT COUNT(*) FROM syslog_events").fetchone()[0]
-    # Simula una base v0.2.0: se quitan las columnas de la Fase 7
+    # Simula una base v0.2.0: se quitan las columnas de la Fase 7 (y antes el
+    # índice de la Fase 7.4 sobre 'interface', que en v0.2.0 tampoco existía)
+    conn.execute("DROP INDEX IF EXISTS idx_events_interface")
     for table, col in [("syslog_events", "interface"), ("syslog_events", "src_port"),
                        ("syslog_events", "dst_port"), ("incidents", "assigned_at"),
                        ("incidents", "started_at")]:
@@ -189,3 +191,5 @@ def test_migracion_agrega_columnas_sin_borrar_datos(conn):
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(incidents)")}
     assert {"assigned_at", "started_at"} <= cols
     assert conn.execute("SELECT COUNT(*) FROM syslog_events").fetchone()[0] == before
+    # Y el índice se crea después de migrar (Fase 7.4)
+    assert conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'idx_events_interface'").fetchone()
