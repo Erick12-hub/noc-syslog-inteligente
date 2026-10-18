@@ -121,6 +121,11 @@ def scenarios() -> dict:
             (FORTI_FW, fortinet(4, "warning", "0100022921", "system", "Interface wan1 bandwidth usage above 85%",
                                 ahead=timedelta(days=1))),
         ],
+        "suplantacion": [
+            # Fase 7.3: llega a nombre del FortiGate (198.51.100.1) un mensaje con
+            # formato CISCO. El NOC lo guarda y lo marca 'marca_inconsistente'.
+            (FORTI_FW, cisco("SIM-EDGE-FW01", 3, "LINK-3-UPDOWN", "Interface GigabitEthernet0/0/5, changed state to down")),
+        ],
         "no_autorizado": [
             # IP que NO está en el inventario intenta reportar una emergencia falsa
             (UNKNOWN_IP, cisco("SIM-CORE-RTR01", 0, "SYS-0-PANIC", "Core router failure - all interfaces shutting down")),
@@ -177,7 +182,7 @@ def main():
     pause = 0.0 if args.escenario == "tormenta" else args.pausa
     print(f"[SIMULADOR] modo={args.modo}  escenarios={', '.join(names)}  (DATOS SIMULADOS)")
     for name in names:
-        if args.modo == "udp" and name == "no_autorizado":
+        if args.modo == "udp" and name in ("no_autorizado", "suplantacion"):
             print(f"\n[{name}] se omite en modo udp: desde este PC no se puede falsificar la "
                   f"IP de origen. Use --modo directo.")
             continue
