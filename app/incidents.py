@@ -107,6 +107,10 @@ def auto_incident_from_event(conn, event: dict) -> dict | None:
     device = event["device_name"] or "equipo desconocido"
     if "posible_prompt_injection" in (event.get("flags") or []):
         title = f"Posible prompt injection en log de {device}"
+    elif "marca_inconsistente" in (event.get("flags") or []):
+        # Fase 7.3: el contenido NO es confiable (puede venir de un suplantador),
+        # así que el título no repite lo que dice el mensaje.
+        title = f"Marca inconsistente: posible suplantación de {device}"
     else:
         code = (event["mnemonic"] or "").replace("logid=", "FortiOS logid ")
         title = f'{code or "Evento " + SEVERITY_NAMES[event["severity"]]} en {device}'
@@ -136,6 +140,9 @@ def _get(conn, incident_id):
 @bp.get("")
 def list_incidents():
     estado = request.args.get("estado", "abiertos")
+    if estado not in ("abiertos", "todos", *STATUSES):          # Fase 7.3
+        return jsonify(errors=[f"Estado inválido: '{estado[:30]}'. Opciones: abiertos, todos, "
+                               f"{', '.join(STATUSES)}"]), 400
     sql = ("SELECT i.*, d.name AS device_name, "
            "(SELECT COUNT(*) FROM incident_notes n WHERE n.incident_id = i.id) AS notes_count "
            "FROM incidents i LEFT JOIN devices d ON d.id = i.device_id")

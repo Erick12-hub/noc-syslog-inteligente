@@ -165,6 +165,8 @@ def simulate(conn, dev, cmd: str) -> str:
 @bp.get("/allowed")
 def allowed():
     vendor = request.args.get("vendor", "Cisco")
+    if vendor not in ALLOWLIST:                                   # Fase 7.3
+        return jsonify(errors=[f"Marca inválida. Opciones: {', '.join(ALLOWLIST)}"]), 400
     return jsonify(vendor=vendor, allowed=[{"command": c, "description": d}
                                            for c, d in ALLOWLIST.get(vendor, [])])
 

@@ -75,9 +75,11 @@ def test_importar_y_filtrar_eventos(client):
     assert client.get("/api/events?vendor=Huawei").json == []
 
 
-def test_filtros_invalidos_se_ignoran(client):
+def test_filtros_invalidos_responden_400(client):
+    # Fase 7.3: en v0.2.0 esta consulta devolvía 200 con TODOS los eventos
+    # (los filtros inválidos se ignoraban). Ahora se informa cada error.
     r = client.get("/api/events?severity=99&limit=abc&device_id=x")
-    assert r.status_code == 200
+    assert r.status_code == 400 and len(r.json["errors"]) == 3
 
 
 def test_paginas_web_cargan(client):
