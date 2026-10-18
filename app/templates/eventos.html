@@ -40,6 +40,7 @@
         <option value="cuenta_servicio">Regla: cuenta de servicio</option>
         <option value="logs_deshabilitados">Regla: logs deshabilitados</option>
         <option value="fecha_futura">Fecha futura (reloj desfasado)</option>
+        <option value="marca_inconsistente">Marca inconsistente (posible suplantación)</option>
       </select>
     </label>
     <div class="filter-actions">
@@ -70,6 +71,8 @@
     <label>Archivo (.log / .txt, máx. 2 MB)<input type="file" name="file" accept=".log,.txt" required></label>
     <button class="btn primary" type="submit">Importar</button>
   </form>
+  <!-- Fase 7.3: motivo del rechazo (p. ej. el archivo es de otra marca) -->
+  <ul class="errors" id="import-errors"></ul>
   <p class="muted small">Ejemplos en la carpeta <code>samples/</code>. Las líneas que empiezan con <code>#</code> se ignoran.</p>
 </section>
 

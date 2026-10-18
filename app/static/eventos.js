@@ -23,6 +23,7 @@ const FLAG_LABELS = {
   puerto_invalido: ["puerto inválido", "warn"],
   interfaz_invalida: ["interfaz inválida", "warn"],
   fecha_futura: ["fecha futura (reloj/NTP)", "bad"],
+  marca_inconsistente: ["marca inconsistente", "bad"],
 };
 
 /* Fase 7: texto de interfaz y puertos.  ej. "wan1 · 51520 → 3389" */
@@ -159,12 +160,18 @@ async function incidentFromEvent(eventId) {
 
 document.getElementById("frm-import").addEventListener("submit", async (ev) => {
   ev.preventDefault();
+  const importErrors = document.getElementById("import-errors");
+  importErrors.replaceChildren();
   try {
     const s = await api("/api/events/import", { method: "POST", body: new FormData(ev.target) });
     toast(`Importación: ${s.nuevas} nuevos, ${s.duplicadas} duplicados, ${s.ignoradas} ignorados`);
     ev.target.reset();
     loadEvents();
-  } catch (err) { toast(err.message, "err"); }
+  } catch (err) {
+    // Fase 7.3: el motivo queda visible (el toast desaparece a los 4 s)
+    importErrors.replaceChildren(...err.message.split("\n").map(m => el("li", m)));
+    toast("Importación rechazada", "err");
+  }
 });
 
 frmFilters.addEventListener("submit", (ev) => {
