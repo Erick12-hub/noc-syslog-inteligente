@@ -35,6 +35,15 @@ class Config:
 
     # Receptor Syslog UDP. Se usa 5514 porque el puerto estándar 514
     # requiere permisos de administrador.
+    # Fase 7.5: servidor web. 127.0.0.1 = solo este equipo (no queda expuesto a la red).
+    WEB_HOST = os.getenv("WEB_HOST", "127.0.0.1")
+    WEB_PORT = int(os.getenv("WEB_PORT", "5000"))
+    WEB_THREADS = int(os.getenv("WEB_THREADS", "4"))
+    # Modo depuración: APAGADO por defecto. Con debug=True, una página de error
+    # muestra el código fuente y permite ejecutar Python en el navegador (consola
+    # de Werkzeug): nunca debe estar activo fuera del desarrollo.
+    FLASK_DEBUG = os.getenv("FLASK_DEBUG", "0") == "1"
+
     SYSLOG_HOST = os.getenv("SYSLOG_HOST", "127.0.0.1")
     SYSLOG_PORT = int(os.getenv("SYSLOG_PORT", "5514"))
 

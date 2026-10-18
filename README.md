@@ -58,9 +58,12 @@ Se usan **tres consolas**, todas con el entorno activado (`.venv\Scripts\activat
 
 | Consola | Comando | Función |
 |---|---|---|
-| 1 | `python run.py` | Aplicación web → http://127.0.0.1:5000 (dashboard) |
+| 1 | `python serve.py` | Aplicación web con waitress, sin depuración → http://127.0.0.1:5000 (operación y marcha blanca) |
 | 2 | `python manage.py receiver` | Receptor Syslog UDP en 127.0.0.1:5514 |
 | 3 | `python scripts\simulador.py --escenario todos` | Envía eventos simulados |
+
+> Para **desarrollo** se puede usar `python run.py` (servidor de Flask). El modo
+> depuración solo se activa con `FLASK_DEBUG=1` en el `.env`; nunca durante la operación.
 
 Otros comandos:
 
