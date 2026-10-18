@@ -92,12 +92,25 @@ function showFilterWarning(problems) {
 fDesde.addEventListener("change", () => { fHasta.min = fDesde.value || ""; showFilterWarning(dateProblems()); });
 fHasta.addEventListener("change", () => showFilterWarning(dateProblems()));
 
-async function loadEvents() {
+/* Fase 7.4: paginación. Se piden 100 eventos por página en lugar de 200 de golpe;
+ * el total y el número de páginas llegan en encabezados HTTP (X-Total-Count...). */
+const PER_PAGE = 100;
+let currentPage = 1;
+
+async function loadEvents(page = 1) {
   // Solo se envían los filtros con valor
   const params = new URLSearchParams();
   for (const [k, v] of new FormData(frmFilters)) if (v) params.append(k, v);
-  params.append("limit", "200");
-  const events = await api(`/api/events?${params}`);
+  params.append("limit", PER_PAGE);
+  params.append("page", page);
+  // fetch directo (no api()) para poder leer los encabezados de paginación
+  const res = await fetch(`/api/events?${params}`);
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(((body && body.errors) || [`Error HTTP ${res.status}`]).join("\n"));
+  const events = body;
+  const total = Number(res.headers.get("X-Total-Count") || events.length);
+  const pages = Number(res.headers.get("X-Total-Pages") || 1);
+  currentPage = page;
 
   evBody.replaceChildren();
   for (const e of events) {
@@ -116,9 +129,16 @@ async function loadEvents() {
     tr.onclick = () => showEvent(e.id);
     evBody.append(tr);
   }
+  const first = total ? (page - 1) * PER_PAGE + 1 : 0;
   document.getElementById("events-count").textContent =
-    `${events.length} eventos mostrados (máx. 200) · clic en una fila para ver el detalle`;
+    `Eventos ${first}–${first + events.length - (total ? 1 : 0)} de ${total} · página ${page} de ${pages}` +
+    " · clic en una fila para ver el detalle";
+  document.getElementById("btn-prev").disabled = page <= 1;
+  document.getElementById("btn-next").disabled = page >= pages;
 }
+
+document.getElementById("btn-prev").onclick = () => loadEvents(currentPage - 1).catch(e => toast(e.message, "err"));
+document.getElementById("btn-next").onclick = () => loadEvents(currentPage + 1).catch(e => toast(e.message, "err"));
 
 async function showEvent(id) {
   const e = await api(`/api/events/${id}`);
@@ -188,7 +208,7 @@ frmFilters.noValidate = true;
 document.getElementById("btn-clear").onclick = () => setTimeout(() => {
   fHasta.min = ""; showFilterWarning([]); loadEvents();
 }, 0);
-document.getElementById("btn-refresh").onclick = () => loadEvents();
+document.getElementById("btn-refresh").onclick = () => loadEvents(currentPage);
 document.getElementById("btn-close-ev").onclick = () => document.getElementById("dlg-event").close();
 
-Promise.all([loadDeviceOptions(), setupDateLimits()]).then(loadEvents).catch(err => toast(err.message, "err"));
+Promise.all([loadDeviceOptions(), setupDateLimits()]).then(() => loadEvents()).catch(err => toast(err.message, "err"));

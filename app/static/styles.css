@@ -211,6 +211,10 @@ textarea { background: var(--field-bg); color: var(--text); border: 1px solid va
 .timeline li::before { content: ""; position: absolute; left: -20px; top: 5px; width: 10px; height: 10px;
                        border-radius: 50%; background: var(--panel); border: 2px solid var(--accent); }
 
+/* ---------- Fase 7.4: paginación ---------- */
+.pager { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 10px; flex-wrap: wrap; }
+.pager-buttons { display: flex; gap: 4px; }
+
 /* ---------- Fase 7: selector de tema ---------- */
 .topbar-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .theme-toggle { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }

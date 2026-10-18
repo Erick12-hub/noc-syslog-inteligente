@@ -9,7 +9,10 @@ Filtros de GET /api/events (todos opcionales y combinables):
     desde=AAAA-MM-DD   hasta=AAAA-MM-DD  (hora de Colombia; nunca posteriores a hoy)   vendor=Cisco   device_id=3
     severity=3         sev_max=3 (de 0 hasta 3)        flag=fuente_no_autorizada
     interface=Gi0/1    port=22 (puerto de origen O de destino)      [Fase 7]
-    limit=100 (máx. 500)
+    limit=100 (máx. 500)   page=1 (Fase 7.4: paginación)
+
+Fase 7.4: la respuesta sigue siendo una lista, y el total va en encabezados:
+    X-Total-Count: 450   X-Page: 2   X-Per-Page: 100   X-Total-Pages: 5
 
 Fase 7: TODOS los filtros se VALIDAN (app/validation.py). Si un valor no es
 válido se responde 400 con la lista de errores, en vez de ignorarlo en silencio.
@@ -64,6 +67,7 @@ def list_events():
     sev_max = v.integer("sev_max", 0, 7, "Severidad máxima")
     flag = v.choice("flag", KNOWN_FLAGS, "Marca de seguridad")
     limit = v.integer("limit", 1, 500, "Límite", default=100)
+    page = v.integer("page", 1, 100000, "Página", default=1)
     if device_id is not None and get_db().execute(
             "SELECT 1 FROM devices WHERE id = ?", (device_id,)).fetchone() is None:
         errors.append(f"El equipo {device_id} no existe en el inventario")
@@ -101,15 +105,23 @@ def list_events():
     if errors:
         return jsonify(errors=errors), 400
 
+    # where solo contiene textos FIJOS con "?"; los valores van aparte en params
+    where_sql = (" WHERE " + " AND ".join(where)) if where else ""
+    conn = get_db()
+    # Fase 7.4: total de coincidencias (para "Página X de Y") y solo UNA página de filas
+    total = conn.execute(f"SELECT COUNT(*) FROM syslog_events e{where_sql}", params).fetchone()[0]
     sql = ("SELECT e.*, d.name AS device_name, s.name AS severity_name "
            "FROM syslog_events e "
            "LEFT JOIN devices d ON d.id = e.device_id "
-           "JOIN severities s ON s.code = e.severity")
-    if where:
-        sql += " WHERE " + " AND ".join(where)
-    sql += " ORDER BY e.id DESC LIMIT ?"
-    rows = get_db().execute(sql, (*params, limit)).fetchall()
-    return jsonify([dict(r) for r in rows])
+           "JOIN severities s ON s.code = e.severity"
+           f"{where_sql} ORDER BY e.id DESC LIMIT ? OFFSET ?")
+    rows = conn.execute(sql, (*params, limit, (page - 1) * limit)).fetchall()
+    resp = jsonify([dict(r) for r in rows])
+    resp.headers["X-Total-Count"] = str(total)
+    resp.headers["X-Page"] = str(page)
+    resp.headers["X-Per-Page"] = str(limit)
+    resp.headers["X-Total-Pages"] = str(max(1, -(-total // limit)))   # división hacia arriba
+    return resp
 
 
 @bp.get("/<int:event_id>")
