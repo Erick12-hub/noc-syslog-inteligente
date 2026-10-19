@@ -383,15 +383,113 @@ Documento detallado: [`docs/FASE5_proceso_completo.txt`](FASE5_proceso_completo.
 
 ---
 
+# Corte 3 — Herramienta madura (v1.0.0)
+
+## Fase 7 — Mejoras del Corte 2 (v0.2.1)
+
+**Fechas:** 2026-10-15 a 2026-10-17 · **Rama:** `feature/fase7-mejoras` · **Estado:** ✅ Cerrada (release v0.2.1)
+
+Objetivo: corregir los hallazgos de la revisión del Corte 2 y dejar la base lista
+(validada, optimizada y con servidor de operación) antes de conectar equipos reales.
+Todos los datos de las pruebas son **SIMULADOS**.
+
+### Qué se realizó
+
+| Paso | Actividad | Archivo(s) | Pruebas |
+|---|---|---|---|
+| 7.1 | Interfaz y puertos de origen/destino en cada evento (Cisco, Huawei, Fortinet), normalización `Gi0/1 → GigabitEthernet0/1`, filtros Interfaz y Puerto validados. Fechas `assigned_at` y `started_at` en incidentes (base de MTTA/MTTR). Migración sin pérdida de datos | `syslog_parser.py`, `ingest.py`, `events.py`, `incidents.py`, `db.py`, `schema.sql`, `eventos.*`, `incidentes.js` | 76 → 112 |
+| 7.2 | Filtro de fecha en hora de Colombia, sin fechas futuras (interfaz y servidor), `desde ≤ hasta`, aviso visible. Marca `fecha_futura` (reloj desfasado / NTP) y columna `event_time_utc`. Escenario `reloj_desfasado` | `timeutil.py` (nuevo), `config.py`, `events.py`, `ingest.py`, `eventos.*`, `simulador.py` | 112 → 131 |
+| Tema | Selector de tema claro y oscuro; todos los colores como variables | `styles.css`, `theme.js` (nuevo), `base.html` | 131 → 134 |
+| 7.3 | Parámetros inválidos responden 400 con todos los errores (eventos, incidentes, auditoría, consola). Coherencia equipo-marca: importación rechazada (409, auditada), evento `marca_inconsistente`, configuración de otra marca rechazada. Escenario `suplantacion` | `validation.py` (nuevo), `events.py`, `ingest.py`, `manage.py`, `configgen.py`, `audit_api.py`, `console.py`, `incidents.py` | 134 → 156 |
+| 7.4 | SQLite en modo WAL con `busy_timeout`; 6 índices compuestos verificados con `EXPLAIN QUERY PLAN`; paginación de eventos (100 por página, total en `X-Total-Count`) | `db.py`, `events.py`, `eventos.*` | 156 → 168 |
+| 7.5 | Servidor de operación `serve.py` (waitress, 4 hilos, sin depuración); `run.py` sin `debug=True` fijo (`FLASK_DEBUG` en `.env`) | `serve.py` (nuevo), `run.py`, `config.py`, `requirements.txt` | (en 7.4) |
+| 7.6 | GitHub Actions con `checkout@v5` y `setup-python@v6` (Node.js 24): se elimina el aviso de Node.js 20 | `.github/workflows/pruebas.yml` | — |
+| Cierre | Versión 0.2.1, CHANGELOG, README, bitácora, `FASE7_proceso_completo.txt`, PR y release | `app/__init__.py`, `CHANGELOG.md`, `README.md`, `docs/` | 168 |
+
+### Historial de commits de la Fase 7
+
+| Commit | Mensaje |
+|---|---|
+| c722b44 | docs: proceso completo de la fase 5, bitacora y evidencias del cierre del Corte 2 *(pendiente del Corte 2)* |
+| 14df589 | feat(eventos): interfaz y puertos en eventos con filtros validados |
+| b4d8672 | feat(incidentes): fecha de asignacion e inicio para MTTA y MTTR |
+| fe7501e | test: 36 pruebas de interfaz, puertos, tiempos y migracion (112 en total) |
+| 7ac0b57 | docs: evidencias del paso 7.1 (interfaz, puertos y tiempos) |
+| d7d8695 | feat(fechas): filtro de fecha hasta hoy en hora de Colombia con aviso visible |
+| edfb481 | feat(eventos): marca fecha_futura y fecha del mensaje en UTC para NTP |
+| ecde8cc | feat(simulador): escenario reloj_desfasado |
+| 4faa2e9 | test: 19 pruebas de fechas, zona horaria y fecha futura (131 en total) |
+| 05daa8c | docs: evidencias del paso 7.2 (fechas y reloj desfasado) |
+| c0b99bc | feat(interfaz): selector de tema claro y oscuro con variables de color |
+| 506a2fa | test: 3 pruebas del selector de tema *(el mensaje dice 156; en ese commit son 134)* |
+| 55384ef | feat(seguridad): coherencia equipo-marca en importacion, ingesta y configuraciones |
+| d2426bf | fix(api): parametros invalidos responden 400 en lugar de ignorarse |
+| 831d7b8 | feat(simulador): escenario suplantacion |
+| 83e552a | test: 22 pruebas de validacion de parametros y coherencia equipo-marca (156 en total) |
+| cb29848 | perf(db): modo WAL e indices compuestos para deduplicacion, filtros y correlacion |
+| 2777780 | feat(eventos): paginacion de 100 eventos con total en encabezados |
+| 1ba10b5 | feat(deploy): servidor waitress sin depuracion y debug solo por .env |
+| fa02cd1 | ci: actions checkout v5 y setup-python v6 (Node.js 24) |
+| ac76f25 | test: 12 pruebas de indices, WAL, paginacion y servidor (168 en total) |
+| 2d6e4a9 | chore(release): version 0.2.1, ... *(por un error al pegar el comando solo contiene las capturas 19–22)* |
+| (siguiente) | chore(release): archivos de la version 0.2.1: changelog, readme, bitacora y proceso de la fase 7 |
+
+Cada commit se verificó por separado: todos pasan sus pruebas (también los intermedios).
+
+### Evidencias de la Fase 7 (`docs/evidencias/`)
+
+| Archivo | Qué muestra |
+|---|---|
+| C3-F7-01_pruebas_112_passed | 112 pruebas en verde (paso 7.1) |
+| C3-F7-02_consola_importacion_3_equipos | Importación correcta de los tres logs de ejemplo |
+| C3-F7-03_web_eventos_interfaz_puerto | Columna "Interfaz / puerto" (`GigabitEthernet0/0/2`, `wan1 · 51520 → 3389`) |
+| C3-F7-04_web_filtro_interfaz_corta | Filtro `Gi0/0/2` encuentra `GigabitEthernet0/0/2` |
+| C3-F7-05_web_filtro_puerto_detalle | Filtro por puerto 3389 y detalle con puertos de origen y destino |
+| C3-F7-06_web_puerto_invalido_navegador | Validación en la interfaz (puerto 70000) |
+| C3-F7-07_api_puerto_invalido_400 | El servidor responde 400 (puerto e interfaz inválidos) |
+| C3-F7-08 / 08b | Incidente con tiempos "Asignado / En progreso / Cerrado … después" |
+| C3-F7-11_pruebas_131_passed | 131 pruebas en verde (paso 7.2) |
+| C3-F7-12 / 13 | Aviso de fecha futura y de rango invertido |
+| C3-F7-14_api_fecha_futura_400 | El servidor rechaza una fecha futura |
+| C3-F7-15 / 16 / 17 | Simulador `reloj_desfasado`, eventos marcados y detalle con 2 h de desfase |
+| C3-F7-18_web_filtro_hoy | Filtro "hoy" con eventos de hoy (hora de Colombia) |
+| C3-F7-19_pruebas_168_passed | 168 pruebas en verde (pasos 7.4–7.6) |
+| C3-F7-20_consola_serve_waitress | `serve.py` con waitress, sin depuración |
+| C3-F7-21_web_eventos_paginacion | Paginación: "Eventos 101–… de …" |
+| C3-F7-22_github_actions | GitHub Actions con checkout@v5 y setup-python@v6 (Node.js 24) |
+
+No se tomaron capturas del paso 7.3 ni del tema claro/oscuro (decisión del estudiante); su
+verificación queda en las 25 pruebas automáticas correspondientes y en este registro.
+
+### Observaciones de la Fase 7
+
+| Situación | Explicación / acción |
+|---|---|
+| Se importó el log de Cisco con las IP del FortiGate y del router Huawei | La v0.2.0 lo aceptó sin aviso y dejó 22 eventos Cisco a nombre de otros equipos. Se respaldó la base (`ren data\noc.db noc_respaldo_2026-10-15.db`), se recreó y se importó bien. **Hallazgo:** originó la validación de coherencia equipo-marca del paso 7.3 |
+| Prueba de cambio de año fallida (paso 7.2) | El 31-dic 23:59 en Bogotá ya es 1-ene en UTC: la prueba comparaba el año en UTC. El código estaba bien; se corrigió la prueba para comparar la fecha completa |
+| `test_filtros_invalidos_se_ignoran` (Corte 2) dejó de pasar | Es el comportamiento que se corrigió a propósito. Se reemplazó por `test_filtros_invalidos_responden_400` |
+| El evento suplantado abrió un incidente titulado "LINK-3-UPDOWN en SIM-EDGE-FW01" | Engañaba al operador. Ahora se titula "Marca inconsistente: posible suplantación de …" sin repetir el contenido del mensaje |
+| Pruebas de paginación con 25 eventos daban 1 | La deduplicación ignora los números: "mensaje 1" y "mensaje 2" tienen la misma huella. Se usaron textos con letras distintas |
+| Prueba de migración del 7.1 falló al agregar índices | SQLite no permite borrar una columna indexada; la prueba ahora quita antes el índice (como en una base v0.2.0) |
+| El tema se subió antes que el paso 7.3 | Orden distinto al planeado; no afecta porque tocan archivos diferentes. El commit `506a2fa` dice "156 en total" pero en ese punto son 134; no se reescribió un commit ya publicado |
+| Eventos guardados con v0.2.0 sin interfaz ni puertos | Los datos no se recalculan: el evento se guarda tal como llegó. Limitación declarada en el README |
+| El commit `2d6e4a9` solo subió las capturas | El `git add` se pegó dos veces en una línea (`...txtgit add ...`) y falló; el commit se hizo igual con las capturas ya preparadas. Los archivos de la versión se subieron en el commit siguiente. No se reescribió un commit publicado |
+| `git diff` quedó en `(END)` | Es el visor de páginas de Git: se sale con `q`; se usa `git --no-pager` |
+
+Documento detallado: [`docs/FASE7_proceso_completo.txt`](FASE7_proceso_completo.txt)
+
+---
+
 ## Próximos pasos — Corte 3 (v1.0.0)
 
-| Pendiente | Origen |
-|---|---|
-| Inicio de sesión y roles (operador, auditor, administrador); el actor sale de la sesión | Guía · limitación del MVP |
-| Gestor SSH a través del backend, con lista de hosts y comandos permitidos | Guía Corte 3 |
-| Alertas por Telegram sin exponer el token (`.env`) | Guía Corte 3 |
-| Syslog sobre TLS (RFC 5425), retención, respaldo e integridad encadenada de la auditoría | Guía · controles |
-| Marcha blanca con equipos autorizados y bitácora de resultados | Guía Corte 3 |
-| Servidor WSGI sin modo depuración, despliegue y rollback | Guía Corte 3 |
-| Actualizar `actions/checkout` y `actions/setup-python` (aviso de Node.js 20) | Fase 5 |
-| Manual técnico y manual de usuario | Guía Corte 3 |
+| Fase | Fechas | Pendiente |
+|---|---|---|
+| 8 | Sáb 17 - Dom 18 | Inicio de sesión y roles (operador, auditor, administrador de seguridad), ventana de administración de seguridad, auditoría encadenada, tabla `interfaces` por equipo |
+| 9 | Lun 19 - Mié 21 | Equipos autorizados del laboratorio: gestor SSH por backend (Netmiko), interfaces reales, troubleshooting (ping, traceroute/tracert, show/display), NTP, chequeo de consistencia, políticas Syslog aplicadas y verificadas. Inicio de la marcha blanca |
+| 10 | Jue 22 | Gestión de cambios: matriz de riesgo, versiones de configuración con diff, aprobación por etapas, rollback; tablero MTTA/MTTR |
+| 11 | Vie 23 | Alertas por Telegram (token en `.env`) y defensa IA mejorada |
+| 12 | Sáb 24 - Dom 25 | Pruebas funcionales, de seguridad, carga, respaldo, recuperación y rollback; cierre de la marcha blanca |
+| 13 | Lun 26 | Despliegue y rollback documentados, manual técnico y de usuario, release v1.0.0 |
+| 14 | Mar 27 | Informe `Corte3_NOC_Syslog_Castro_Erick.pdf` y sustentación |
+
+Completados en la Fase 7: servidor WSGI sin depuración (waitress) y actualización de las acciones de GitHub.
