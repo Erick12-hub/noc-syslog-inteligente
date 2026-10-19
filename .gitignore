@@ -7,6 +7,8 @@ secrets/
 # --- Base de datos local (se regenera con manage.py) ---
 data/*.db
 data/*.db-journal
+data/*.db-wal
+data/*.db-shm
 
 # --- Entorno virtual de Python ---
 .venv/

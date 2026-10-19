@@ -7,7 +7,7 @@ eventos Syslog de equipos **Cisco, Fortinet y Huawei**, con controles de segurid
 acciones no autorizadas de agentes de IA.
 
 > Proyecto individual · Administración y Gestión de Redes · 2026-2 · Ing. John Harold Pérez Calderón
-> **Versión:** v0.2.0 (MVP) · [CHANGELOG](CHANGELOG.md)
+> **Versión:** v0.2.1 (mejoras del Corte 2, inicio del Corte 3) · [CHANGELOG](CHANGELOG.md)
 > ⚠️ **Todos los equipos y eventos incluidos son DATOS SIMULADOS** (prefijo `SIM-`, IP de documentación RFC 5737).
 
 ## Funcionalidades
@@ -19,7 +19,11 @@ acciones no autorizadas de agentes de IA.
 | Importación de archivos `.log` | ✅ |
 | Parser RFC 3164 / RFC 5424 + formatos Cisco IOS, FortiOS y Huawei VRP | ✅ |
 | Clasificación por equipo, fabricante, fecha, facility y severidad (0–7) | ✅ |
-| Filtros por fecha, marca, equipo, severidad y marca de seguridad | ✅ |
+| Filtros por fecha (hora de Colombia, sin fechas futuras), marca, equipo, severidad, interfaz, puerto y marca de seguridad, con paginación | ✅ |
+| Interfaz y puertos de origen/destino en cada evento | ✅ |
+| Detección de reloj desfasado (`fecha_futura`) y de marca inconsistente (posible suplantación) | ✅ |
+| Validación de parámetros: un valor inválido responde 400 con todos los errores | ✅ |
+| Tema claro y oscuro | ✅ |
 | Lista permitida de fuentes, deduplicación, detección de prompt injection | ✅ |
 | Dashboard: equipos por estado, eventos 24 h, críticos, alertas de seguridad, gráficas | ✅ |
 | Incidentes automáticos (severidad 0–3 de fuente autorizada) con correlación | ✅ |
@@ -58,9 +62,12 @@ Se usan **tres consolas**, todas con el entorno activado (`.venv\Scripts\activat
 
 | Consola | Comando | Función |
 |---|---|---|
-| 1 | `python run.py` | Aplicación web → http://127.0.0.1:5000 (dashboard) |
+| 1 | `python serve.py` | Aplicación web con waitress, sin depuración → http://127.0.0.1:5000 (operación y marcha blanca) |
 | 2 | `python manage.py receiver` | Receptor Syslog UDP en 127.0.0.1:5514 |
 | 3 | `python scripts\simulador.py --escenario todos` | Envía eventos simulados |
+
+> Para **desarrollo** se puede usar `python run.py` (servidor de Flask). El modo
+> depuración solo se activa con `FLASK_DEBUG=1` en el `.env`; nunca durante la operación.
 
 Otros comandos:
 
@@ -78,10 +85,12 @@ python manage.py check-db
 python -m pytest -v
 ```
 
-76 pruebas automáticas: parser (PRI, Cisco, Huawei, Fortinet, RFC 5424, límites), ingesta
+168 pruebas automáticas: parser (PRI, Cisco, Huawei, Fortinet, RFC 5424, límites), ingesta
 (lista permitida, deduplicación, prompt injection), API (CRUD, validaciones, filtros, importación),
 incidentes (creación automática, correlación, transiciones de estado, cierre con resolución), dashboard
 y seguridad (configuraciones, consola, reglas, tormentas, propuestas con aprobación humana, auditoría).
+Desde v0.2.1: interfaz y puertos, fechas y zona horaria, validación de parámetros, coherencia
+equipo-marca, índices y WAL, paginación, servidor waitress y tema claro/oscuro.
 
 ## Variables de configuración (`.env`)
 
@@ -119,7 +128,9 @@ Política completa: [docs/04_politica_ia.md](docs/04_politica_ia.md).
 
 ## Limitaciones conocidas
 
-- Sin inicio de sesión ni roles (previsto para el Corte 3); las acciones se firman con `DEFAULT_OPERATOR`.
+- Sin inicio de sesión ni roles (previsto para la Fase 8); las acciones se firman con `DEFAULT_OPERATOR`.
+- Los eventos guardados antes de v0.2.1 no tienen interfaz ni puertos: los datos no se recalculan.
+- La fecha de mensajes sin zona horaria se interpreta en hora de Colombia; la zona por equipo llega en la Fase 9.
 - La detección de prompt injection es heurística (por patrones): marca, no bloquea.
 - La ejecución de propuestas y la consola son **simuladas**: no se conectan a ningún equipo.
 - El límite de tormentas vive en memoria del receptor (se reinicia con él).

@@ -1,0 +1,1378 @@
+################################################################################
+#                                                                              #
+#                       NOC SYSLOG INTELIGENTE                                 #
+#         FASE 7 - PROCESO COMPLETO, COMANDOS EXPLICADOS Y CÓDIGO COMENTADO    #
+#              Mejoras del Corte 2 y publicación de la versión v0.2.1          #
+#                                                                              #
+################################################################################
+
+  Proyecto    : NOC Syslog Inteligente (proyecto individual)
+  Asignatura  : Administración y Gestión de Redes - Periodo 2026-2
+  Docente     : Ing. John Harold Pérez Calderón
+  Estudiante  : Erick Santiago Castro Linares (GitHub: Erick12-hub)
+  Repositorio : https://github.com/Erick12-hub/noc-syslog-inteligente
+  Versión     : v0.2.1 (primera versión del Corte 3)
+  Fechas      : 2026-10-15 a 2026-10-17
+  Rama        : feature/fase7-mejoras  ->  develop  ->  main
+  Entorno     : Windows 11 · Anaconda Prompt · Python 3.14.7 · Git · GitHub
+                GitHub Actions (Python 3.12 y 3.14 en ubuntu-latest)
+
+  Propósito de este documento:
+    Explicar qué se mejoró del MVP (v0.2.0), por qué, cómo se probó y cómo se
+    publicó. Cada comando con su explicación y su resultado real, y el código
+    nuevo numerado y comentado para poder explicarlo en la sustentación.
+
+  Convenciones:
+    >     comando escrito en Anaconda Prompt
+    =>    resultado obtenido (copiado de la consola real)
+    [OK]  verificación superada
+    [E]   evidencia (captura) guardada en docs/evidencias/
+    TODOS LOS EQUIPOS Y EVENTOS SON DATOS SIMULADOS (prefijo SIM-, IP RFC 5737).
+
+
+================================================================================
+ ÍNDICE
+================================================================================
+   1. Resumen de la Fase 7
+   2. Conceptos nuevos
+   3. Cronología: cada paso y cada comando, explicado
+   4. Código nuevo comentado
+        4.1  Interfaz y puertos (app/syslog_parser.py)
+        4.2  Fechas y zona horaria (app/timeutil.py)
+        4.3  Validación de parámetros (app/validation.py)
+        4.4  Coherencia equipo-marca (app/ingest.py)
+        4.5  Listado de eventos: validación, fechas y paginación (app/events.py)
+        4.6  Base de datos: WAL, migraciones e índices (app/db.py)
+        4.7  Servidor de operación (serve.py y run.py)
+        4.8  Tema claro y oscuro (app/static/theme.js)
+        4.9  Integración continua (.github/workflows/pruebas.yml)
+   5. Pruebas automáticas (76 -> 168)
+   6. Seguridad aplicada en la Fase 7
+   7. Problemas y observaciones
+   8. Control de versiones: historial de la fase
+   9. Evidencias de la Fase 7
+  10. Preguntas probables de sustentación (con respuesta)
+  11. Pregunta de validación del estudiante
+  12. Lista de verificación de cierre
+
+
+
+================================================================================
+ 1. RESUMEN DE LA FASE 7
+================================================================================
+
+
+ OBJETIVO
+   Corregir los hallazgos de la revisión del Corte 2 antes de conectar equipos
+   reales: datos más completos (interfaz y puertos), fechas correctas, ningún
+   error pequeño ignorado en silencio, coherencia entre equipo y marca, una
+   base de datos preparada para más carga y un servidor apto para operar.
+
+ RESULTADO
+   [OK] Cada evento muestra la interfaz (GigabitEthernet0/0/2, wan1) y los
+        puertos de origen y destino (51515 -> 23) cuando el mensaje los trae.
+   [OK] Incidentes con fecha de asignación e inicio: base de MTTA y MTTR.
+   [OK] Filtro de fecha en hora de Colombia, sin fechas futuras, con aviso.
+   [OK] Eventos con reloj adelantado marcados 'fecha_futura' (problema NTP).
+   [OK] Parámetros inválidos -> 400 con todos los errores (antes se ignoraban).
+   [OK] Archivo o mensaje de otra marca: rechazado (importación) o marcado
+        'marca_inconsistente' (posible suplantación).
+   [OK] SQLite en modo WAL, 6 índices compuestos y paginación de 100 eventos.
+   [OK] Servidor de operación waitress (serve.py) sin modo depuración.
+   [OK] GitHub Actions sin el aviso de Node.js 20.
+   [OK] Tema claro y oscuro.
+   [OK] 168 pruebas automáticas en verde (76 en v0.2.0): +92.
+   [OK] Versión 0.2.1, CHANGELOG, README, PR y release.
+
+ HALLAZGOS DEL CORTE 2 Y CÓMO SE ATENDIERON
+   | Hallazgo de la revisión                         | Paso | Solución                         |
+   |-------------------------------------------------|------|----------------------------------|
+   | Mostrar el puerto/interfaz del evento           | 7.1  | Columnas interface/src/dst_port  |
+   | Filtro de fecha: no permitir fechas futuras     | 7.2  | Validación interfaz + servidor   |
+   | Validación ("los detalles cuentan")             | 7.3  | 400 con errores + coherencia     |
+   | Optimización de recursos                        | 7.4  | WAL, índices, paginación         |
+   | Servidor Flask de desarrollo (limitación)       | 7.5  | waitress, debug apagado          |
+   | Aviso Node.js 20 en Actions (limitación)        | 7.6  | checkout@v5, setup-python@v6     |
+   | NTP (estado y desfase)                          | 7.2  | Base: event_time_utc + marca     |
+   | Tiempos de respuesta del personal               | 7.1  | Base: assigned_at, started_at    |
+
+
+
+================================================================================
+ 2. CONCEPTOS NUEVOS
+================================================================================
+
+
+ 2.1 Interfaz y puerto: dos significados de "puerto"
+   - Puerto FÍSICO = interfaz (capas 1 y 2): la boca del equipo donde va el
+     cable. Ej. GigabitEthernet0/0/2. Responde "¿por dónde se cayó el enlace?".
+   - Puerto LÓGICO = puerto TCP/UDP (capa 4): número 1-65535 de un servicio.
+     22 = SSH, 23 = Telnet, 3389 = escritorio remoto, 514 = Syslog.
+     Origen (src_port): lo elige al azar quien inicia la conexión (ej. 51515).
+     Destino (dst_port): el servicio atacado. Es el dato clave en seguridad.
+   La aplicación NO escanea puertos: solo LEE lo que el equipo reporta en el log.
+
+ 2.2 UTC y hora local
+   El NOC guarda todo en UTC (estándar universal, sin horario de verano).
+   Colombia = UTC-5. Un día de Bogotá va de las 05:00Z a las 04:59:59Z del día
+   siguiente. Si se filtra "16-oct" en UTC, los eventos de Bogotá después de
+   las 7 p. m. del 16 quedan en el 17: ese era el error del Corte 2.
+
+ 2.3 Fecha futura: dos casos distintos
+   - En el FILTRO (la escribe el operador): se RECHAZA (no existen datos del futuro).
+   - En el EVENTO (la envía el equipo): se GUARDA y se marca 'fecha_futura',
+     porque es evidencia de un reloj desfasado (NTP caído o mal configurado).
+
+ 2.4 Validación "fallar en voz alta"
+   Antes: /api/events?severity=99 -> 200 con TODOS los eventos. El operador
+   creía ver un filtro que no se aplicaba. Ahora: 400 y la lista completa de
+   errores. Un error visible se corrige; uno silencioso produce decisiones
+   equivocadas.
+
+ 2.5 Coherencia equipo-marca
+   Cada fabricante escribe sus logs con un formato propio:
+     Cisco    %LINK-3-UPDOWN: ...
+     Huawei   %%01IFNET/2/LINK_STATE(l): ...
+     Fortinet date=... logid="..." level=...
+   Si la IP pertenece a un FortiGate y llega un mensaje con formato Cisco, o el
+   inventario está mal o alguien SUPLANTA la IP del firewall.
+
+ 2.6 WAL (Write-Ahead Logging)
+   Modo de SQLite en el que las escrituras van primero a un archivo aparte
+   (noc.db-wal). Así el receptor puede escribir mientras la web lee, sin
+   bloquearse. busy_timeout = esperar hasta 5 s si otra conexión escribe.
+
+ 2.7 Índice compuesto
+   Como el índice de un libro, pero por dos columnas a la vez:
+   (device_id, received_at) permite ir directo a "eventos del equipo 3 desde
+   el lunes" sin leer toda la tabla. EXPLAIN QUERY PLAN muestra si SQLite lo usa.
+
+ 2.8 Paginación
+   Pedir los datos por partes (100 por página) en vez de todos. El total se
+   envía en encabezados HTTP (X-Total-Count) para no cambiar el formato de la
+   respuesta (sigue siendo una lista).
+
+ 2.9 WSGI y waitress
+   WSGI es la interfaz estándar entre un servidor web y una aplicación Python.
+   Flask es la aplicación; waitress es un servidor WSGI de producción (varios
+   hilos, sin consola de depuración, Python puro: funciona en Windows).
+   El servidor de Flask (run.py) es solo para desarrollo: en modo debug una
+   página de error permite EJECUTAR CÓDIGO desde el navegador.
+
+
+
+================================================================================
+ 3. CRONOLOGÍA: CADA PASO Y CADA COMANDO, EXPLICADO
+================================================================================
+
+
+ ----- PASO 0. Rama de trabajo --------------------------------------------------
+ > git checkout develop
+ > git pull
+ > git checkout -b feature/fase7-mejoras
+   checkout -b  crea una rama nueva y se cambia a ella. Todo el trabajo de la
+                Fase 7 queda aislado de develop hasta que se revise en un PR.
+ > .venv\Scripts\activate
+ > python -m pytest -q
+ => 76 passed                                                            [OK]
+
+ ----- PASO 7.1. Interfaz, puertos y tiempos de incidentes ---------------------
+ Se reemplazaron 11 archivos y se agregó tests/test_interfaz_puertos.py.
+ > python -m pytest -q
+ => 112 passed in 19.83s                                                 [OK]
+ [E] C3-F7-01_pruebas_112_passed.png
+
+ Prueba en vivo con 3 consolas:
+   Consola 1 > python run.py
+   Consola 2 > python manage.py receiver
+   Consola 3 > python manage.py import-log samples\SIM-CORE-RTR01_cisco.log --ip 192.0.2.1
+ => {'leidas': 11, 'nuevas': 11, 'duplicadas': 0, 'ignoradas': 2, 'incidentes_nuevos': 2}
+   La base del Corte 2 se migró sola al arrancar (columnas nuevas, datos intactos).
+
+ HALLAZGO EN VIVO: se importó el MISMO log de Cisco con --ip 198.51.100.1
+ (FortiGate) y --ip 198.51.100.20 (Huawei). La v0.2.0 lo aceptó sin aviso.
+ Se limpió la base sin perder la anterior:
+ > ren data\noc.db noc_respaldo_2026-10-15.db
+   ren  renombra: la base dañada queda como respaldo, no se borra.
+ > python manage.py init-db --seed
+   Crea una base nueva con los 7 equipos simulados.
+ > python manage.py import-log samples\SIM-CORE-RTR01_cisco.log --ip 192.0.2.1
+ > python manage.py import-log samples\SIM-EDGE-FW01_fortinet.log --ip 198.51.100.1
+ > python manage.py import-log samples\SIM-BR-RTR02_huawei.log --ip 198.51.100.20
+ [E] C3-F7-02 ... C3-F7-08b (interfaz/puerto, filtros, error 400, tiempos)
+
+ > git add app/db.py app/schema.sql app/syslog_parser.py app/ingest.py app/events.py
+           app/templates/eventos.html app/static/eventos.js samples/...
+ > git commit -m "feat(eventos): interfaz y puertos en eventos con filtros validados"
+ > git add app/incidents.py app/static/incidentes.js
+ > git commit -m "feat(incidentes): fecha de asignacion e inicio para MTTA y MTTR"
+ > git add tests/test_interfaz_puertos.py
+ > git commit -m "test: 36 pruebas de interfaz, puertos, tiempos y migracion (112 en total)"
+ > git add docs/evidencias/C3-F7-*.png
+ > git commit -m "docs: evidencias del paso 7.1 (interfaz, puertos y tiempos)"
+ > git push -u origin feature/fase7-mejoras
+   -u  enlaza la rama local con la de GitHub: los siguientes push no necesitan
+       el nombre de la rama.
+ => * [new branch] feature/fase7-mejoras -> feature/fase7-mejoras         [OK]
+ Antes se subió el cierre pendiente del Corte 2 (c722b44: FASE5 y capturas F5).
+
+ ----- PASO 7.2. Fechas en hora de Colombia y reloj desfasado -------------------
+ > python -m pytest -q
+ => 131 passed                                                           [OK]
+ Consola 3 > python scripts\simulador.py --escenario reloj_desfasado
+   Envía un Cisco con el reloj 2 h adelantado y un FortiGate 1 día adelantado.
+ => los dos eventos quedan con la marca 'fecha_futura'                     [OK]
+ [E] C3-F7-11 ... C3-F7-18
+ 4 commits de código (d7d8695, edfb481, ecde8cc, 4faa2e9) y 1 de evidencias
+ (05daa8c). El primer intento del commit de evidencias quedó sin hacer (los
+ archivos estaban en "Changes to be committed"); se completó y se subió.
+
+ ----- PASO "Tema". Selector claro / oscuro --------------------------------------
+ > python -m pytest -q
+ => 156 passed (con el paso 7.3 ya aplicado en la carpeta)
+ > git commit ... (c0b99bc, 506a2fa)  ->  git push
+   Se subió ANTES que los commits del 7.3 (ver sección 7).
+
+ ----- PASO 7.3. Validación de parámetros y coherencia equipo-marca -------------
+ > python -m pytest -q
+ => 156 passed in 13.40s                                                 [OK]
+ Orden de commits elegido para que cada uno funcione solo: primero
+ ingest.py (que define check_import_vendor) y después events.py (que lo usa).
+ > git commit -m "feat(seguridad): coherencia equipo-marca en importacion, ingesta y configuraciones"
+ > git commit -m "fix(api): parametros invalidos responden 400 en lugar de ignorarse"
+ > git commit -m "feat(simulador): escenario suplantacion"
+ > git commit -m "test: 22 pruebas de validacion de parametros y coherencia equipo-marca (156 en total)"
+ > git push
+ => 506a2fa..83e552a  feature/fase7-mejoras -> feature/fase7-mejoras      [OK]
+ Verificación: se ejecutaron las pruebas en CADA commit publicado (incluidos
+ los intermedios): todos en verde.
+
+ ----- PASOS 7.4 a 7.6. Optimización, servidor y acciones -----------------------
+ > python -m pip install -r requirements.txt
+   Instala la dependencia nueva (waitress 3.0.2). Las demás ya estaban.
+ => Successfully installed waitress-3.0.2                                [OK]
+ > python -m pytest -q
+ => 168 passed in 9.71s                                                  [OK]
+ [E] C3-F7-19_pruebas_168_passed.png
+ Consola 1 > python serve.py
+ => [NOC] NOC Syslog Inteligente v0.2.0 (waitress, sin depuración)
+    Serving on http://127.0.0.1:5000                                     [OK]
+ [E] C3-F7-20_consola_serve_waitress.png
+ Consola 3 > python scripts\simulador.py --escenario tormenta --modo directo
+   150 eventos distintos (en modo directo no aplica el límite de tormentas,
+   que es del receptor UDP): suficientes para tener 2 páginas.
+ [E] C3-F7-21_web_eventos_paginacion.png
+ > git commit -m "perf(db): modo WAL e indices compuestos para deduplicacion, filtros y correlacion"
+ > git commit -m "feat(eventos): paginacion de 100 eventos con total en encabezados"
+ > git commit -m "feat(deploy): servidor waitress sin depuracion y debug solo por .env"
+ > git commit -m "ci: actions checkout v5 y setup-python v6 (Node.js 24)"
+ > git commit -m "test: 12 pruebas de indices, WAL, paginacion y servidor (168 en total)"
+ > git push
+ => 83e552a..ac76f25  feature/fase7-mejoras -> feature/fase7-mejoras      [OK]
+ [E] C3-F7-22_github_actions.png
+
+ ----- CIERRE. Versión, documentación, Pull Request y release -------------------
+ (Ver los comandos completos en la sección 8.)
+
+
+
+================================================================================
+ 4. CÓDIGO NUEVO COMENTADO
+================================================================================
+
+
+--------------------------------------------------------------------------------
+ 4.1 Interfaz y puertos (app/syslog_parser.py)
+--------------------------------------------------------------------------------
+
+
+ Qué hace: busca en el texto del mensaje la interfaz y los puertos con
+ expresiones regulares propias de cada fabricante, y valida lo que encuentra.
+
+  +--- app/syslog_parser.py --------------------------------------------------
+  | 117 | # Fase 7: interfaz y puertos involucrados en el evento
+  | 118 | # ---------------------------------------------------------------------------
+  | 119 | # Nombres LARGOS de interfaz (Cisco y Huawei). El número admite ranuras
+  | 120 | # (0/0/1) y subinterfaces (.100).   ej. GigabitEthernet0/0/2, Vlanif10, Eth-Trunk1
+  | 121 | RE_IFACE_LONG = re.compile(
+  | 122 |     r"\b(?P<name>(?:Ten|Twenty[Ff]ive|Forty|Hundred)?GigabitEthernet|XGigabitEthernet|"
+  | 123 |     r"FastEthernet|Ethernet|Serial|Vlanif|Vlan|Loopback|Port-channel|Eth-Trunk|Tunnel|MEth|NULL)"
+  | 124 |     r"\s?(?P<num>\d+(?:/\d+)*(?:\.\d+)?)\b")
+  | 125 |
+  | 126 | # Nombres CORTOS de Cisco/Huawei, solo después de la palabra "Interface"
+  | 127 | # para no confundirlos con otras palabras.   ej. "Interface Gi0/1", "interface GE0/0/1"
+  | 128 | RE_IFACE_SHORT = re.compile(
+  | 129 |     r"\b[Ii]nterface\s+(?P<abbr>Gi|Fa|Te|Et|Se|Po|Lo|Tu|Vl|GE|XGE|Eth)(?P<num>\d+(?:/\d+)*(?:\.\d+)?)\b")
+  | 130 |
+  | 131 | # Interfaz de FortiGate en texto libre:  "Interface wan1 bandwidth ..."
+  | 132 | RE_IFACE_FORTI_TEXT = re.compile(r'\b[Ii]nterface\s+"?(?P<name>[A-Za-z][\w.\-]{0,14})"?')
+  | 133 |
+  | 134 | # Abreviatura -> nombre largo (para guardar siempre el mismo nombre y luego
+  | 135 | # poder compararlo con la lista de interfaces reales del equipo, Fase 8/9).
+  | 136 | IFACE_ABBR = {
+  | 137 |     "Gi": "GigabitEthernet", "Fa": "FastEthernet", "Te": "TenGigabitEthernet",
+  | 138 |     "Et": "Ethernet", "Se": "Serial", "Po": "Port-channel", "Lo": "Loopback",
+  | 139 |     "Tu": "Tunnel", "Vl": "Vlan", "GE": "GigabitEthernet", "XGE": "XGigabitEthernet",
+  | 140 |     "Eth": "Eth-Trunk",
+  | 141 | }
+  | 142 |
+  | 143 | # ACL de Cisco:  "denied tcp 203.0.113.200(51515) -> 192.0.2.1(22)"
+  | 144 | RE_ACL_PORTS = re.compile(
+  | 145 |     r"(?P<src>\d{1,3}(?:\.\d{1,3}){3})\((?P<sport>\d+)\)\s*->\s*"
+  | 146 |     r"(?P<dst>\d{1,3}(?:\.\d{1,3}){3})\((?P<dport>\d+)\)")
+  | 147 | # Login de Cisco:  "[Source: 203.0.113.200] [localport: 22]"  -> puerto atacado
+  | 148 | RE_LOCALPORT = re.compile(r"\[localport:\s*(?P<port>\d+)\]")
+  | 149 | # Estilo sshd/Linux:  "from 203.0.113.200 port 51515"  -> puerto de origen
+  | 150 | RE_FROM_PORT = re.compile(r"\bfrom\s+\d{1,3}(?:\.\d{1,3}){3}\s+port\s+(?P<port>\d+)")
+  | 151 |
+  | 152 | # Sintaxis permitida de una interfaz (sirve también para validar filtros):
+  | 153 | # empieza con letra; luego letras, números, / . - _ :   (máx. 48 caracteres)
+  | 154 | RE_IFACE_VALID = re.compile(r"^[A-Za-z][A-Za-z0-9_./:\-]{0,47}$")
+  | 155 |
+  | 156 |
+  | 157 | def is_valid_port(value) -> bool:
+  | 158 |     """Un puerto TCP/UDP válido es un entero entre 1 y 65535."""
+  | 159 |     try:
+  | 160 |         return 1 <= int(value) <= 65535
+  | 161 |     except (TypeError, ValueError):
+  | 162 |         return False
+  | 163 |
+  | 164 |
+  | 165 | def is_valid_interface(name) -> bool:
+  | 166 |     """Valida solo la SINTAXIS del nombre (si existe en el equipo se valida en la Fase 9)."""
+  | 167 |     return isinstance(name, str) and bool(RE_IFACE_VALID.match(name))
+  | 168 |
+  | 169 |
+  | 170 | def normalize_interface(name: str) -> str:
+  | 171 |     """'Gi0/1' -> 'GigabitEthernet0/1'. Si no es una abreviatura conocida, se deja igual."""
+  | 172 |     m = re.match(r"^(?P<abbr>[A-Za-z\-]+?)(?P<num>\d.*)$", name or "")
+  | 173 |     if m and m["abbr"] in IFACE_ABBR:
+  | 174 |         return IFACE_ABBR[m["abbr"]] + m["num"]
+  | 175 |     return name
+  | 176 |
+  | 177 |
+  | 178 | def extract_network(text: str, vendor_hint: str | None) -> dict:
+  | 179 |     """
+  | 180 |     Busca en el mensaje la interfaz y los puertos involucrados.
+  | 181 |
+  | 182 |     Devuelve {"interface", "src_port", "dst_port", "flags"}. Un valor que no
+  | 183 |     se encuentra queda en None. Un puerto fuera de 1-65535 NO se guarda y se
+  | 184 |     marca con 'puerto_invalido' (el mensaje pudo ser alterado).
+  | 185 |     """
+  | 186 |     out = {"interface": None, "src_port": None, "dst_port": None, "flags": []}
+  | 187 |     sport = dport = None
+  | 188 |
+  | 189 |     if vendor_hint == "Fortinet":
+  | 190 |         # FortiOS trae los datos como clave=valor: srcintf, srcport, dstport
+  | 191 |         kv = {k: (q if v.startswith('"') else v) for k, v, q in RE_KV.findall(text)}
+  | 192 |         out["interface"] = kv.get("srcintf") or kv.get("intf") or kv.get("interface")
+  | 193 |         sport, dport = kv.get("srcport"), kv.get("dstport")
+  | 194 |         if not out["interface"]:
+  | 195 |             m = RE_IFACE_FORTI_TEXT.search(kv.get("msg") or "")
+  | 196 |             if m:
+  | 197 |                 out["interface"] = m["name"]
+  | 198 |     else:
+  | 199 |         m = RE_IFACE_LONG.search(text)
+  | 200 |         if m:
+  | 201 |             out["interface"] = m["name"] + m["num"]
+  | 202 |         else:
+  | 203 |             m = RE_IFACE_SHORT.search(text)
+  | 204 |             if m:
+  | 205 |                 out["interface"] = IFACE_ABBR[m["abbr"]] + m["num"]
+  | 206 |
+  | 207 |         m = RE_ACL_PORTS.search(text)
+  | 208 |         if m:
+  | 209 |             sport, dport = m["sport"], m["dport"]
+  | 210 |         else:
+  | 211 |             m = RE_LOCALPORT.search(text)
+  | 212 |             if m:
+  | 213 |                 dport = m["port"]
+  | 214 |             m = RE_FROM_PORT.search(text)
+  | 215 |             if m:
+  | 216 |                 sport = m["port"]
+  | 217 |
+  | 218 |     # Validación: solo se guardan puertos dentro del rango permitido
+  | 219 |     for key, val in (("src_port", sport), ("dst_port", dport)):
+  | 220 |         if val is None:
+  | 221 |             continue
+  | 222 |         if is_valid_port(val):
+  | 223 |             out[key] = int(val)
+  | 224 |         elif "puerto_invalido" not in out["flags"]:
+  | 225 |             out["flags"].append("puerto_invalido")
+  | 226 |
+  | 227 |     # Una interfaz con caracteres extraños se descarta (dato no confiable)
+  | 228 |     if out["interface"] and not is_valid_interface(out["interface"]):
+  | 229 |         out["interface"] = None
+  | 230 |         out["flags"].append("interfaz_invalida")
+  | 231 |     return out
+  +----------------------------------------------------------------------------
+
+ Puntos clave para explicar:
+   - Las regex buscan PATRONES FIJOS; el texto del log nunca se ejecuta.
+   - IFACE_ABBR normaliza Gi0/1 -> GigabitEthernet0/1: el mismo nombre siempre,
+     para poder compararlo luego con la lista real de interfaces (Fase 9).
+   - RE_FROM_PORT exige "from <IP> port N": por eso "Logging to host X port
+     5514" (configuración del NOC) no se toma como ataque.
+   - Un puerto fuera de 1-65535 no se guarda y se marca: el mensaje pudo ser
+     alterado. La interfaz con caracteres raros se descarta.
+
+
+--------------------------------------------------------------------------------
+ 4.2 Fechas y zona horaria (app/timeutil.py, archivo nuevo)
+--------------------------------------------------------------------------------
+
+  +--- app/timeutil.py -------------------------------------------------------
+  |   1 | """
+  |   2 | Utilidades de fecha y hora (Fase 7).
+  |   3 |
+  |   4 | El NOC guarda todas las fechas en UTC (ej. 2026-10-16T17:30:00Z), pero el
+  |   5 | operador piensa en HORA DE COLOMBIA (UTC-5). Este módulo hace la conversión en
+  |   6 | un solo lugar para que filtros, reglas e informes usen el mismo criterio.
+  |   7 |
+  |   8 | Se usa un desfase FIJO (Config.LOCAL_UTC_OFFSET) en vez de una zona con nombre
+  |   9 | ("America/Bogota") porque Colombia no tiene horario de verano y así no se
+  |  10 | depende del paquete tzdata, que Windows no trae instalado.
+  |  11 |
+  |  12 | Dos usos distintos de "fecha futura" (ver docs/contexto Corte 3):
+  |  13 |   1. FILTRO: la fecha la escribe el operador  -> si es futura se RECHAZA (400).
+  |  14 |   2. EVENTO: la fecha la envía el equipo      -> NO se rechaza; se guarda y se
+  |  15 |      marca 'fecha_futura' porque indica un reloj desfasado (problema de NTP).
+  |  16 | """
+  |  17 | import re
+  |  18 | from datetime import date, datetime, time, timedelta, timezone
+  |  19 |
+  |  20 | from .config import Config
+  |  21 |
+  |  22 | MONTHS = {m: i for i, m in enumerate(
+  |  23 |     ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], start=1)}
+  |  24 |
+  |  25 | RE_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+  |  26 | # RFC 3164: "Oct  5 10:15:42.551"  o, con año (Huawei), "Oct 5 2026 13:05:10"
+  |  27 | RE_3164 = re.compile(
+  |  28 |     r"^(?P<mon>[A-Z][a-z]{2})\s+(?P<day>\d{1,2})(?:\s+(?P<year>\d{4}))?\s+"
+  |  29 |     r"(?P<h>\d{2}):(?P<m>\d{2}):(?P<s>\d{2})")
+  |  30 | # Fortinet: "2026-10-05 08:00:00"
+  |  31 | RE_FORTI = re.compile(r"^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})$")
+  |  32 |
+  |  33 |
+  |  34 | def local_tz() -> timezone:
+  |  35 |     """Zona horaria del NOC como desfase fijo (Colombia = UTC-5)."""
+  |  36 |     return timezone(timedelta(hours=Config.LOCAL_UTC_OFFSET))
+  |  37 |
+  |  38 |
+  |  39 | def now_utc() -> datetime:
+  |  40 |     return datetime.now(timezone.utc)
+  |  41 |
+  |  42 |
+  |  43 | def local_today(now: datetime | None = None) -> date:
+  |  44 |     """La fecha de HOY en Colombia (a las 9 p. m. del 16 en Bogotá ya es el 17 en UTC)."""
+  |  45 |     return (now or now_utc()).astimezone(local_tz()).date()
+  |  46 |
+  |  47 |
+  |  48 | def to_iso_utc(dt: datetime) -> str:
+  |  49 |     return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+  |  50 |
+  |  51 |
+  |  52 | def parse_filter_date(value: str) -> date | None:
+  |  53 |     """Convierte 'AAAA-MM-DD' en fecha. Devuelve None si el formato o la fecha no son válidos."""
+  |  54 |     if not isinstance(value, str) or not RE_DATE.match(value.strip()):
+  |  55 |         return None
+  |  56 |     try:
+  |  57 |         return date.fromisoformat(value.strip())
+  |  58 |     except ValueError:          # p. ej. 2026-02-30
+  |  59 |         return None
+  |  60 |
+  |  61 |
+  |  62 | def local_day_bounds_utc(day: date) -> tuple[str, str]:
+  |  63 |     """
+  |  64 |     Primer y último segundo de un día de Colombia, expresados en UTC.
+  |  65 |
+  |  66 |         16-oct 00:00:00 (Bogotá) = 16-oct 05:00:00Z
+  |  67 |         16-oct 23:59:59 (Bogotá) = 17-oct 04:59:59Z
+  |  68 |     """
+  |  69 |     start = datetime.combine(day, time.min, tzinfo=local_tz())
+  |  70 |     end = start + timedelta(days=1) - timedelta(seconds=1)
+  |  71 |     return to_iso_utc(start), to_iso_utc(end)
+  |  72 |
+  |  73 |
+  |  74 | def validate_date_range(desde: str | None, hasta: str | None,
+  |  75 |                         now: datetime | None = None) -> tuple[list[str], dict]:
+  |  76 |     """
+  |  77 |     Valida el rango de fechas de un filtro.
+  |  78 |
+  |  79 |     Reglas: formato AAAA-MM-DD, ninguna fecha posterior a HOY (hora de
+  |  80 |     Colombia) y 'desde' no puede ser mayor que 'hasta'.
+  |  81 |     Devuelve (errores, {"desde_utc": ..., "hasta_utc": ...}).
+  |  82 |     """
+  |  83 |     errors, bounds = [], {}
+  |  84 |     today = local_today(now)
+  |  85 |     parsed = {}
+  |  86 |     for name, value in (("desde", desde), ("hasta", hasta)):
+  |  87 |         if not value:
+  |  88 |             continue
+  |  89 |         d = parse_filter_date(value)
+  |  90 |         if d is None:
+  |  91 |             errors.append(f"Fecha '{name}' inválida: use el formato AAAA-MM-DD")
+  |  92 |         elif d > today:
+  |  93 |             errors.append(f"La fecha '{name}' ({d.isoformat()}) es posterior a hoy "
+  |  94 |                           f"({today.isoformat()}, hora de Colombia). Solo se consultan hoy e histórico.")
+  |  95 |         else:
+  |  96 |             parsed[name] = d
+  |  97 |     if "desde" in parsed and "hasta" in parsed and parsed["desde"] > parsed["hasta"]:
+  |  98 |         errors.append("La fecha 'desde' no puede ser posterior a 'hasta'")
+  |  99 |     if "desde" in parsed:
+  | 100 |         bounds["desde_utc"] = local_day_bounds_utc(parsed["desde"])[0]
+  | 101 |     if "hasta" in parsed:
+  | 102 |         bounds["hasta_utc"] = local_day_bounds_utc(parsed["hasta"])[1]
+  | 103 |     return errors, bounds
+  | 104 |
+  | 105 |
+  | 106 | def event_time_to_utc(event_time: str | None, now: datetime | None = None) -> datetime | None:
+  | 107 |     """
+  | 108 |     Interpreta la fecha que trae el propio mensaje y la pasa a UTC.
+  | 109 |
+  | 110 |     - RFC 5424 (ISO con zona): se respeta la zona del mensaje.
+  | 111 |     - RFC 3164 y Fortinet (sin zona): se asume hora de Colombia. (En la Fase 9
+  | 112 |       se usará la zona configurada para cada equipo del inventario.)
+  | 113 |     - RFC 3164 sin año: se asume el año actual; si eso da más de 30 días en el
+  | 114 |       futuro (mensaje del 31-dic recibido el 1-ene), se toma el año anterior.
+  | 115 |     Devuelve None si no se puede interpretar (no es un error: el evento se guarda igual).
+  | 116 |     """
+  | 117 |     if not event_time:
+  | 118 |         return None
+  | 119 |     now = now or now_utc()
+  | 120 |     text = event_time.strip()
+  | 121 |     tz = local_tz()
+  | 122 |     try:
+  | 123 |         if "T" in text and (text.endswith("Z") or re.search(r"[+-]\d{2}:\d{2}$", text)):
+  | 124 |             return datetime.fromisoformat(text.replace("Z", "+00:00")).astimezone(timezone.utc)
+  | 125 |         m = RE_FORTI.match(text)
+  | 126 |         if m:
+  | 127 |             return datetime.fromisoformat(f"{m[1]}T{m[2]}").replace(tzinfo=tz).astimezone(timezone.utc)
+  | 128 |         m = RE_3164.match(text)
+  | 129 |         if m and m["mon"] in MONTHS:
+  | 130 |             year = int(m["year"]) if m["year"] else now.astimezone(tz).year
+  | 131 |             dt = datetime(year, MONTHS[m["mon"]], int(m["day"]),
+  | 132 |                           int(m["h"]), int(m["m"]), int(m["s"]), tzinfo=tz)
+  | 133 |             if not m["year"] and dt - now > timedelta(days=30):
+  | 134 |                 dt = dt.replace(year=year - 1)
+  | 135 |             return dt.astimezone(timezone.utc)
+  | 136 |     except ValueError:          # fecha imposible, p. ej. Feb 30
+  | 137 |         return None
+  | 138 |     return None
+  | 139 |
+  | 140 |
+  | 141 | def is_future(event_utc: datetime | None, received_utc: datetime,
+  | 142 |               tolerance_s: int | None = None) -> bool:
+  | 143 |     """¿La fecha del evento está más adelante que la hora de recepción (con tolerancia)?"""
+  | 144 |     if event_utc is None:
+  | 145 |         return False
+  | 146 |     tol = Config.FUTURE_TOLERANCE_SECONDS if tolerance_s is None else tolerance_s
+  | 147 |     return (event_utc - received_utc).total_seconds() > tol
+  +----------------------------------------------------------------------------
+
+ Puntos clave:
+   - Desfase FIJO (-5) en vez de "America/Bogota": Colombia no tiene horario de
+     verano y así no se necesita el paquete tzdata, que Windows no trae.
+   - local_today(): "hoy" lo decide el SERVIDOR; si el reloj del PC del
+     operador está mal, el límite del filtro sigue siendo correcto.
+   - event_time_to_utc(): RFC 3164 de Cisco no trae año; si el resultado queda
+     más de 30 días en el futuro (31-dic recibido el 1-ene) se usa el año anterior.
+   - is_future(): tolerancia de 120 s (FUTURE_TOLERANCE_SECONDS) por latencia.
+
+
+--------------------------------------------------------------------------------
+ 4.3 Validación de parámetros (app/validation.py, archivo nuevo)
+--------------------------------------------------------------------------------
+
+  +--- app/validation.py -----------------------------------------------------
+  |   1 | """
+  |   2 | Validación de parámetros de consulta (Fase 7, paso 7.3).
+  |   3 |
+  |   4 | ANTES (v0.2.0): un parámetro inválido se IGNORABA en silencio.
+  |   5 |     /api/events?severity=99  ->  200 con TODOS los eventos
+  |   6 | El operador creía estar viendo "severidad 99" y en realidad veía todo: un
+  |   7 | error pequeño que lleva a una conclusión equivocada.
+  |   8 |
+  |   9 | AHORA: cada parámetro se valida y, si algo no es válido, se responde 400 con
+  |  10 | la lista COMPLETA de errores (no solo el primero), para corregir todo de una vez.
+  |  11 |
+  |  12 | Uso:
+  |  13 |     v = ParamValidator(request.args)
+  |  14 |     sev = v.integer("severity", 0, 7, "Severidad")
+  |  15 |     vendor = v.choice("vendor", VENDORS, "Marca")
+  |  16 |     if v.errors:
+  |  17 |         return jsonify(errors=v.errors), 400
+  |  18 | """
+  |  19 |
+  |  20 | # Marcas (flags) que puede tener un evento. Sirve para validar el filtro
+  |  21 | # ?flag=... y como referencia única de todas las marcas del sistema.
+  |  22 | KNOWN_FLAGS = (
+  |  23 |     # parser
+  |  24 |     "sin_pri", "severidad_asumida", "severidad_inconsistente", "mensaje_recortado",
+  |  25 |     "puerto_invalido", "interfaz_invalida",
+  |  26 |     # ingesta
+  |  27 |     "equipo_desconocido", "fuente_no_autorizada", "posible_prompt_injection",
+  |  28 |     "fecha_futura", "marca_inconsistente",
+  |  29 |     # reglas (app/rules.py)
+  |  30 |     "login_fallido", "cambio_config", "fuerza_bruta", "cambio_fuera_de_horario",
+  |  31 |     "cuenta_servicio", "logs_deshabilitados",
+  |  32 | )
+  |  33 | EVENT_VENDORS = ("Cisco", "Fortinet", "Huawei", "Otro", "Desconocido")
+  |  34 |
+  |  35 |
+  |  36 | class ParamValidator:
+  |  37 |     """Lee parámetros de un diccionario (request.args) y acumula los errores."""
+  |  38 |
+  |  39 |     def __init__(self, args):
+  |  40 |         self.args = args
+  |  41 |         self.errors: list[str] = []
+  |  42 |
+  |  43 |     def _raw(self, name):
+  |  44 |         value = self.args.get(name)
+  |  45 |         if value is None:
+  |  46 |             return None
+  |  47 |         value = str(value).strip()
+  |  48 |         return value or None          # vacío = no se envió
+  |  49 |
+  |  50 |     def integer(self, name, lo, hi, label, default=None):
+  |  51 |         """Entero dentro de [lo, hi]. Si no se envía, devuelve default."""
+  |  52 |         raw = self._raw(name)
+  |  53 |         if raw is None:
+  |  54 |             return default
+  |  55 |         try:
+  |  56 |             n = int(raw)
+  |  57 |         except ValueError:
+  |  58 |             self.errors.append(f"{label}: '{raw[:20]}' no es un número entero")
+  |  59 |             return default
+  |  60 |         if not lo <= n <= hi:
+  |  61 |             self.errors.append(f"{label}: {n} está fuera de rango (permitido de {lo} a {hi})")
+  |  62 |             return default
+  |  63 |         return n
+  |  64 |
+  |  65 |     def choice(self, name, options, label, default=None):
+  |  66 |         """Valor que debe estar en una lista cerrada de opciones."""
+  |  67 |         raw = self._raw(name)
+  |  68 |         if raw is None:
+  |  69 |             return default
+  |  70 |         if raw not in options:
+  |  71 |             self.errors.append(f"{label}: valor no válido '{raw[:30]}'. Opciones: {', '.join(options)}")
+  |  72 |             return default
+  |  73 |         return raw
+  |  74 |
+  |  75 |     def text(self, name, max_len, label):
+  |  76 |         """Texto libre con longitud máxima (se usa como parámetro SQL, nunca concatenado)."""
+  |  77 |         raw = self._raw(name)
+  |  78 |         if raw is not None and len(raw) > max_len:
+  |  79 |             self.errors.append(f"{label}: máximo {max_len} caracteres")
+  |  80 |             return None
+  |  81 |         return raw
+  +----------------------------------------------------------------------------
+
+ Puntos clave:
+   - ParamValidator ACUMULA los errores: el operador ve todos de una vez.
+   - choice() usa listas cerradas (marcas, flags): un valor desconocido no
+     llega a la consulta SQL.
+   - Un parámetro vacío equivale a no enviarlo (no es error).
+
+
+--------------------------------------------------------------------------------
+ 4.4 Coherencia equipo-marca (app/ingest.py)
+--------------------------------------------------------------------------------
+
+  +--- app/ingest.py  (en cada mensaje recibido) -----------------------------
+  |  89 |     # --- 3b. Fase 7.3: coherencia equipo-marca -------------------------------
+  |  90 |     # El inventario dice que la IP es, p. ej., un FortiGate, pero el mensaje
+  |  91 |     # tiene formato Cisco: o el inventario está mal, o alguien SUPLANTA la IP.
+  |  92 |     if (device is not None and device["vendor"] != "Otro" and p["vendor_hint"]
+  |  93 |             and p["vendor_hint"] != device["vendor"]):
+  |  94 |         flags.append("marca_inconsistente")
+  +----------------------------------------------------------------------------
+
+  +--- app/ingest.py  (importación de archivos) ------------------------------
+  | 215 | def check_import_vendor(lines, device_vendor: str) -> str | None:
+  | 216 |     """
+  | 217 |     Fase 7.3: ¿el archivo corresponde a la marca del equipo elegido?
+  | 218 |
+  | 219 |     Se analiza cada línea y se cuenta qué fabricante se detecta por su formato
+  | 220 |     (%LINK-3-UPDOWN = Cisco, %%01IFNET/... = Huawei, logid= = Fortinet).
+  | 221 |     Si la MAYORÍA de las líneas reconocibles son de otra marca, se devuelve un
+  | 222 |     mensaje de error; si todo está bien, devuelve None.
+  | 223 |
+  | 224 |     Equipos de marca "Otro" no se validan (no hay formato con qué comparar).
+  | 225 |     """
+  | 226 |     if device_vendor == "Otro":
+  | 227 |         return None
+  | 228 |     counts = Counter()
+  | 229 |     for line in lines[:MAX_IMPORT_LINES]:
+  | 230 |         line = line.strip()
+  | 231 |         if line and not line.startswith("#"):
+  | 232 |             hint = parse(line)["vendor_hint"]
+  | 233 |             if hint:
+  | 234 |                 counts[hint] += 1
+  | 235 |     total = sum(counts.values())
+  | 236 |     if not total:
+  | 237 |         return None                       # no hay líneas reconocibles: no se puede juzgar
+  | 238 |     detected, n = counts.most_common(1)[0]
+  | 239 |     if detected != device_vendor and n > total / 2:
+  | 240 |         return (f"El archivo parece de {detected} ({n} de {total} líneas reconocidas) "
+  | 241 |                 f"y el equipo elegido es {device_vendor}. Verifique el equipo o el archivo.")
+  | 242 |     return None
+  +----------------------------------------------------------------------------
+
+ Puntos clave:
+   - Mensaje suelto: se GUARDA (evidencia) y se marca; queda en auditoría como
+     sospechoso. Archivo: se RECHAZA antes de guardar nada (409) si la MAYORÍA
+     de líneas reconocibles son de otra marca.
+   - Marca "Otro" no se valida: no hay formato con qué comparar.
+
+
+--------------------------------------------------------------------------------
+ 4.5 Listado de eventos (app/events.py)
+--------------------------------------------------------------------------------
+
+  +--- app/events.py ---------------------------------------------------------
+  |  43 | @bp.get("")
+  |  44 | def list_events():
+  |  45 |     a = request.args
+  |  46 |     v = ParamValidator(a)          # Fase 7.3: acumula los errores de todos los filtros
+  |  47 |     errors = v.errors
+  |  48 |     where, params = [], []
+  |  49 |
+  |  50 |     # Cada filtro agrega una condición con parámetro "?": nunca se pega texto
+  |  51 |     # del usuario dentro del SQL (prevención de inyección SQL).
+  |  52 |     # --- Fase 7: rango de fechas --------------------------------------------
+  |  53 |     # Se valida (formato, sin fechas futuras, desde <= hasta) y cada día se
+  |  54 |     # convierte de hora de Colombia a UTC, que es como se guarda received_at.
+  |  55 |     date_errors, bounds = validate_date_range(a.get("desde"), a.get("hasta"))
+  |  56 |     errors += date_errors
+  |  57 |     if "desde_utc" in bounds:
+  |  58 |         where.append("e.received_at >= ?")
+  |  59 |         params.append(bounds["desde_utc"])
+  |  60 |     if "hasta_utc" in bounds:
+  |  61 |         where.append("e.received_at <= ?")
+  |  62 |         params.append(bounds["hasta_utc"])
+  |  63 |     # --- Fase 7.3: cada filtro se valida; ya no se ignoran en silencio -------
+  |  64 |     vendor = v.choice("vendor", EVENT_VENDORS, "Marca")
+  |  65 |     device_id = v.integer("device_id", 1, 10**9, "Equipo")
+  |  66 |     severity = v.integer("severity", 0, 7, "Severidad")
+  |  67 |     sev_max = v.integer("sev_max", 0, 7, "Severidad máxima")
+  |  68 |     flag = v.choice("flag", KNOWN_FLAGS, "Marca de seguridad")
+  |  69 |     limit = v.integer("limit", 1, 500, "Límite", default=100)
+  |  70 |     page = v.integer("page", 1, 100000, "Página", default=1)
+  |  71 |     if device_id is not None and get_db().execute(
+  |  72 |             "SELECT 1 FROM devices WHERE id = ?", (device_id,)).fetchone() is None:
+  |  73 |         errors.append(f"El equipo {device_id} no existe en el inventario")
+  |  74 |     if vendor:
+  |  75 |         where.append("e.vendor = ?")
+  |  76 |         params.append(vendor)
+  |  77 |     if device_id is not None:
+  |  78 |         where.append("e.device_id = ?")
+  |  79 |         params.append(device_id)
+  |  80 |     if severity is not None:
+  |  81 |         where.append("e.severity = ?")
+  |  82 |         params.append(severity)
+  |  83 |     if sev_max is not None:
+  |  84 |         where.append("e.severity <= ?")
+  |  85 |         params.append(sev_max)
+  |  86 |     if flag:
+  |  87 |         where.append("(',' || e.flags || ',') LIKE ?")
+  |  88 |         params.append(f"%,{flag},%")
+  |  89 |
+  |  90 |     # --- Fase 7: interfaz y puerto -----------------------------------------
+  |  91 |     if a.get("interface"):
+  |  92 |         iface = a["interface"].strip()
+  |  93 |         if not is_valid_interface(iface):
+  |  94 |             errors.append("Interfaz inválida: use letras, números y / . - _ : (ej. Gi0/1, port1)")
+  |  95 |         else:
+  |  96 |             # Se compara con el nombre normalizado: 'Gi0/1' encuentra 'GigabitEthernet0/1'
+  |  97 |             where.append("e.interface = ? COLLATE NOCASE")
+  |  98 |             params.append(normalize_interface(iface))
+  |  99 |     if a.get("port"):
+  | 100 |         if not is_valid_port(a["port"]):
+  | 101 |             errors.append("Puerto inválido: debe ser un número entre 1 y 65535")
+  | 102 |         else:
+  | 103 |             where.append("(e.src_port = ? OR e.dst_port = ?)")
+  | 104 |             params += [int(a["port"])] * 2
+  | 105 |     if errors:
+  | 106 |         return jsonify(errors=errors), 400
+  | 107 |
+  | 108 |     # where solo contiene textos FIJOS con "?"; los valores van aparte en params
+  | 109 |     where_sql = (" WHERE " + " AND ".join(where)) if where else ""
+  | 110 |     conn = get_db()
+  | 111 |     # Fase 7.4: total de coincidencias (para "Página X de Y") y solo UNA página de filas
+  | 112 |     total = conn.execute(f"SELECT COUNT(*) FROM syslog_events e{where_sql}", params).fetchone()[0]
+  | 113 |     sql = ("SELECT e.*, d.name AS device_name, s.name AS severity_name "
+  | 114 |            "FROM syslog_events e "
+  | 115 |            "LEFT JOIN devices d ON d.id = e.device_id "
+  | 116 |            "JOIN severities s ON s.code = e.severity"
+  | 117 |            f"{where_sql} ORDER BY e.id DESC LIMIT ? OFFSET ?")
+  | 118 |     rows = conn.execute(sql, (*params, limit, (page - 1) * limit)).fetchall()
+  | 119 |     resp = jsonify([dict(r) for r in rows])
+  | 120 |     resp.headers["X-Total-Count"] = str(total)
+  | 121 |     resp.headers["X-Page"] = str(page)
+  | 122 |     resp.headers["X-Per-Page"] = str(limit)
+  | 123 |     resp.headers["X-Total-Pages"] = str(max(1, -(-total // limit)))   # división hacia arriba
+  | 124 |     return resp
+  +----------------------------------------------------------------------------
+
+ Puntos clave:
+   - Cada filtro agrega un texto FIJO con "?" a 'where'; los valores van en
+     'params'. Nunca se concatena texto del usuario en el SQL (inyección SQL).
+   - Paginación: OFFSET = (página - 1) x límite. El total sale de un COUNT(*)
+     con los MISMOS filtros. -(-total // limit) es la división hacia arriba.
+
+
+--------------------------------------------------------------------------------
+ 4.6 Base de datos: WAL, migraciones e índices (app/db.py)
+--------------------------------------------------------------------------------
+
+  +--- app/db.py -------------------------------------------------------------
+  |  36 | def connect(db_path) -> sqlite3.Connection:
+  |  37 |     """Abre una conexión SQLite con filas tipo diccionario y claves foráneas activas."""
+  |  38 |     db_path = Path(db_path)
+  |  39 |     db_path.parent.mkdir(parents=True, exist_ok=True)
+  |  40 |     conn = sqlite3.connect(db_path, timeout=5)
+  |  41 |     conn.row_factory = sqlite3.Row          # permite row["columna"]
+  |  42 |     conn.execute("PRAGMA foreign_keys = ON")  # SQLite las trae apagadas por defecto
+  |  43 |     # Fase 7.4 - optimización:
+  |  44 |     # WAL (Write-Ahead Logging): el receptor UDP puede ESCRIBIR eventos mientras
+  |  45 |     # la web los LEE, sin bloquearse. Sin WAL, una lectura larga frena la ingesta.
+  |  46 |     # Crea dos archivos auxiliares junto a la base: noc.db-wal y noc.db-shm.
+  |  47 |     conn.execute("PRAGMA journal_mode = WAL")
+  |  48 |     # Si otra conexión está escribiendo, esperar hasta 5 s en vez de fallar.
+  |  49 |     conn.execute("PRAGMA busy_timeout = 5000")
+  |  50 |     return conn
+  +----------------------------------------------------------------------------
+
+  +--- app/db.py -------------------------------------------------------------
+  |  70 | MIGRATIONS = [
+  |  71 |     ("syslog_events", "mnemonic", "TEXT"),
+  |  72 |     ("syslog_events", "flags", "TEXT"),
+  |  73 |     ("incidents", "correlation_key", "TEXT"),
+  |  74 |     ("incidents", "event_count", "INTEGER NOT NULL DEFAULT 1"),
+  |  75 |     ("incidents", "last_event_at", "TEXT"),
+  |  76 |     # Fase 7: puerto/interfaz en eventos y tiempos de respuesta en incidentes.
+  |  77 |     # (ALTER TABLE no admite CHECK con rango en columnas nuevas de forma segura
+  |  78 |     #  en todas las versiones; el rango 1-65535 lo valida el parser antes de guardar.)
+  |  79 |     ("syslog_events", "interface", "TEXT"),
+  |  80 |     ("syslog_events", "src_port", "INTEGER"),
+  |  81 |     ("syslog_events", "dst_port", "INTEGER"),
+  |  82 |     ("syslog_events", "event_time_utc", "TEXT"),
+  |  83 |     ("incidents", "assigned_at", "TEXT"),
+  |  84 |     ("incidents", "started_at", "TEXT"),
+  |  85 | ]
+  |  86 |
+  |  87 |
+  |  88 | def _migrate(conn: sqlite3.Connection):
+  |  89 |     for table, column, decl in MIGRATIONS:
+  |  90 |         existing = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+  |  91 |         if column not in existing:
+  |  92 |             conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+  |  93 |
+  |  94 |
+  |  95 | # Fase 7.4: índices COMPUESTOS para las consultas más frecuentes.
+  |  96 | # Se crean DESPUÉS de las migraciones porque algunos usan columnas nuevas
+  |  97 | # (si estuvieran en schema.sql fallarían en una base del Corte 2).
+  |  98 | # Un índice es como el índice de un libro: SQLite salta directo a las filas
+  |  99 | # que necesita en lugar de leer la tabla completa.
+  | 100 | INDEXES = [
+  | 101 |     # Filtro "Equipo" del listado de eventos + rango de fechas
+  | 102 |     ("idx_events_device_time", "syslog_events(device_id, received_at)"),
+  | 103 |     # Dashboard y filtro de severidad + rango de fechas
+  | 104 |     ("idx_events_sev_time", "syslog_events(severity, received_at)"),
+  | 105 |     # Deduplicación: misma huella en los últimos 60 s (se consulta con CADA mensaje)
+  | 106 |     ("idx_events_fp_time", "syslog_events(fingerprint, received_at)"),
+  | 107 |     # Filtro de interfaz (Fase 7.1)
+  | 108 |     ("idx_events_interface", "syslog_events(interface)"),
+  | 109 |     # Correlación: incidente abierto con la misma clave (se consulta con cada evento grave)
+  | 110 |     ("idx_incidents_corr", "incidents(correlation_key, status)"),
+  | 111 |     # Filtro "Actor" de la auditoría
+  | 112 |     ("idx_audit_actor", "audit_log(actor, ts)"),
+  | 113 | ]
+  | 114 | # Índices reemplazados por uno compuesto más útil
+  | 115 | OBSOLETE_INDEXES = ["idx_events_fp"]
+  | 116 |
+  | 117 |
+  | 118 | def _ensure_indexes(conn: sqlite3.Connection):
+  | 119 |     for name in OBSOLETE_INDEXES:
+  | 120 |         conn.execute(f"DROP INDEX IF EXISTS {name}")
+  | 121 |     for name, target in INDEXES:
+  | 122 |         conn.execute(f"CREATE INDEX IF NOT EXISTS {name} ON {target}")
+  | 123 |
+  | 124 |
+  | 125 | def init_db(conn: sqlite3.Connection):
+  | 126 |     """Crea las tablas (si no existen), aplica migraciones y carga las severidades."""
+  | 127 |     conn.executescript(SCHEMA_FILE.read_text(encoding="utf-8"))
+  | 128 |     _migrate(conn)
+  | 129 |     _ensure_indexes(conn)
+  +----------------------------------------------------------------------------
+
+ Puntos clave:
+   - Migración: ALTER TABLE ADD COLUMN solo si la columna no existe. Arrancar
+     dos veces no cambia nada (idempotente); una base del Corte 2 se actualiza
+     sin perder datos (probado con una base creada con la etiqueta v0.2.0).
+   - Los índices se crean DESPUÉS de migrar: algunos usan columnas nuevas que
+     una base vieja todavía no tiene.
+
+
+--------------------------------------------------------------------------------
+ 4.7 Servidor de operación (serve.py, nuevo, y run.py)
+--------------------------------------------------------------------------------
+
+  +--- serve.py --------------------------------------------------------------
+  |   1 | """
+  |   2 | Punto de entrada para OPERACIÓN (Fase 7.5): servidor WSGI waitress.
+  |   3 |
+  |   4 |     python serve.py   ->  http://127.0.0.1:5000
+  |   5 |
+  |   6 | ¿Por qué no "python run.py"? El servidor incluido en Flask es solo para
+  |   7 | desarrollo: atiende de a una petición, y en modo depuración expone una consola
+  |   8 | que ejecuta código. waitress es un servidor WSGI de producción:
+  |   9 |   - atiende varias peticiones a la vez (WEB_THREADS hilos),
+  |  10 |   - NUNCA activa el modo depuración,
+  |  11 |   - es Python puro: funciona en Windows sin compilar nada.
+  |  12 |
+  |  13 | WSGI = la interfaz estándar entre un servidor web y una aplicación Python.
+  |  14 | Flask es la aplicación; waitress es el servidor que la publica.
+  |  15 | """
+  |  16 | import logging
+  |  17 |
+  |  18 | from waitress import serve
+  |  19 |
+  |  20 | from app import APP_VERSION, create_app
+  |  21 | from app.config import Config
+  |  22 |
+  |  23 | if __name__ == "__main__":
+  |  24 |     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+  |  25 |     app = create_app()
+  |  26 |     app.debug = False          # garantía: en este modo jamás se activa la depuración
+  |  27 |     print(f"[NOC] NOC Syslog Inteligente v{APP_VERSION} (waitress, sin depuración)")
+  |  28 |     print(f"[NOC] http://{Config.WEB_HOST}:{Config.WEB_PORT}  ·  {Config.WEB_THREADS} hilos  ·  Ctrl+C para detener")
+  |  29 |     serve(app, host=Config.WEB_HOST, port=Config.WEB_PORT, threads=Config.WEB_THREADS,
+  |  30 |           ident="NOC-Syslog")   # no anunciar "waitress x.y" en el encabezado Server
+  +----------------------------------------------------------------------------
+
+  +--- run.py ----------------------------------------------------------------
+  |   1 | """
+  |   2 | Punto de entrada para DESARROLLO (servidor incluido en Flask).
+  |   3 |
+  |   4 | Uso:  python run.py   ->  http://127.0.0.1:5000
+  |   5 | Solo escucha en 127.0.0.1 (el propio equipo); no queda expuesta a la red.
+  |   6 |
+  |   7 | Fase 7.5: el modo depuración ya NO está fijo en True. Se activa solo si el
+  |   8 | archivo .env dice FLASK_DEBUG=1. Para operar (marcha blanca) use:
+  |   9 |     python serve.py      (servidor waitress, sin depuración)
+  |  10 | """
+  |  11 | from app import create_app
+  |  12 | from app.config import Config
+  |  13 |
+  |  14 | app = create_app()
+  |  15 |
+  |  16 | if __name__ == "__main__":
+  |  17 |     app.run(host=Config.WEB_HOST, port=Config.WEB_PORT, debug=Config.FLASK_DEBUG)
+  +----------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+ 4.8 Tema claro y oscuro (app/static/theme.js, nuevo)
+--------------------------------------------------------------------------------
+
+  +--- app/static/theme.js ---------------------------------------------------
+  |   1 | /*
+  |   2 |  * Fase 7: selector de tema claro / oscuro.
+  |   3 |  *
+  |   4 |  * - Se carga en el <head> (antes de dibujar la página) para que no haya un
+  |   5 |  *   "parpadeo" del tema equivocado al abrir cada página.
+  |   6 |  * - Prioridad: 1) la elección guardada del operador, 2) el tema del sistema
+  |   7 |  *   operativo (prefers-color-scheme), 3) oscuro.
+  |   8 |  * - La elección se guarda en localStorage del navegador: es solo una
+  |   9 |  *   preferencia visual de ESTE equipo, no un dato del NOC (no va a la base).
+  |  10 |  *   localStorage puede fallar (navegación privada, bloqueos): por eso cada
+  |  11 |  *   acceso va dentro de try/catch y, si falla, la página funciona igual.
+  |  12 |  */
+  |  13 | (function () {
+  |  14 |   const KEY = "noc-tema";
+  |  15 |   const root = document.documentElement;
+  |  16 |
+  |  17 |   function saved() {
+  |  18 |     try { return localStorage.getItem(KEY); } catch (_) { return null; }
+  |  19 |   }
+  |  20 |   function save(theme) {
+  |  21 |     try { localStorage.setItem(KEY, theme); } catch (_) { /* sin almacenamiento: no se recuerda */ }
+  |  22 |   }
+  |  23 |   function systemTheme() {
+  |  24 |     return window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  |  25 |   }
+  |  26 |   function apply(theme) {
+  |  27 |     root.dataset.theme = theme;               // <html data-theme="light|dark">
+  |  28 |     const btn = document.getElementById("theme-toggle");
+  |  29 |     if (btn) {
+  |  30 |       const toLight = theme === "dark";
+  |  31 |       // El botón muestra el tema AL QUE se va a cambiar
+  |  32 |       btn.querySelector(".icon").textContent = toLight ? "☀" : "☾";
+  |  33 |       btn.querySelector(".label").textContent = toLight ? "Claro" : "Oscuro";
+  |  34 |       btn.setAttribute("aria-label", toLight ? "Cambiar a tema claro" : "Cambiar a tema oscuro");
+  |  35 |       btn.title = btn.getAttribute("aria-label");
+  |  36 |     }
+  |  37 |   }
+  |  38 |
+  |  39 |   // 1) Antes de dibujar: aplicar el tema guardado o el del sistema
+  |  40 |   const initial = saved() || systemTheme();
+  |  41 |   apply(initial);
+  |  42 |
+  |  43 |   // 2) Cuando la página ya existe: conectar el botón
+  |  44 |   document.addEventListener("DOMContentLoaded", () => {
+  |  45 |     apply(root.dataset.theme);
+  |  46 |     const btn = document.getElementById("theme-toggle");
+  |  47 |     if (!btn) return;
+  |  48 |     btn.addEventListener("click", () => {
+  |  49 |       const next = root.dataset.theme === "dark" ? "light" : "dark";
+  |  50 |       apply(next);
+  |  51 |       save(next);
+  |  52 |     });
+  |  53 |   });
+  |  54 |
+  |  55 |   // 3) Si el operador nunca eligió, seguir los cambios del sistema operativo
+  |  56 |   if (window.matchMedia) {
+  |  57 |     window.matchMedia("(prefers-color-scheme: light)").addEventListener?.("change", (e) => {
+  |  58 |       if (!saved()) apply(e.matches ? "light" : "dark");
+  |  59 |     });
+  |  60 |   }
+  |  61 | })();
+  +----------------------------------------------------------------------------
+
+ Puntos clave:
+   - Se carga en el <head> para aplicar el tema ANTES de dibujar (sin parpadeo).
+   - localStorage es una preferencia visual del navegador, no un dato del NOC;
+     va en try/catch porque puede fallar (navegación privada).
+   - styles.css: todos los colores son variables; :root = oscuro y
+     :root[data-theme="light"] = claro. La consola tipo PuTTY sigue oscura.
+
+
+--------------------------------------------------------------------------------
+ 4.9 Integración continua (.github/workflows/pruebas.yml)
+--------------------------------------------------------------------------------
+
+  +--- .github/workflows/pruebas.yml -----------------------------------------
+  |   1 | # Integración continua (CI): GitHub ejecuta las pruebas automáticas en cada
+  |   2 | # push y en cada Pull Request. Si una prueba falla, el commit queda marcado en rojo.
+  |   3 | name: Pruebas
+  |   4 |
+  |   5 | on:
+  |   6 |   push:
+  |   7 |     branches: [main, develop]
+  |   8 |   pull_request:
+  |   9 |     branches: [main]
+  |  10 |
+  |  11 | permissions:
+  |  12 |   contents: read          # solo lectura: el flujo no necesita escribir en el repositorio
+  |  13 |
+  |  14 | jobs:
+  |  15 |   pytest:
+  |  16 |     runs-on: ubuntu-latest
+  |  17 |     strategy:
+  |  18 |       matrix:
+  |  19 |         python-version: ["3.12", "3.14"]
+  |  20 |     steps:
+  |  21 |       # Fase 7.6: checkout@v5 y setup-python@v6 usan Node.js 24 (las versiones
+  |  22 |       # anteriores usaban Node.js 20, que GitHub marcó como obsoleto).
+  |  23 |       - name: Descargar el código
+  |  24 |         uses: actions/checkout@v5
+  |  25 |       - name: Instalar Python ${{ matrix.python-version }}
+  |  26 |         uses: actions/setup-python@v6
+  |  27 |         with:
+  |  28 |           python-version: ${{ matrix.python-version }}
+  |  29 |       - name: Instalar dependencias (versiones fijadas)
+  |  30 |         run: python -m pip install -r requirements.txt
+  |  31 |       - name: Ejecutar las pruebas
+  |  32 |         # Sin .env: las pruebas usan valores por defecto y una base temporal.
+  |  33 |         run: python -m pytest -v
+  +----------------------------------------------------------------------------
+
+
+================================================================================
+ 5. PRUEBAS AUTOMÁTICAS (76 -> 168)
+================================================================================
+
+
+   | Archivo                          | Pruebas | Qué verifica                                  |
+   |----------------------------------|---------|-----------------------------------------------|
+   | tests/test_interfaz_puertos.py   |   36    | Interfaz por fabricante, puertos, validación, |
+   |                                  |         | filtros, tiempos de incidentes, migración     |
+   | tests/test_fechas.py             |   19    | Hoy en Colombia, límites del día, rango,      |
+   |                                  |         | fechas del mensaje, cambio de año, fecha futura|
+   | tests/test_tema.py               |    3    | Selector en todas las páginas, script y CSS   |
+   | tests/test_validacion.py         |   22    | 400 por parámetro inválido, coherencia        |
+   |                                  |         | equipo-marca (importación, mensaje, config.)  |
+   | tests/test_optimizacion.py       |   12    | WAL, índices con EXPLAIN QUERY PLAN,          |
+   |                                  |         | paginación, servidor sin depuración           |
+   | (ajuste) tests/test_api.py       |  (1)    | "se ignoran" -> "responden 400"               |
+   | TOTAL                            |  168    | 76 del Corte 2 + 92 nuevas                    |
+
+ > python -m pytest -q
+ => 168 passed                                                           [OK]
+ Las pruebas usan una base TEMPORAL nueva por prueba (tmp_path): nunca tocan
+ data/noc.db. Las horas "ahora" se fijan a mano cuando importa la hora del día,
+ para que den igual cualquier día y a cualquier hora.
+
+
+
+================================================================================
+ 6. SEGURIDAD APLICADA EN LA FASE 7
+================================================================================
+
+
+ - Logs = datos no confiables: interfaz y puertos se extraen con patrones
+   fijos y se validan; nada del mensaje se ejecuta.
+ - Suplantación: un formato de otra marca marca el evento y lo audita; el
+   título del incidente NO repite el contenido (podría venir del atacante).
+ - Importación incoherente: se rechaza antes de guardar y queda auditada como
+   'bloqueado' (syslog.import_rechazado).
+ - Validación estricta: listas cerradas y rangos; ningún valor desconocido
+   llega al SQL; los valores siempre como parámetros "?".
+ - Servidor: waitress sin depuración; debug solo con FLASK_DEBUG=1 en .env
+   (nunca en GitHub); encabezado Server: NOC-Syslog (no revela la versión).
+ - Escucha solo en 127.0.0.1: la aplicación no queda expuesta a la red.
+ - Sin secretos nuevos en el código. .gitignore incluye los archivos -wal/-shm.
+ - CI con permisos de solo lectura (contents: read).
+
+
+
+================================================================================
+ 7. PROBLEMAS Y OBSERVACIONES
+================================================================================
+
+
+ 1. Importación con la IP equivocada (hallazgo en vivo)
+    Se cargó el log de Cisco a nombre del FortiGate y del Huawei: 22 eventos
+    Cisco en equipos que no son Cisco y 4 incidentes falsos. Se respaldó y
+    recreó la base. Originó la validación de coherencia equipo-marca (7.3).
+    Lección: las pruebas en vivo encuentran errores que las automáticas no.
+
+ 2. Prueba de cambio de año (7.2)
+    31-dic 23:59:58 en Bogotá = 1-ene 04:59:58 en UTC. La prueba comparaba el
+    AÑO en UTC (2027) y esperaba 2026. El código estaba bien; se corrigió la
+    prueba para comparar la fecha completa.
+
+ 3. test_filtros_invalidos_se_ignoran (Corte 2) dejó de pasar
+    Exigía el comportamiento que se corrigió a propósito. Se reemplazó por
+    test_filtros_invalidos_responden_400.
+
+ 4. Título engañoso del incidente suplantado
+    "LINK-3-UPDOWN en SIM-EDGE-FW01" hacía creer que el firewall tenía una
+    interfaz caída. Ahora: "Marca inconsistente: posible suplantación de ...".
+
+ 5. Pruebas de paginación con 25 eventos daban 1
+    La huella de deduplicación ignora los números ("mensaje 1" = "mensaje 2").
+    Se usaron textos con letras (aa, ab, ...).
+
+ 6. Prueba de migración rota al agregar índices
+    SQLite no permite borrar una columna indexada. La prueba ahora quita antes
+    el índice, tal como era una base v0.2.0, y verifica que se recree.
+
+ 7. Orden de los commits del tema y del 7.3
+    El tema se subió antes. No afecta (archivos distintos). El commit 506a2fa
+    dice "156 en total", pero en ese punto son 134. No se reescribió porque ya
+    estaba publicado (reescribir exige push --force).
+
+ 8. Commit de evidencias del 7.2 sin hacer en el primer intento
+    "Changes to be committed" = preparado con git add pero sin git commit. Se
+    completó con git commit y git push.
+
+ 9. git diff quedó en (END)
+    Es el visor de páginas de Git; se sale con la tecla q. Alternativa:
+    git --no-pager diff.
+
+ 10. Eventos de v0.2.0 sin interfaz ni puertos
+    Los datos guardados no se recalculan (el evento se guarda tal como llegó).
+    Limitación declarada en el README.
+
+ 11. Commit de cierre incompleto (2d6e4a9)
+    El primer git add se pegó dos veces en la misma línea:
+      git add ... docs/FASE7_proceso_completo.txtgit add app/__init__.py ...
+    => fatal: pathspec 'docs/FASE7_proceso_completo.txtgit' did not match any files
+    Git no agregó ningún archivo, pero el commit se hizo con las 4 capturas ya
+    preparadas. Los archivos de la versión se subieron en el commit siguiente.
+    Lección: revisar la salida de cada comando antes del siguiente (un "fatal"
+    detiene ese comando, no los demás).
+
+ 12. Sin capturas del paso 7.3 ni del tema
+    Decisión del estudiante; su verificación queda en 25 pruebas automáticas.
+
+
+
+================================================================================
+ 8. CONTROL DE VERSIONES: HISTORIAL DE LA FASE
+================================================================================
+
+
+ Commits de la rama feature/fase7-mejoras (más antiguo primero):
+
+   c722b44  docs: proceso completo de la fase 5, bitacora y evidencias del cierre del Corte 2
+   14df589  feat(eventos): interfaz y puertos en eventos con filtros validados
+   b4d8672  feat(incidentes): fecha de asignacion e inicio para MTTA y MTTR
+   fe7501e  test: 36 pruebas de interfaz, puertos, tiempos y migracion (112 en total)
+   7ac0b57  docs: evidencias del paso 7.1 (interfaz, puertos y tiempos)
+   d7d8695  feat(fechas): filtro de fecha hasta hoy en hora de Colombia con aviso visible
+   edfb481  feat(eventos): marca fecha_futura y fecha del mensaje en UTC para NTP
+   ecde8cc  feat(simulador): escenario reloj_desfasado
+   4faa2e9  test: 19 pruebas de fechas, zona horaria y fecha futura (131 en total)
+   05daa8c  docs: evidencias del paso 7.2 (fechas y reloj desfasado)
+   c0b99bc  feat(interfaz): selector de tema claro y oscuro con variables de color
+   506a2fa  test: 3 pruebas del selector de tema (156 en total)
+   55384ef  feat(seguridad): coherencia equipo-marca en importacion, ingesta y configuraciones
+   d2426bf  fix(api): parametros invalidos responden 400 en lugar de ignorarse
+   831d7b8  feat(simulador): escenario suplantacion
+   83e552a  test: 22 pruebas de validacion de parametros y coherencia equipo-marca (156 en total)
+   cb29848  perf(db): modo WAL e indices compuestos para deduplicacion, filtros y correlacion
+   2777780  feat(eventos): paginacion de 100 eventos con total en encabezados
+   1ba10b5  feat(deploy): servidor waitress sin depuracion y debug solo por .env
+   fa02cd1  ci: actions checkout v5 y setup-python v6 (Node.js 24)
+   ac76f25  test: 12 pruebas de indices, WAL, paginacion y servidor (168 en total)
+
+   (+ commit de cierre: chore(release) version 0.2.1, changelog, readme y bitacora)
+
+ CIERRE: Pull Request, etiqueta y release
+ > git add app/__init__.py CHANGELOG.md README.md docs/bitacora.md docs/FASE7_proceso_completo.txt
+ > git add docs/evidencias/C3-F7-*.png
+ > git commit -m "chore(release): version 0.2.1, changelog, readme, bitacora y proceso de la fase 7"
+ > git push
+ GitHub -> Pull requests -> New -> base: develop <- compare: feature/fase7-mejoras
+   "Merge commit" para conservar todos los commits (evidencia de avance).
+ GitHub -> Pull requests -> New -> base: main <- compare: develop
+ > git switch main
+ > git pull
+ > git tag -a v0.2.1 -m "v0.2.1 mejoras del Corte 2: interfaz y puertos, fechas, validacion, WAL e indices, waitress"
+ > git push origin v0.2.1
+ > git rev-list -n 1 v0.2.1        (debe ser el merge del PR a main)
+ GitHub -> Releases -> Draft a new release -> tag v0.2.1 -> notas del CHANGELOG
+ > git switch develop
+ > git merge --ff-only main
+ > git push
+
+
+
+================================================================================
+ 9. EVIDENCIAS DE LA FASE 7
+================================================================================
+
+
+   [E] C3-F7-01_pruebas_112_passed.png
+   [E] C3-F7-02_consola_importacion_3_equipos.png
+   [E] C3-F7-03_web_eventos_interfaz_puerto.png
+   [E] C3-F7-04_web_filtro_interfaz_corta.png
+   [E] C3-F7-05_web_filtro_puerto_detalle.png
+   [E] C3-F7-06_web_puerto_invalido_navegador.png
+   [E] C3-F7-07_api_puerto_invalido_400.png
+   [E] C3-F7-08_web_incidente_tiempos.png
+   [E] C3-F7-08b_web_incidente_cerrado_tiempos.png
+   [E] C3-F7-11_pruebas_131_passed.png
+   [E] C3-F7-12_web_aviso_fecha_futura.png
+   [E] C3-F7-13_web_aviso_desde_mayor_hasta.png
+   [E] C3-F7-14_api_fecha_futura_400.png
+   [E] C3-F7-15_consola_simulador_reloj_desfasado.png
+   [E] C3-F7-16_web_eventos_fecha_futura.png
+   [E] C3-F7-17_web_detalle_fecha_futura.png
+   [E] C3-F7-18_web_filtro_hoy.png
+   [E] C3-F7-19_pruebas_168_passed.png         (pasos 7.4 a 7.6)
+   [E] C3-F7-20_consola_serve_waitress.png
+   [E] C3-F7-21_web_eventos_paginacion.png
+   [E] C3-F7-22_github_actions.png
+
+
+
+================================================================================
+ 10. PREGUNTAS PROBABLES DE SUSTENTACIÓN (CON RESPUESTA)
+================================================================================
+
+
+ P: ¿Cómo obtiene la aplicación el puerto de un ataque? ¿Escanea la red?
+ R: No escanea nada. Lee el log que envía el equipo y, con patrones de cada
+    fabricante, extrae los puertos: en una ACL de Cisco "IP(51515) -> IP(23)"
+    da origen 51515 y destino 23 (Telnet). Solo se guarda si está en 1-65535.
+
+ P: ¿Qué diferencia hay entre interfaz y puerto?
+ R: La interfaz es el puerto físico (GigabitEthernet0/0/2); el puerto TCP/UDP
+    es el número del servicio (22, 23, 3389). El primero dice dónde se cayó el
+    enlace; el segundo, qué servicio atacaron.
+
+ P: ¿Por qué no se descarta un evento con fecha futura?
+ R: Porque es evidencia: indica que el reloj del equipo está mal (NTP). Se
+    guarda y se marca. En cambio, una fecha futura en el filtro sí se rechaza,
+    porque la escribe el operador y no puede haber datos del futuro.
+
+ P: ¿Qué error de fechas tenía el Corte 2?
+ R: Filtraba los días en UTC. En Bogotá (UTC-5) un evento de las 8 p. m. del
+    16 ya es del 17 en UTC, así que aparecía en el día equivocado.
+
+ P: ¿Por qué responder 400 en vez de ignorar un parámetro inválido?
+ R: Ignorarlo mostraba todos los eventos como si el filtro se aplicara: el
+    operador sacaba conclusiones equivocadas. Con 400 ve el error y lo corrige.
+
+ P: ¿Cómo detectas una posible suplantación?
+ R: Si la IP es de un FortiGate y llega un mensaje con formato Cisco, no
+    coincide con la marca del inventario: el evento se marca
+    'marca_inconsistente' y se audita.
+
+ P: ¿Para qué sirve el modo WAL?
+ R: Para que el receptor escriba eventos mientras la web los lee, sin
+    bloquearse.
+
+ P: ¿Cómo sabes que los índices se usan?
+ R: Con EXPLAIN QUERY PLAN; hay pruebas automáticas que lo verifican para la
+    deduplicación y el filtro por equipo.
+
+ P: ¿Por qué waitress y no el servidor de Flask?
+ R: El de Flask es de desarrollo: en modo debug permite ejecutar código desde
+    el navegador. waitress es de producción, atiende varias peticiones y nunca
+    activa la depuración.
+
+ P: ¿Cómo se actualiza una base del Corte 2?
+ R: Al arrancar, init_db agrega las columnas que faltan (ALTER TABLE) y luego
+    los índices. No borra datos; se probó con una base creada con v0.2.0.
+
+
+
+================================================================================
+ 11. PREGUNTA DE VALIDACIÓN DEL ESTUDIANTE
+================================================================================
+
+
+ Pregunta:
+   Un evento llega desde la IP 198.51.100.1 (el FortiGate del inventario), con
+   formato Cisco, severidad 3 y una fecha 2 horas adelante de la hora actual.
+   ¿Qué marcas recibe, se guarda o se descarta, qué pasa con el incidente y
+   qué le dirías al técnico que debe atenderlo?
+
+ Respuesta del estudiante (con sus propias palabras):
+   ________________________________________________________________________
+   ________________________________________________________________________
+   ________________________________________________________________________
+
+
+
+================================================================================
+ 12. LISTA DE VERIFICACIÓN DE CIERRE DE LA FASE 7
+================================================================================
+
+
+ [x] Interfaz y puertos en eventos, con filtros validados (7.1)
+ [x] assigned_at y started_at en incidentes (7.1)
+ [x] Filtro de fecha en hora de Colombia, sin fechas futuras (7.2)
+ [x] Marca fecha_futura y event_time_utc (7.2)
+ [x] Tema claro y oscuro
+ [x] Parámetros inválidos -> 400 con todos los errores (7.3)
+ [x] Coherencia equipo-marca en importación, ingesta y configuraciones (7.3)
+ [x] WAL, índices compuestos y paginación (7.4)
+ [x] Servidor waitress sin depuración (7.5)
+ [x] GitHub Actions sin aviso de Node.js 20 (7.6)
+ [x] 168 pruebas en verde, cada commit verificado
+ [x] APP_VERSION = 0.2.1, CHANGELOG, README y bitácora
+ [ ] Pull Request feature/fase7-mejoras -> develop, y develop -> main
+ [ ] Etiqueta anotada v0.2.1 y release publicada
+ [ ] develop sincronizada con main
+ [ ] Respuesta a la pregunta de validación
+
+################################################################################
+#                           FIN DEL DOCUMENTO - FASE 7                         #
+################################################################################

@@ -18,10 +18,12 @@ jobs:
       matrix:
         python-version: ["3.12", "3.14"]
     steps:
+      # Fase 7.6: checkout@v5 y setup-python@v6 usan Node.js 24 (las versiones
+      # anteriores usaban Node.js 20, que GitHub marcó como obsoleto).
       - name: Descargar el código
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Instalar Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
       - name: Instalar dependencias (versiones fijadas)

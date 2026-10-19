@@ -9,27 +9,33 @@ registros de auditoría (si se pudieran borrar, un atacante borraría sus huella
 from flask import Blueprint, jsonify, request
 
 from .db import get_db
+from .validation import ParamValidator
+
+RESULTS = ("ok", "alerta", "bloqueado", "error")
 
 bp = Blueprint("audit", __name__, url_prefix="/api/audit")
 
 
 @bp.get("")
 def list_audit():
-    a = request.args
+    # Fase 7.3: parámetros validados; un valor inválido responde 400
+    v = ParamValidator(request.args)
+    actor = v.text("actor", 60, "Actor")
+    result = v.choice("result", RESULTS, "Resultado")
+    q = v.text("q", 100, "Texto de búsqueda")
+    limit = v.integer("limit", 1, 1000, "Límite", default=200)
+    if v.errors:
+        return jsonify(errors=v.errors), 400
     where, params = [], []
-    if a.get("actor"):
+    if actor:
         where.append("actor = ?")
-        params.append(a["actor"])
-    if a.get("result"):
+        params.append(actor)
+    if result:
         where.append("result = ?")
-        params.append(a["result"])
-    if a.get("q"):
+        params.append(result)
+    if q:
         where.append("(action LIKE ? OR detail LIKE ?)")
-        params += [f"%{a['q']}%"] * 2
-    try:
-        limit = max(1, min(int(a.get("limit", 200)), 1000))
-    except ValueError:
-        limit = 200
+        params += [f"%{q}%"] * 2
     sql = "SELECT * FROM audit_log" + (" WHERE " + " AND ".join(where) if where else "")
     rows = get_db().execute(sql + " ORDER BY id DESC LIMIT ?", (*params, limit)).fetchall()
     actors = [r[0] for r in get_db().execute("SELECT DISTINCT actor FROM audit_log ORDER BY actor")]

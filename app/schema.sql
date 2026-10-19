@@ -69,13 +69,19 @@ CREATE TABLE IF NOT EXISTS syslog_events (
     flags             TEXT,              -- alertas de seguridad separadas por coma
     fingerprint       TEXT,              -- huella para deduplicación
     dup_count         INTEGER NOT NULL DEFAULT 1,  -- repeticiones agrupadas
-    is_simulated      INTEGER NOT NULL DEFAULT 0 CHECK (is_simulated IN (0, 1))
+    is_simulated      INTEGER NOT NULL DEFAULT 0 CHECK (is_simulated IN (0, 1)),
+    -- Fase 7: puerto e interfaz involucrados (extraídos del mensaje por el parser)
+    interface         TEXT,              -- ej. GigabitEthernet0/0/2, port1, wan1
+    src_port          INTEGER CHECK (src_port BETWEEN 1 AND 65535),  -- puerto de origen
+    dst_port          INTEGER CHECK (dst_port BETWEEN 1 AND 65535),  -- puerto de destino (atacado)
+    -- Fase 7: fecha del mensaje convertida a UTC (base del cálculo de desfase NTP)
+    event_time_utc    TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_received ON syslog_events(received_at);
 CREATE INDEX IF NOT EXISTS idx_events_severity ON syslog_events(severity);
 CREATE INDEX IF NOT EXISTS idx_events_device   ON syslog_events(device_id);
-CREATE INDEX IF NOT EXISTS idx_events_fp       ON syslog_events(fingerprint);
+-- (Fase 7.4: el índice por huella pasó a ser compuesto; ver INDEXES en app/db.py)
 
 -- ---------------------------------------------------------------------
 -- 4. Incidentes (creación, asignación, seguimiento y cierre)
@@ -100,7 +106,10 @@ CREATE TABLE IF NOT EXISTS incidents (
     -- incidente abierto en vez de crear uno nuevo por cada evento.
     correlation_key TEXT,
     event_count     INTEGER NOT NULL DEFAULT 1,
-    last_event_at   TEXT
+    last_event_at   TEXT,
+    -- Fase 7: marcas de tiempo para los indicadores MTTA y MTTR
+    assigned_at     TEXT,                -- primera vez que se asignó un responsable
+    started_at      TEXT                 -- primera vez que pasó a 'en_progreso'
 );
 
 CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status);

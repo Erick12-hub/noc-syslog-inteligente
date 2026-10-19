@@ -5,11 +5,13 @@ Ingesta de eventos: el camino que sigue cada mensaje Syslog hasta la base de dat
        |
        v
     1. parse()                 -> facility, severidad, fabricante, mensaje
+    1b. ¿Fecha del mensaje en el futuro? -> marca 'fecha_futura' (Fase 7)
     2. ¿IP en el inventario?   -> asocia el equipo
     3. ¿Equipo autorizado?     -> lista permitida de fuentes
+    3b. ¿El formato coincide con la marca del inventario? -> 'marca_inconsistente' (Fase 7.3)
     4. ¿Prompt injection?      -> marca (NO ejecuta nada)
     5. ¿Repetido en 60 s?      -> deduplica (suma al contador)
-    6. Guarda en syslog_events
+    6. Guarda en syslog_events (incluye interfaz y puertos, Fase 7)
     0. (solo UDP) ¿La fuente supera el límite por minuto? -> se descarta (tormenta)
     7. Si es sospechoso        -> registro en auditoría
     8. Severidad 0-3 + fuente autorizada -> incidente (o se correlaciona)
@@ -17,6 +19,7 @@ Ingesta de eventos: el camino que sigue cada mensaje Syslog hasta la base de dat
 
 Lo usan los tres orígenes: receptor UDP, importación de archivos y simulador.
 """
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 
 from .config import Config
@@ -25,6 +28,7 @@ from .incidents import auto_incident_from_event, create_incident
 from .rules import apply_rule_hits, evaluate, info_flags
 from .security import STORM, detect_prompt_injection, fingerprint
 from .syslog_parser import parse
+from .timeutil import event_time_to_utc, is_future, now_utc, to_iso_utc
 
 DEDUP_WINDOW_SECONDS = 60
 MAX_IMPORT_LINES = 5000
@@ -55,6 +59,13 @@ def ingest(conn, raw: str, source_ip: str, origin: str, is_simulated: bool = Fal
     p = parse(raw)
     flags = list(p["parse_flags"])
 
+    # --- 1b. Fase 7: fecha del mensaje -------------------------------------
+    # Si el equipo envía una fecha posterior a la recepción, NO se rechaza el
+    # evento (es evidencia): se marca 'fecha_futura' = reloj desfasado / NTP.
+    event_utc = event_time_to_utc(p["event_time"])
+    if is_future(event_utc, now_utc()):
+        flags.append("fecha_futura")
+
     # --- 2 y 3. Equipo del inventario y lista permitida --------------------
     device = conn.execute(
         "SELECT id, name, vendor, authorized, is_simulated FROM devices WHERE ip = ?",
@@ -74,6 +85,13 @@ def ingest(conn, raw: str, source_ip: str, origin: str, is_simulated: bool = Fal
         vendor = device["vendor"]
     else:
         vendor = p["vendor_hint"] or "Desconocido"
+
+    # --- 3b. Fase 7.3: coherencia equipo-marca -------------------------------
+    # El inventario dice que la IP es, p. ej., un FortiGate, pero el mensaje
+    # tiene formato Cisco: o el inventario está mal, o alguien SUPLANTA la IP.
+    if (device is not None and device["vendor"] != "Otro" and p["vendor_hint"]
+            and p["vendor_hint"] != device["vendor"]):
+        flags.append("marca_inconsistente")
 
     # --- 4. Prompt injection (solo se MARCA) --------------------------------
     if detect_prompt_injection(p["message"]):
@@ -108,17 +126,21 @@ def ingest(conn, raw: str, source_ip: str, origin: str, is_simulated: bool = Fal
     cur = conn.execute(
         "INSERT INTO syslog_events (received_at, event_time, source_ip, device_id, vendor, "
         "facility, severity, hostname, app_name, message, raw, origin, authorized_source, "
-        "mnemonic, flags, fingerprint, dup_count, is_simulated) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)",
+        "mnemonic, flags, fingerprint, dup_count, is_simulated, interface, src_port, dst_port, "
+        "event_time_utc) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)",
         (now_iso(), p["event_time"], source_ip, device["id"] if device else None, vendor,
          p["facility"], p["severity"], p["hostname"], p["app_name"], p["message"],
          raw[:4000], origin, int(authorized), p["mnemonic"],
-         ",".join(flags) or None, fp, int(is_simulated)))
+         ",".join(flags) or None, fp, int(is_simulated),
+         p["interface"], p["src_port"], p["dst_port"],      # Fase 7
+         to_iso_utc(event_utc) if event_utc else None))
     conn.commit()
     event_id = cur.lastrowid
 
     # --- 7. Auditoría de lo sospechoso -------------------------------------
-    suspicious = [f for f in flags if f in ("fuente_no_autorizada", "posible_prompt_injection")]
+    suspicious = [f for f in flags if f in ("fuente_no_autorizada", "posible_prompt_injection",
+                                             "marca_inconsistente")]
     if suspicious:
         audit(conn, "sistema", "syslog.sospechoso", "syslog_events", event_id,
               f"origen={source_ip} marcas={','.join(suspicious)}", "alerta")
@@ -145,7 +167,8 @@ def ingest(conn, raw: str, source_ip: str, origin: str, is_simulated: bool = Fal
             "severity": p["severity"], "severity_name": p["severity_name"],
             "vendor": vendor, "device": device["name"] if device else None,
             "message": p["message"], "flags": flags + hits, "incident": incident,
-            "rules": rule_incidents}
+            "rules": rule_incidents, "interface": p["interface"],
+            "src_port": p["src_port"], "dst_port": p["dst_port"]}
 
 
 def _storm_alert(conn, source_ip: str):
@@ -187,3 +210,33 @@ def import_lines(conn, lines, source_ip: str, actor: str, filename: str = "") ->
     audit(conn, actor, "syslog.import", "syslog_events", None,
           f"archivo={filename or '-'} origen={source_ip} {stats}")
     return stats
+
+
+def check_import_vendor(lines, device_vendor: str) -> str | None:
+    """
+    Fase 7.3: ¿el archivo corresponde a la marca del equipo elegido?
+
+    Se analiza cada línea y se cuenta qué fabricante se detecta por su formato
+    (%LINK-3-UPDOWN = Cisco, %%01IFNET/... = Huawei, logid= = Fortinet).
+    Si la MAYORÍA de las líneas reconocibles son de otra marca, se devuelve un
+    mensaje de error; si todo está bien, devuelve None.
+
+    Equipos de marca "Otro" no se validan (no hay formato con qué comparar).
+    """
+    if device_vendor == "Otro":
+        return None
+    counts = Counter()
+    for line in lines[:MAX_IMPORT_LINES]:
+        line = line.strip()
+        if line and not line.startswith("#"):
+            hint = parse(line)["vendor_hint"]
+            if hint:
+                counts[hint] += 1
+    total = sum(counts.values())
+    if not total:
+        return None                       # no hay líneas reconocibles: no se puede juzgar
+    detected, n = counts.most_common(1)[0]
+    if detected != device_vendor and n > total / 2:
+        return (f"El archivo parece de {detected} ({n} de {total} líneas reconocidas) "
+                f"y el equipo elegido es {device_vendor}. Verifique el equipo o el archivo.")
+    return None

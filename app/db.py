@@ -37,9 +37,16 @@ def connect(db_path) -> sqlite3.Connection:
     """Abre una conexión SQLite con filas tipo diccionario y claves foráneas activas."""
     db_path = Path(db_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=5)
     conn.row_factory = sqlite3.Row          # permite row["columna"]
     conn.execute("PRAGMA foreign_keys = ON")  # SQLite las trae apagadas por defecto
+    # Fase 7.4 - optimización:
+    # WAL (Write-Ahead Logging): el receptor UDP puede ESCRIBIR eventos mientras
+    # la web los LEE, sin bloquearse. Sin WAL, una lectura larga frena la ingesta.
+    # Crea dos archivos auxiliares junto a la base: noc.db-wal y noc.db-shm.
+    conn.execute("PRAGMA journal_mode = WAL")
+    # Si otra conexión está escribiendo, esperar hasta 5 s en vez de fallar.
+    conn.execute("PRAGMA busy_timeout = 5000")
     return conn
 
 
@@ -66,6 +73,15 @@ MIGRATIONS = [
     ("incidents", "correlation_key", "TEXT"),
     ("incidents", "event_count", "INTEGER NOT NULL DEFAULT 1"),
     ("incidents", "last_event_at", "TEXT"),
+    # Fase 7: puerto/interfaz en eventos y tiempos de respuesta en incidentes.
+    # (ALTER TABLE no admite CHECK con rango en columnas nuevas de forma segura
+    #  en todas las versiones; el rango 1-65535 lo valida el parser antes de guardar.)
+    ("syslog_events", "interface", "TEXT"),
+    ("syslog_events", "src_port", "INTEGER"),
+    ("syslog_events", "dst_port", "INTEGER"),
+    ("syslog_events", "event_time_utc", "TEXT"),
+    ("incidents", "assigned_at", "TEXT"),
+    ("incidents", "started_at", "TEXT"),
 ]
 
 
@@ -76,10 +92,41 @@ def _migrate(conn: sqlite3.Connection):
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
 
 
+# Fase 7.4: índices COMPUESTOS para las consultas más frecuentes.
+# Se crean DESPUÉS de las migraciones porque algunos usan columnas nuevas
+# (si estuvieran en schema.sql fallarían en una base del Corte 2).
+# Un índice es como el índice de un libro: SQLite salta directo a las filas
+# que necesita en lugar de leer la tabla completa.
+INDEXES = [
+    # Filtro "Equipo" del listado de eventos + rango de fechas
+    ("idx_events_device_time", "syslog_events(device_id, received_at)"),
+    # Dashboard y filtro de severidad + rango de fechas
+    ("idx_events_sev_time", "syslog_events(severity, received_at)"),
+    # Deduplicación: misma huella en los últimos 60 s (se consulta con CADA mensaje)
+    ("idx_events_fp_time", "syslog_events(fingerprint, received_at)"),
+    # Filtro de interfaz (Fase 7.1)
+    ("idx_events_interface", "syslog_events(interface)"),
+    # Correlación: incidente abierto con la misma clave (se consulta con cada evento grave)
+    ("idx_incidents_corr", "incidents(correlation_key, status)"),
+    # Filtro "Actor" de la auditoría
+    ("idx_audit_actor", "audit_log(actor, ts)"),
+]
+# Índices reemplazados por uno compuesto más útil
+OBSOLETE_INDEXES = ["idx_events_fp"]
+
+
+def _ensure_indexes(conn: sqlite3.Connection):
+    for name in OBSOLETE_INDEXES:
+        conn.execute(f"DROP INDEX IF EXISTS {name}")
+    for name, target in INDEXES:
+        conn.execute(f"CREATE INDEX IF NOT EXISTS {name} ON {target}")
+
+
 def init_db(conn: sqlite3.Connection):
     """Crea las tablas (si no existen), aplica migraciones y carga las severidades."""
     conn.executescript(SCHEMA_FILE.read_text(encoding="utf-8"))
     _migrate(conn)
+    _ensure_indexes(conn)
     conn.executemany(
         "INSERT OR REPLACE INTO severities "
         "(code, keyword, name, description, creates_incident) VALUES (?, ?, ?, ?, ?)",
