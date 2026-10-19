@@ -20,7 +20,19 @@ const FLAG_LABELS = {
   cambio_fuera_de_horario: ["regla: fuera de horario", "bad"],
   cuenta_servicio: ["regla: cuenta de servicio", "bad"],
   logs_deshabilitados: ["regla: logs deshabilitados", "bad"],
+  puerto_invalido: ["puerto inválido", "warn"],
+  interfaz_invalida: ["interfaz inválida", "warn"],
+  fecha_futura: ["fecha futura (reloj/NTP)", "bad"],
+  marca_inconsistente: ["marca inconsistente", "bad"],
 };
+
+/* Fase 7: texto de interfaz y puertos.  ej. "wan1 · 51520 → 3389" */
+function netText(e) {
+  const parts = [];
+  if (e.interface) parts.push(e.interface);
+  if (e.src_port || e.dst_port) parts.push(`${e.src_port ?? "?"} → ${e.dst_port ?? "?"}`);
+  return parts.join(" · ") || "—";
+}
 
 async function loadDeviceOptions() {
   const devices = await api("/api/devices");
@@ -42,12 +54,63 @@ function flagChips(flags) {
   return td;
 }
 
-async function loadEvents() {
+/* ---------------------------------------------------------------------------
+ * Fase 7: filtro de fecha hasta HOY (hora de Colombia).
+ * La fecha de hoy la entrega el SERVIDOR (/api/events/today): si el reloj o la
+ * zona horaria del PC del operador están mal, el límite sigue siendo correcto.
+ * Esta validación es solo una ayuda; la que manda es la del servidor (400).
+ * ------------------------------------------------------------------------- */
+const fDesde = document.getElementById("f-desde");
+const fHasta = document.getElementById("f-hasta");
+const filterWarning = document.getElementById("filter-warning");
+let today = null;
+
+async function setupDateLimits() {
+  today = (await api("/api/events/today")).today;   // "AAAA-MM-DD"
+  fDesde.max = today;
+  fHasta.max = today;
+}
+
+/** Devuelve la lista de problemas del rango de fechas (vacía si está bien). */
+function dateProblems() {
+  const problems = [];
+  for (const [label, input] of [["Desde", fDesde], ["Hasta", fHasta]]) {
+    if (input.value && today && input.value > today)   // AAAA-MM-DD se compara bien como texto
+      problems.push(`${label} (${input.value}) es posterior a hoy (${today}). Solo se consultan hoy e histórico.`);
+  }
+  if (fDesde.value && fHasta.value && fDesde.value > fHasta.value)
+    problems.push("'Desde' no puede ser posterior a 'Hasta'.");
+  return problems;
+}
+
+function showFilterWarning(problems) {
+  filterWarning.hidden = problems.length === 0;
+  filterWarning.textContent = problems.length ? `⚠ ${problems.join(" ")}` : "";
+}
+
+// 'Hasta' no puede ser anterior a 'Desde': se ajusta el mínimo permitido
+fDesde.addEventListener("change", () => { fHasta.min = fDesde.value || ""; showFilterWarning(dateProblems()); });
+fHasta.addEventListener("change", () => showFilterWarning(dateProblems()));
+
+/* Fase 7.4: paginación. Se piden 100 eventos por página en lugar de 200 de golpe;
+ * el total y el número de páginas llegan en encabezados HTTP (X-Total-Count...). */
+const PER_PAGE = 100;
+let currentPage = 1;
+
+async function loadEvents(page = 1) {
   // Solo se envían los filtros con valor
   const params = new URLSearchParams();
   for (const [k, v] of new FormData(frmFilters)) if (v) params.append(k, v);
-  params.append("limit", "200");
-  const events = await api(`/api/events?${params}`);
+  params.append("limit", PER_PAGE);
+  params.append("page", page);
+  // fetch directo (no api()) para poder leer los encabezados de paginación
+  const res = await fetch(`/api/events?${params}`);
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(((body && body.errors) || [`Error HTTP ${res.status}`]).join("\n"));
+  const events = body;
+  const total = Number(res.headers.get("X-Total-Count") || events.length);
+  const pages = Number(res.headers.get("X-Total-Pages") || 1);
+  currentPage = page;
 
   evBody.replaceChildren();
   for (const e of events) {
@@ -61,14 +124,21 @@ async function loadEvents() {
     if (e.dup_count > 1) msg.prepend(el("span", `x${e.dup_count}`, "tag dup"), " ");
     tr.append(el("td", e.id, "mono small"), el("td", fmtDate(e.received_at), "small"), sev, dev,
               el("td", e.vendor), el("td", FACILITIES[e.facility] ?? e.facility, "small"),
-              el("td", e.mnemonic || "—", "mono small"), msg, el("td", e.origin, "small"),
+              el("td", e.mnemonic || "—", "mono small"), el("td", netText(e), "mono small"), msg, el("td", e.origin, "small"),
               flagChips(e.flags));
     tr.onclick = () => showEvent(e.id);
     evBody.append(tr);
   }
+  const first = total ? (page - 1) * PER_PAGE + 1 : 0;
   document.getElementById("events-count").textContent =
-    `${events.length} eventos mostrados (máx. 200) · clic en una fila para ver el detalle`;
+    `Eventos ${first}–${first + events.length - (total ? 1 : 0)} de ${total} · página ${page} de ${pages}` +
+    " · clic en una fila para ver el detalle";
+  document.getElementById("btn-prev").disabled = page <= 1;
+  document.getElementById("btn-next").disabled = page >= pages;
 }
+
+document.getElementById("btn-prev").onclick = () => loadEvents(currentPage - 1).catch(e => toast(e.message, "err"));
+document.getElementById("btn-next").onclick = () => loadEvents(currentPage + 1).catch(e => toast(e.message, "err"));
 
 async function showEvent(id) {
   const e = await api(`/api/events/${id}`);
@@ -77,10 +147,13 @@ async function showEvent(id) {
   dl.replaceChildren();
   const rows = [
     ["Recibido (local)", fmtDate(e.received_at)], ["Fecha del mensaje", e.event_time || "—"],
+    ["Fecha del mensaje (local)", e.event_time_utc ? fmtDate(e.event_time_utc) : "—"],
     ["IP de origen", e.source_ip], ["Equipo", e.device_name || "no registrado"],
     ["Fuente autorizada", e.authorized_source ? "Sí" : "NO"], ["Marca", e.vendor],
     ["Facility", `${e.facility} (${FACILITIES[e.facility]})`], ["Severidad", `${e.severity} (${e.severity_name})`],
     ["Código fabricante", e.mnemonic || "—"], ["Aplicación", e.app_name || "—"],
+    ["Interfaz", e.interface || "—"], ["Puerto de origen", e.src_port ?? "—"],
+    ["Puerto de destino", e.dst_port ?? "—"],
     ["Repeticiones", e.dup_count], ["Origen", e.origin], ["Marcas", e.flags || "ninguna"],
     ["Simulado", e.is_simulated ? "Sí" : "No"],
   ];
@@ -107,17 +180,35 @@ async function incidentFromEvent(eventId) {
 
 document.getElementById("frm-import").addEventListener("submit", async (ev) => {
   ev.preventDefault();
+  const importErrors = document.getElementById("import-errors");
+  importErrors.replaceChildren();
   try {
     const s = await api("/api/events/import", { method: "POST", body: new FormData(ev.target) });
     toast(`Importación: ${s.nuevas} nuevos, ${s.duplicadas} duplicados, ${s.ignoradas} ignorados`);
     ev.target.reset();
     loadEvents();
-  } catch (err) { toast(err.message, "err"); }
+  } catch (err) {
+    // Fase 7.3: el motivo queda visible (el toast desaparece a los 4 s)
+    importErrors.replaceChildren(...err.message.split("\n").map(m => el("li", m)));
+    toast("Importación rechazada", "err");
+  }
 });
 
-frmFilters.addEventListener("submit", (ev) => { ev.preventDefault(); loadEvents().catch(e => toast(e.message, "err")); });
-document.getElementById("btn-clear").onclick = () => setTimeout(loadEvents, 0);
-document.getElementById("btn-refresh").onclick = () => loadEvents();
+frmFilters.addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  const problems = dateProblems();
+  showFilterWarning(problems);
+  if (problems.length) return;                 // no se consulta con fechas inválidas
+  // Si el servidor rechaza algo (400), su mensaje también se muestra en el aviso
+  loadEvents().catch(e => { showFilterWarning([e.message]); toast(e.message, "err"); });
+});
+// novalidate: el aviso propio reemplaza la burbuja del navegador, que desaparece
+// sola y no explica la regla. El servidor valida igual (respuesta 400).
+frmFilters.noValidate = true;
+document.getElementById("btn-clear").onclick = () => setTimeout(() => {
+  fHasta.min = ""; showFilterWarning([]); loadEvents();
+}, 0);
+document.getElementById("btn-refresh").onclick = () => loadEvents(currentPage);
 document.getElementById("btn-close-ev").onclick = () => document.getElementById("dlg-event").close();
 
-loadDeviceOptions().then(loadEvents).catch(err => toast(err.message, "err"));
+Promise.all([loadDeviceOptions(), setupDateLimits()]).then(() => loadEvents()).catch(err => toast(err.message, "err"));

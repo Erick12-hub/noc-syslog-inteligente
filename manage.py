@@ -40,7 +40,7 @@ def cmd_check_db():
 
 
 def cmd_import_log(path: str, ip: str):
-    from app.ingest import import_lines
+    from app.ingest import check_import_vendor, import_lines
     file = Path(path)
     if not file.is_file():
         print(f"[!] No existe el archivo: {file}")
@@ -48,6 +48,17 @@ def cmd_import_log(path: str, ip: str):
     conn = connect(Config.DATABASE_PATH)
     init_db(conn)
     lines = file.read_text(encoding="utf-8", errors="replace").splitlines()
+    # Fase 7.3: la IP debe ser de un equipo del inventario y la marca debe coincidir
+    device = conn.execute("SELECT name, vendor FROM devices WHERE ip = ?", (ip,)).fetchone()
+    if device is not None:
+        problem = check_import_vendor(lines, device["vendor"])
+        if problem:
+            from app.db import audit
+            audit(conn, Config.DEFAULT_OPERATOR, "syslog.import_rechazado", "devices", None,
+                  f"archivo={file.name} origen={ip} {problem}", "bloqueado")
+            print(f"[!] Importación RECHAZADA ({device['name']}, {ip}): {problem}")
+            conn.close()
+            return
     stats = import_lines(conn, lines, ip, Config.DEFAULT_OPERATOR, file.name)
     print(f"[OK] Importación de {file.name} (origen {ip}): {stats}")
     conn.close()

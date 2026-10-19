@@ -16,6 +16,13 @@ CICLO DE VIDA (máquina de estados). Solo se permiten estas transiciones:
 
 Un incidente cerrado no se puede modificar: queda como registro histórico.
 
+TIEMPOS DE RESPUESTA (Fase 7, para MTTA/MTTR en la Fase 10):
+    created_at  -> assigned_at  = tiempo hasta asignar   (MTTA)
+    created_at  -> started_at   = tiempo hasta empezar
+    created_at  -> closed_at    = tiempo hasta cerrar    (MTTR)
+assigned_at y started_at guardan la PRIMERA vez (COALESCE): reasignar o
+volver a guardar no borra la medición original.
+
 SEGURIDAD: el título y la descripción de un incidente automático los escribe
 el SISTEMA a partir de datos estructurados (equipo, código, severidad). Nunca se
 copia el texto del log, porque es un dato no confiable: si un atacante escribe
@@ -100,6 +107,10 @@ def auto_incident_from_event(conn, event: dict) -> dict | None:
     device = event["device_name"] or "equipo desconocido"
     if "posible_prompt_injection" in (event.get("flags") or []):
         title = f"Posible prompt injection en log de {device}"
+    elif "marca_inconsistente" in (event.get("flags") or []):
+        # Fase 7.3: el contenido NO es confiable (puede venir de un suplantador),
+        # así que el título no repite lo que dice el mensaje.
+        title = f"Marca inconsistente: posible suplantación de {device}"
     else:
         code = (event["mnemonic"] or "").replace("logid=", "FortiOS logid ")
         title = f'{code or "Evento " + SEVERITY_NAMES[event["severity"]]} en {device}'
@@ -129,6 +140,9 @@ def _get(conn, incident_id):
 @bp.get("")
 def list_incidents():
     estado = request.args.get("estado", "abiertos")
+    if estado not in ("abiertos", "todos", *STATUSES):          # Fase 7.3
+        return jsonify(errors=[f"Estado inválido: '{estado[:30]}'. Opciones: abiertos, todos, "
+                               f"{', '.join(STATUSES)}"]), 400
     sql = ("SELECT i.*, d.name AS device_name, "
            "(SELECT COUNT(*) FROM incident_notes n WHERE n.incident_id = i.id) AS notes_count "
            "FROM incidents i LEFT JOIN devices d ON d.id = i.device_id")
@@ -231,8 +245,11 @@ def assign(incident_id):
         return jsonify(errors=["Indique el responsable (2 a 60 caracteres)"]), 400
 
     new_status = "asignado" if inc["status"] == "abierto" else inc["status"]
-    conn.execute("UPDATE incidents SET assigned_to = ?, status = ?, updated_at = ? WHERE id = ?",
-                 (who, new_status, now_iso(), incident_id))
+    ts = now_iso()
+    # COALESCE(assigned_at, ?) = si ya tenía fecha de asignación, se conserva
+    conn.execute("UPDATE incidents SET assigned_to = ?, status = ?, updated_at = ?, "
+                 "assigned_at = COALESCE(assigned_at, ?) WHERE id = ?",
+                 (who, new_status, ts, ts, incident_id))
     add_note(conn, incident_id, _operator(), f"Asignado a {who}")
     conn.commit()
     audit(conn, _operator(), "incident.assign", "incidents", incident_id, f"responsable={who}")
@@ -263,8 +280,11 @@ def change_status(incident_id):
                      "updated_at = ? WHERE id = ?", (resolution[:MAX_TEXT], ts, ts, incident_id))
         add_note(conn, incident_id, _operator(), f"Cerrado. Resolución: {resolution[:MAX_TEXT]}")
     else:
-        conn.execute("UPDATE incidents SET status = ?, updated_at = ? WHERE id = ?",
-                     (new, ts, incident_id))
+        # started_at se fija la primera vez que el incidente pasa a 'en_progreso'
+        conn.execute("UPDATE incidents SET status = ?, updated_at = ?, "
+                     "started_at = CASE WHEN ? = 'en_progreso' THEN COALESCE(started_at, ?) "
+                     "ELSE started_at END WHERE id = ?",
+                     (new, ts, new, ts, incident_id))
         add_note(conn, incident_id, _operator(), f"Estado: {inc['status']} → {new}")
     conn.commit()
     audit(conn, _operator(), "incident.status", "incidents", incident_id, f"{inc['status']}->{new}")

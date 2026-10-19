@@ -223,6 +223,13 @@ def generate():
     if request.args.get("device_id"):
         device = get_db().execute("SELECT * FROM devices WHERE id = ?",
                                   (request.args["device_id"],)).fetchone()
+        # Fase 7.3: el equipo debe existir y su marca debe coincidir con la pedida.
+        # Antes, un id inexistente se ignoraba y se generaba una configuración "genérica".
+        if device is None:
+            return jsonify(errors=["El equipo seleccionado no existe en el inventario"]), 400
+        if device["vendor"] != v["vendor"]:
+            return jsonify(errors=[f"El equipo {device['name']} es {device['vendor']}: no se le puede "
+                                   f"generar una configuración {v['vendor']}"]), 400
     text = GENERATORS[v["vendor"]](v, device)
     audit(get_db(), current_app.config["DEFAULT_OPERATOR"], "config.generate", "devices",
           device["id"] if device else None, f"{v['vendor']} servidor={v['server_ip']}:{v['port']} sev={v['severity']}")
