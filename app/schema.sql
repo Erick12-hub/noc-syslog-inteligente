@@ -160,3 +160,24 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 
 CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(ts);
+
+-- ---------------------------------------------------------------------
+-- 7. Usuarios del NOC (Fase 8)
+--    password_hash: SOLO el hash scrypt; la contraseña nunca se guarda.
+--    failed_attempts / locked_until: bloqueo tras varios intentos fallidos.
+--    No hay usuarios por defecto: el primero se crea con
+--    "python manage.py create-user" (contraseña escrita por consola).
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS users (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    username        TEXT NOT NULL UNIQUE,
+    full_name       TEXT,
+    password_hash   TEXT NOT NULL,
+    role            TEXT NOT NULL CHECK (role IN ('operador', 'auditor', 'admin_seguridad')),
+    active          INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+    failed_attempts INTEGER NOT NULL DEFAULT 0,
+    locked_until    TEXT,                  -- UTC; NULL = no bloqueada
+    last_login_at   TEXT,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL
+);

@@ -211,6 +211,24 @@ textarea { background: var(--field-bg); color: var(--text); border: 1px solid va
 .timeline li::before { content: ""; position: absolute; left: -20px; top: 5px; width: 10px; height: 10px;
                        border-radius: 50%; background: var(--panel); border: 2px solid var(--accent); }
 
+/* ---------- Fase 8: sesión y roles ---------- */
+.user-box { display: flex; align-items: center; gap: 8px; }
+.user-box form { margin: 0; }
+.user-name { font-size: 13px; }
+.tag.role-operador { background: var(--blue-bg); color: var(--blue-fg); }
+.tag.role-auditor { background: var(--yellow-bg); color: var(--yellow-fg); }
+.tag.role-admin_seguridad { background: var(--red-bg); color: var(--red-fg); }
+.readonly-banner { background: var(--blue-bg); color: var(--blue-fg); text-align: center; padding: 5px; font-size: 12.5px; }
+.login-body { min-height: 100vh; display: grid; place-items: center; }
+.login-wrap { width: min(400px, 100% - 32px); padding: 0; }
+.login-card { display: grid; gap: 14px; padding: 24px; }
+.login-card h1 { font-size: 20px; margin: 4px 0 0; }
+.login-card .btn.primary { padding: 10px; }
+.login-error { margin: 0; padding: 10px 12px; border-radius: 6px; border-left: 4px solid var(--danger);
+               background: var(--red-bg); color: var(--red-fg); }
+.sim-note { text-align: center; }
+.error-card { max-width: 640px; margin: 40px auto; display: grid; gap: 10px; }
+
 /* ---------- Fase 7.4: paginación ---------- */
 .pager { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 10px; flex-wrap: wrap; }
 .pager-buttons { display: flex; gap: 4px; }
