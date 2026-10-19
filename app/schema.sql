@@ -156,7 +156,10 @@ CREATE TABLE IF NOT EXISTS audit_log (
     entity    TEXT,                      -- tabla/objeto afectado
     entity_id INTEGER,
     detail    TEXT,
-    result    TEXT NOT NULL DEFAULT 'ok' -- ok | bloqueado | error
+    result    TEXT NOT NULL DEFAULT 'ok', -- ok | alerta | bloqueado | error
+    -- Fase 8.2: cadena de integridad (ver audit() y verify_audit_chain() en app/db.py)
+    prev_hash TEXT,                      -- hash del registro anterior
+    hash      TEXT                       -- SHA-256(prev_hash + datos de este registro)
 );
 
 CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(ts);
