@@ -56,6 +56,7 @@ RULES = {
     # quedaba atrapado en su sesión (hallazgo de la prueba en vivo, Fase 8.1).
     "auth.logout": ALL,
     "audit.list_audit": AUDIT,          # la auditoría solo la ven auditor y admin
+    "audit.verify": AUDIT,              # verificar la cadena de integridad (Fase 8.2)
     "views.auditoria": AUDIT,
     "proposals.review": ADMIN,          # aprobar o rechazar propuestas
     "configgen.generate": OPS,          # es GET, pero queda auditado como acción

@@ -229,6 +229,14 @@ textarea { background: var(--field-bg); color: var(--text); border: 1px solid va
 .sim-note { text-align: center; }
 .error-card { max-width: 640px; margin: 40px auto; display: grid; gap: 10px; }
 
+/* ---------- Fase 8.2: auditoría encadenada ---------- */
+.chain-result { border-left: 4px solid var(--line); }
+.chain-result.chain-ok { border-left-color: var(--accent); }
+.chain-result.chain-ok h2 { color: var(--green-fg); }
+.chain-result.chain-bad { border-left-color: var(--danger); background: var(--red-bg); }
+.chain-result.chain-bad h2 { color: var(--red-fg); }
+.hash-cell { color: var(--muted); white-space: nowrap; }
+
 /* ---------- Fase 7.4: paginación ---------- */
 .pager { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 10px; flex-wrap: wrap; }
 .pager-buttons { display: flex; gap: 4px; }
