@@ -50,7 +50,25 @@ python -m venv .venv
 python -m pip install -r requirements.txt
 copy .env.example .env
 python manage.py init-db --seed
+python manage.py create-user admin --rol admin_seguridad --nombre "Su nombre"
 ```
+
+El último comando crea el **primer usuario** (no hay usuarios ni contraseñas por defecto).
+La contraseña se escribe en la consola sin mostrarse: mínimo 10 caracteres, con letras y
+números, sin contener el nombre de usuario. Luego, desde la misma consola:
+
+```bat
+python manage.py create-user operador1 --rol operador --nombre "Turno noche"
+python manage.py create-user auditor1 --rol auditor
+python manage.py users                    :: lista usuarios, estado y último ingreso
+python manage.py unlock operador1         :: desbloquea una cuenta tras 5 intentos fallidos
+```
+
+| Rol | Puede |
+|---|---|
+| `operador` | Inventario, eventos, incidentes, consola, crear/ejecutar/verificar propuestas |
+| `auditor` | Ver todo, incluida la auditoría. **Solo lectura** |
+| `admin_seguridad` | Todo + aprobar propuestas (nunca las propias) + usuarios |
 
 > Use siempre `python -m pip` y `python -m pytest`. En equipos con políticas de control de
 > aplicaciones (Windows Device Guard), los ejecutables `pip.exe` y `pytest.exe` del entorno
@@ -128,7 +146,8 @@ Política completa: [docs/04_politica_ia.md](docs/04_politica_ia.md).
 
 ## Limitaciones conocidas
 
-- Sin inicio de sesión ni roles (previsto para la Fase 8); las acciones se firman con `DEFAULT_OPERATOR`.
+- Las acciones por consola de comandos (`manage.py`, receptor UDP) se firman con `DEFAULT_OPERATOR`; las de la web, con el usuario de la sesión.
+- La cookie de sesión no lleva la marca `Secure` porque el NOC se sirve por HTTP en 127.0.0.1; con HTTPS se activa `SESSION_COOKIE_SECURE=1`.
 - Los eventos guardados antes de v0.2.1 no tienen interfaz ni puertos: los datos no se recalculan.
 - La fecha de mensajes sin zona horaria se interpreta en hora de Colombia; la zona por equipo llega en la Fase 9.
 - La detección de prompt injection es heurística (por patrones): marca, no bloquea.
