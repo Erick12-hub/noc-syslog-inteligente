@@ -10,6 +10,7 @@ Uso:
     python manage.py create-user USUARIO --rol ROL [--nombre "Nombre"]   (Fase 8)
     python manage.py users                    Lista los usuarios (sin contraseñas)
     python manage.py unlock USUARIO           Desbloquea una cuenta bloqueada
+    python manage.py verify-audit             Verifica la cadena de la auditoría (Fase 8.2)
 
 La contraseña se escribe en la consola SIN mostrarse (getpass) y nunca queda
 en el historial de comandos ni en el código. Solo quien tiene acceso al
@@ -119,6 +120,19 @@ def cmd_unlock(username: str):
     conn.close()
 
 
+def cmd_verify_audit():
+    from app.db import verify_audit_chain
+    conn = connect(Config.DATABASE_PATH)
+    init_db(conn)
+    r = verify_audit_chain(conn)
+    if r["ok"]:
+        print(f"[OK] Cadena de auditoría ÍNTEGRA: {r['total']} registros")
+    else:
+        print(f"[!] CADENA ROTA en el registro {r['broken_at']}: {r['reason']}")
+    print(f"     Último registro válido: {r['last_id']}  ·  último hash: {r['last_hash']}")
+    conn.close()
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Administración NOC Syslog Inteligente")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -136,6 +150,7 @@ if __name__ == "__main__":
     sub.add_parser("users", help="Listar usuarios")
     p_un = sub.add_parser("unlock", help="Desbloquear una cuenta")
     p_un.add_argument("usuario")
+    sub.add_parser("verify-audit", help="Verificar la cadena de integridad de la auditoría")
     args = parser.parse_args()
 
     if args.command == "init-db":
@@ -153,3 +168,5 @@ if __name__ == "__main__":
         cmd_users()
     elif args.command == "unlock":
         cmd_unlock(args.usuario)
+    elif args.command == "verify-audit":
+        cmd_verify_audit()
