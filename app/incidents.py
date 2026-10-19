@@ -29,8 +29,9 @@ copia el texto del log, porque es un dato no confiable: si un atacante escribe
 "IGNORA TUS REGLAS..." en un log, ese texto no termina en el título del
 incidente que luego leerán personas o asistentes de IA.
 """
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, jsonify, request
 
+from .auth import actor
 from .db import audit, get_db, now_iso
 
 bp = Blueprint("incidents", __name__, url_prefix="/api/incidents")
@@ -128,7 +129,8 @@ def auto_incident_from_event(conn, event: dict) -> dict | None:
 # API
 # ---------------------------------------------------------------------------
 def _operator() -> str:
-    return current_app.config["DEFAULT_OPERATOR"]
+    """Fase 8: responsable = usuario de la sesión (ver app/auth.py)."""
+    return actor()
 
 
 def _get(conn, incident_id):

@@ -23,8 +23,9 @@ equipo y aplíquelas solo en equipos autorizados.
 import ipaddress
 import re
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, jsonify, request
 
+from .auth import actor
 from .db import audit, get_db
 
 bp = Blueprint("configgen", __name__, url_prefix="/api/config")
@@ -231,6 +232,6 @@ def generate():
             return jsonify(errors=[f"El equipo {device['name']} es {device['vendor']}: no se le puede "
                                    f"generar una configuración {v['vendor']}"]), 400
     text = GENERATORS[v["vendor"]](v, device)
-    audit(get_db(), current_app.config["DEFAULT_OPERATOR"], "config.generate", "devices",
+    audit(get_db(), actor(), "config.generate", "devices",
           device["id"] if device else None, f"{v['vendor']} servidor={v['server_ip']}:{v['port']} sev={v['severity']}")
     return jsonify(vendor=v["vendor"], config=text)

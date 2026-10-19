@@ -14,8 +14,9 @@ import ipaddress
 import re
 import sqlite3
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, jsonify, request
 
+from .auth import actor
 from .db import audit, get_db, now_iso
 
 bp = Blueprint("devices", __name__, url_prefix="/api/devices")
@@ -28,8 +29,8 @@ MAX_TEXT = 100
 
 
 def _operator() -> str:
-    """Operador responsable (en el MVP no hay login; ver Corte 3)."""
-    return current_app.config["DEFAULT_OPERATOR"]
+    """Fase 8: responsable = usuario de la sesión (ver app/auth.py)."""
+    return actor()
 
 
 def validate(data: dict, partial: bool = False) -> tuple[dict, list]:
