@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Error {{ code }}{% endblock %}
+{% block content %}
+<section class="card error-card">
+  <h1>{{ code }} · {{ "Acceso denegado" if code == 403 else "No se pudo completar la acción" }}</h1>
+  <p>{{ message }}</p>
+  <p class="muted small">El intento quedó registrado en la auditoría.</p>
+  <p><a href="{{ url_for('views.dashboard') }}">Volver al dashboard</a></p>
+</section>
+{% endblock %}

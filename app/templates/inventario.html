@@ -6,16 +6,17 @@
     <h1>Inventario de dispositivos</h1>
     <p class="muted">Solo los equipos <b>autorizados</b> son fuentes Syslog de confianza (lista permitida).</p>
   </div>
-  <button class="btn primary" id="btn-new">+ Nuevo equipo</button>
+  {% if can('devices.create_device', 'POST') %}<button class="btn primary" id="btn-new">+ Nuevo equipo</button>{% endif %}
 </section>
 
-<section class="card">
+<!-- Fase 8.4: el JS oculta los botones de escritura si el rol no puede usarlos (auditor) -->
+<section class="card" id="inventory" data-can-edit="{{ 1 if can('interfaces.create_interface', 'POST') else 0 }}">
   <div class="table-wrap">
     <table id="tbl-devices">
       <thead>
         <tr>
           <th>Nombre</th><th>IP</th><th>Marca</th><th>Modelo</th><th>Versión</th>
-          <th>Ubicación</th><th>Estado</th><th>Fuente</th><th>Actualizado</th><th></th>
+          <th>Ubicación</th><th>Estado</th><th>Fuente</th><th>Interfaces</th><th>Actualizado</th><th></th>
         </tr>
       </thead>
       <tbody></tbody>
@@ -54,6 +55,45 @@
     <div class="actions">
       <button type="button" class="btn" id="btn-cancel">Cancelar</button>
       <button type="submit" class="btn primary">Guardar</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Fase 8.4: interfaces del equipo -->
+<dialog id="dlg-ifaces" class="wide">
+  <div class="dlg-head">
+    <div>
+      <h2 id="if-title">Interfaces</h2>
+      <p class="muted small" id="if-help">Si el equipo tiene interfaces registradas, los eventos que mencionen
+        otra interfaz se marcan <b>interfaz no registrada</b>.</p>
+    </div>
+    <button type="button" class="btn" id="btn-if-close">Cerrar</button>
+  </div>
+  <div class="table-wrap">
+    <table id="tbl-ifaces">
+      <thead><tr><th>Interfaz</th><th>Descripción</th><th>Estado</th><th>Actualizado</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <p class="muted small" id="if-count"></p>
+
+  <form id="frm-iface" class="action-grid" novalidate>
+    <input type="hidden" name="iface_id">
+    <label>Nombre *<input name="name" maxlength="48" required></label>
+    <label>Estado
+      <select name="status">
+        <option value="up">up (operativa)</option>
+        <option value="down">down (caída)</option>
+        <option value="admin_down">admin_down (apagada por el administrador)</option>
+        <option value="desconocido" selected>desconocido</option>
+      </select>
+    </label>
+    <label class="span2">Descripción<input name="description" maxlength="100" placeholder="Enlace a SIM-DIST-SW01"></label>
+    <p class="muted small span2" id="if-example"></p>
+    <ul class="errors span2" id="if-errors"></ul>
+    <div class="actions span2">
+      <button type="button" class="btn" id="btn-if-reset">Limpiar</button>
+      <button type="submit" class="btn primary" id="btn-if-save">Agregar interfaz</button>
     </div>
   </form>
 </dialog>

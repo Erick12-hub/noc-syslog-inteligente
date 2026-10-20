@@ -17,8 +17,9 @@ Fase 7.4: la respuesta sigue siendo una lista, y el total va en encabezados:
 Fase 7: TODOS los filtros se VALIDAN (app/validation.py). Si un valor no es
 válido se responde 400 con la lista de errores, en vez de ignorarlo en silencio.
 """
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, jsonify, request
 
+from .auth import actor
 from .db import get_db
 from .db import audit
 from .ingest import check_import_vendor, import_lines
@@ -158,12 +159,12 @@ def import_file():
     # como si fuera de un FortiGate: se rechaza ANTES de guardar nada.
     problem = check_import_vendor(lines, device["vendor"])
     if problem:
-        audit(conn, current_app.config["DEFAULT_OPERATOR"], "syslog.import_rechazado",
+        audit(conn, actor(), "syslog.import_rechazado",
               "devices", device_id, f"archivo={file.filename} {problem}", "bloqueado")
         return jsonify(errors=[problem]), 409
 
     stats = import_lines(conn, lines, device["ip"],
-                         current_app.config["DEFAULT_OPERATOR"], file.filename)
+                         actor(), file.filename)
     return jsonify(stats)
 
 

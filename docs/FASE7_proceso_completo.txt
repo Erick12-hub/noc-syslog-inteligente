@@ -1344,10 +1344,19 @@
    ¿Qué marcas recibe, se guarda o se descarta, qué pasa con el incidente y
    qué le dirías al técnico que debe atenderlo?
 
- Respuesta del estudiante (con sus propias palabras):
-   ________________________________________________________________________
-   ________________________________________________________________________
-   ________________________________________________________________________
+ Respuesta del estudiante (con sus propias palabras, revisada el 2026-10-19):
+   El evento queda guardado con dos marcas: 'fecha_futura' (llega 2 horas
+   adelantado, posible reloj desfasado por NTP caído o mal configurado) y
+   'marca_inconsistente' (viene de la IP del FortiGate pero con formato
+   Cisco). Por esta última queda registrado como sospechoso en la auditoría.
+   No se marca como 'fuente_no_autorizada' porque la IP está registrada y
+   autorizada. Por su severidad 3 y fuente autorizada se abre un incidente
+   titulado "Marca inconsistente: posible suplantación de SIM-EDGE-FW01", sin
+   incluir el mensaje original. Al técnico le indicaría no revisar la
+   interfaz reportada hasta verificar que la IP del inventario sea correcta,
+   descartar una suplantación o un conflicto de IP, revisar el NTP del
+   firewall y hacer cualquier cambio bajo el proceso formal de propuesta,
+   aprobación y auditoría.
 
 
 
@@ -1368,10 +1377,13 @@
  [x] GitHub Actions sin aviso de Node.js 20 (7.6)
  [x] 168 pruebas en verde, cada commit verificado
  [x] APP_VERSION = 0.2.1, CHANGELOG, README y bitácora
- [ ] Pull Request feature/fase7-mejoras -> develop, y develop -> main
- [ ] Etiqueta anotada v0.2.1 y release publicada
- [ ] develop sincronizada con main
- [ ] Respuesta a la pregunta de validación
+ [x] Pull Request feature/fase7-mejoras -> main (#3) y develop sincronizada
+     (el PR se hizo directo a main; develop se igualó con git merge main)
+ [x] Etiqueta anotada v0.2.1 sobre 41a6342 y release "v0.2.1 — Mejoras del Corte 2"
+     (la etiqueta se creó dos veces en el commit equivocado; se borró local y
+      remotamente y se recreó sobre el merge correcto)
+ [x] develop sincronizada con main (16a2b6e)
+ [x] Respuesta a la pregunta de validación (sección 11, agregada en la Fase 8)
 
 ################################################################################
 #                           FIN DEL DOCUMENTO - FASE 7                         #

@@ -23,9 +23,10 @@ Cada intento, permitido o bloqueado, queda en la auditoría.
 import re
 from datetime import datetime, timedelta, timezone
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, jsonify, request
 
 from .config import Config
+from .auth import actor as session_actor
 from .db import audit, get_db
 
 bp = Blueprint("console", __name__, url_prefix="/api/console")
@@ -179,7 +180,7 @@ def run():
     if dev is None:
         return jsonify(errors=["Seleccione un equipo del inventario"]), 400
     command = str(data.get("command") or "")
-    actor = "asistente_ia" if data.get("actor") == "asistente_ia" else current_app.config["DEFAULT_OPERATOR"]
+    actor = "asistente_ia" if data.get("actor") == "asistente_ia" else session_actor()
 
     ok, reason = check(dev["vendor"], command, actor)
     audit(conn, actor, "console.allowed" if ok else "console.blocked", "devices", dev["id"],

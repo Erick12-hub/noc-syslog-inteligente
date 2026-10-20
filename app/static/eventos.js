@@ -24,6 +24,7 @@ const FLAG_LABELS = {
   interfaz_invalida: ["interfaz inválida", "warn"],
   fecha_futura: ["fecha futura (reloj/NTP)", "bad"],
   marca_inconsistente: ["marca inconsistente", "bad"],
+  interfaz_desconocida: ["interfaz no registrada", "bad"],
 };
 
 /* Fase 7: texto de interfaz y puertos.  ej. "wan1 · 51520 → 3389" */

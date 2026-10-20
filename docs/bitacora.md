@@ -475,8 +475,119 @@ verificación queda en las 25 pruebas automáticas correspondientes y en este re
 | Eventos guardados con v0.2.0 sin interfaz ni puertos | Los datos no se recalculan: el evento se guarda tal como llegó. Limitación declarada en el README |
 | El commit `2d6e4a9` solo subió las capturas | El `git add` se pegó dos veces en una línea (`...txtgit add ...`) y falló; el commit se hizo igual con las capturas ya preparadas. Los archivos de la versión se subieron en el commit siguiente. No se reescribió un commit publicado |
 | `git diff` quedó en `(END)` | Es el visor de páginas de Git: se sale con `q`; se usa `git --no-pager` |
+| La etiqueta v0.2.1 quedó dos veces en el commit equivocado | Primero en la rama feature y luego en el merge anterior, antes de fusionar los PR. Se borró local y remotamente (`git tag -d`, `git push origin :refs/tags/v0.2.1`) y se recreó sobre el merge correcto `41a6342` |
+| El PR #3 fue de feature directo a main | `develop` se igualó después con `git merge main` (queda en `16a2b6e`) |
 
 Documento detallado: [`docs/FASE7_proceso_completo.txt`](FASE7_proceso_completo.txt)
+
+---
+
+## Fase 8 — Seguridad de acceso, auditoría encadenada e interfaces (v0.3.0)
+
+**Fechas:** 2026-10-18 a 2026-10-19 · **Rama:** `feature/fase8-seguridad` · **Estado:** ✅ Cerrada (release v0.3.0)
+
+Objetivo: que cada acción la haga un usuario identificado con un rol, que la auditoría no se
+pueda alterar sin que se note y que el inventario conozca las interfaces de cada equipo, antes
+de conectar el gestor SSH a equipos reales (Fase 9). Todos los datos de las pruebas son **SIMULADOS**.
+
+### Qué se realizó
+
+| Paso | Actividad | Archivo(s) | Pruebas |
+|---|---|---|---|
+| 8.1 | Usuarios y roles (`operador`, `auditor`, `admin_seguridad`), inicio de sesión, contraseñas con scrypt y política mínima, bloqueo tras 5 intentos (15 min), CSRF, control de permisos central, separación de funciones (nadie aprueba su propia propuesta), auditoría firmada con el usuario de la sesión. Comandos `create-user`, `users`, `unlock` | `auth.py` (nuevo), `schema.sql`, `config.py`, `manage.py`, `proposals.py`, `console.py`, `login.html`, `base.html`, `common.js` | 168 → 206 |
+| 8.2 | Auditoría encadenada con SHA-256, triggers de solo inserción, migración que encadena los registros antiguos, verificación por consola (`verify-audit`) y web (botón *Verificar integridad*), simulación de alteración y borrado sobre una COPIA | `db.py`, `audit_api.py`, `auditoria.*`, `manage.py`, `scripts/simular_alteracion_auditoria.py` | 206 → 220 |
+| 8.3 | Ventana **Seguridad** (solo administrador): resumen de 24 h, cuentas bloqueadas, gestión de usuarios con salvaguardas (no cambiar el propio rol, no desactivarse, siempre un administrador activo), estado de la cadena | `admin_api.py` (nuevo), `seguridad.*` (nuevos), `views.py`, `base.html`, `styles.css` | 220 → 237 |
+| 8.4 | Tabla `interfaces` por equipo, validación por fabricante y normalización, ventana en Inventario (consulta para el auditor), marca `interfaz_desconocida` auditada y filtrable, huella de deduplicación con la interfaz | `interfaces.py` (nuevo), `schema.sql`, `devices.py`, `ingest.py`, `security.py`, `inventario.*`, `eventos.*`, `samples/SIM-CORE-RTR01_interfaces.log` | 237 → 276 |
+| Cierre | Versión 0.3.0, CHANGELOG, README, bitácora, `FASE8_proceso_completo.txt`, respuesta de validación de la Fase 7, PR y release | `app/__init__.py`, `CHANGELOG.md`, `README.md`, `docs/` | 276 |
+
+### Historial de commits de la Fase 8
+
+| Commit | Mensaje |
+|---|---|
+| 980e186 | feat(auth): usuarios, inicio de sesion, roles, bloqueo y CSRF |
+| 0a98535 | refactor(auditoria): el responsable de cada accion es el usuario de la sesion |
+| ef64657 | feat(cli): comandos create-user, users y unlock |
+| e7a972e | test: 38 pruebas de sesion, bloqueo, CSRF, roles y separacion de funciones (206 en total) |
+| ae91396 | docs: evidencias del paso 8.1 (sesion, roles y hallazgo del cierre de sesion) |
+| ca55bf8 | feat(auditoria): cadena de hashes SHA-256 y triggers de solo insercion |
+| 7252f34 | feat(auditoria): verificacion de integridad en la web para auditor y administrador |
+| 0906c70 | feat(cli): verify-audit y simulacion de alteracion sobre una copia |
+| f03ebab | test: 14 pruebas de la cadena de auditoria, triggers y alteraciones (220 en total) |
+| f56237c | docs: evidencias del paso 8.2 (auditoria encadenada) |
+| b80694e | feat(seguridad): API de administracion de usuarios y resumen de seguridad |
+| 93ced23 | test: 15 pruebas de la ventana de seguridad... *(3 pruebas fallan en este punto: la página aún no estaba)* |
+| 4897263 | docs: evidencias del paso 8.3 *(mismo estado: 3 fallan; GitHub Actions en rojo en este push)* |
+| d279962 | feat(interfaz): ventana de administracion de seguridad para el administrador *(235 en verde)* |
+| f3956bd | test: 17 pruebas... (237 en total) *(el commit solo agrega 2; las otras 15 entraron en 93ced23)* |
+| 959438c | feat(inventario): tabla y API de interfaces por equipo con validacion por fabricante |
+| 498f5d5 | feat(ingesta): marca interfaz_desconocida y huella de deduplicacion con la interfaz |
+| 2bfd633 | feat(interfaz): ventana de interfaces en el inventario y modo consulta para el auditor |
+| 46c1423 | test: 39 pruebas de interfaces por equipo (276 en total) |
+| 9e9e7de | docs: evidencias del paso 8.4 (interfaces por equipo) |
+| (siguiente) | chore(release): version 0.3.0, changelog, readme, bitacora y proceso de la fase 8 |
+
+Cada commit se verificó por separado. Todos pasan sus pruebas salvo `93ced23` y `4897263`
+(ver observaciones).
+
+### Ancla de la auditoría
+
+Último registro verificado el 2026-10-18 (paso 8.2), anotado **fuera** de la base para detectar un
+recorte del final de la cadena:
+
+- Registro **71** · hash `54ea22b85bae6fb134a151b0379649ba347ad36a9ecc4a6c120931de0a59493c`
+
+### Evidencias de la Fase 8 (`docs/evidencias/`)
+
+| Archivo | Qué muestra |
+|---|---|
+| C3-F8-01_pruebas_203_passed | Pruebas del paso 8.1 *(tomada antes de la corrección del cierre de sesión: 203; luego 206)* |
+| C3-F8-02_consola_create_user_users | Creación de usuarios por consola (contraseña oculta) y listado |
+| C3-F8-03_web_login_error | Mensaje genérico ante usuario o contraseña incorrectos |
+| C3-F8-04_web_bloqueo_5_intentos | Cuenta bloqueada al quinto intento |
+| C3-F8-05 / 06 | Menú del operador y 403 al intentar entrar a Auditoría |
+| C3-F8-07_web_auditor_solo_lectura | Auditor en modo de solo lectura |
+| C3-F8-08_web_auditoria_sesiones | Inicios, fallos, bloqueos y rechazos en la auditoría con el usuario real |
+| C3-F8-09_pruebas_220_passed | 220 pruebas en verde (paso 8.2) |
+| C3-F8-10 / 11 | Cadena íntegra por consola y en la web |
+| C3-F8-12 / 12b | Simulación de modificación sobre la copia y cadena rota en la web apuntando a la copia |
+| C3-F8-13_consola_simulacion_borrar | Simulación de borrado: rota en el registro siguiente |
+| C3-F8-14_consola_base_real_intacta | La base real sigue íntegra |
+| C3-F8-15_pruebas_235_passed | Pruebas del paso 8.3 *(luego 237 con las 2 del contador de bloqueo)* |
+| C3-F8-16 a 20 | Ventana Seguridad: resumen, rechazo por política, usuario creado, desbloqueo, "no puede desactivarse" |
+| C3-F8-21a / 21b | Auditoría: secuencia de bloqueo y acciones del administrador |
+| C3-F8-22_pruebas_276_passed | 276 pruebas en verde (paso 8.4) |
+| C3-F8-23 / 24 | Interfaces registradas (nombre corto normalizado) y rechazo de `port1` en un Cisco |
+| C3-F8-25_import_interfaces | Importación: 3 nuevas, 0 duplicadas |
+| C3-F8-26 | Eventos filtrados por "interfaz no registrada": solo `GigabitEthernet0/0/9` |
+| C3-F8-27 | Auditoría (búsqueda `interf`): `interface.create` del operador y `syslog.sospechoso` del sistema |
+| C3-F8-28 | El auditor consulta las interfaces sin formulario ni botones |
+
+### Observaciones de la Fase 8
+
+| Situación | Explicación / acción |
+|---|---|
+| El auditor recibía 403 al pulsar "Salir" | `POST /logout` caía en la regla por defecto (escrituras = operador y administrador). **Hallazgo de la prueba en vivo:** se agregó `auth.logout` para todos los roles y 3 pruebas |
+| "AdminNoc2026" rechazada al crear el administrador | Comportamiento esperado: la política impide que la contraseña contenga el nombre de usuario |
+| Las pruebas tardaban ~19 s con scrypt | scrypt es lento a propósito. En las pruebas se usa un hash rápido y una prueba verifica que la aplicación real usa scrypt |
+| `console.py`: la variable local `actor` tapaba la función importada | Se importó como `session_actor` |
+| La web no mostraba la alteración tras la simulación | Correcto: la simulación solo altera una COPIA (`data/noc_copia_alterada.db`) y nunca la base real. Para verlo en la web se arrancó apuntando a la copia (`set DATABASE_PATH=...`) |
+| Cuenta bloqueada con 0 intentos fallidos | Al bloquear se reiniciaba el contador. **Hallazgo de la prueba en vivo:** ahora se conserva, la ventana muestra "bloqueado hasta HH:MM" y hay 2 pruebas |
+| La barra superior se partía en dos líneas a 1366 px | Se ocultó visualmente el texto del tema, se abrevió la etiqueta del rol y se redujo el relleno del menú |
+| Commits del 8.3 en desorden | El `git add` se pegó dos veces (`...styles.cssgit add ...`) y falló. Las pruebas y las evidencias se confirmaron antes que la página `/seguridad`: `93ced23` y `4897263` tienen 3 pruebas fallando y GitHub Actions marcó ese push en rojo. `d279962` agregó la página y `f3956bd` dejó 237 en verde. No se reescribió el historial publicado. **Desde el 8.4 se ejecuta `git status` antes de cada commit** |
+| El evento de una interfaz no registrada desaparecía como duplicado | La huella cambia los números por `#`: "Gi0/0/1 down" y "Gi0/0/9 down" eran el mismo evento. **Hallazgo de la prueba en vivo (8.4):** la huella incluye la interfaz; los puertos siguen fuera para agrupar los intentos de un atacante desde puertos aleatorios |
+| La verificación de la cadena es manual | Planeado: verificación automática con incidente de severidad 1 (Fase 9) y alerta por Telegram (Fase 11) |
+
+### Pregunta de validación de la Fase 8
+
+> El usuario `operador1` importa a las 3:00 a. m. un log del SIM-CORE-RTR01 con la línea
+> "Interface GigabitEthernet0/0/9 changed state to down"; el router solo tiene registradas
+> Gi0/0/0 a Gi0/0/2. Al día siguiente alguien abre `noc.db` con otra herramienta y borra el
+> registro de auditoría de esa importación. ¿Qué marca recibe el evento? ¿Puede `operador1`
+> aprobar una propuesta para revisar la interfaz? ¿Cómo se descubre el borrado y qué límite tiene?
+
+Respuesta del estudiante: ver la sección 11 de [`docs/FASE8_proceso_completo.txt`](FASE8_proceso_completo.txt).
+
+Documento detallado: [`docs/FASE8_proceso_completo.txt`](FASE8_proceso_completo.txt)
 
 ---
 
@@ -484,8 +595,8 @@ Documento detallado: [`docs/FASE7_proceso_completo.txt`](FASE7_proceso_completo.
 
 | Fase | Fechas | Pendiente |
 |---|---|---|
-| 8 | Sáb 17 - Dom 18 | Inicio de sesión y roles (operador, auditor, administrador de seguridad), ventana de administración de seguridad, auditoría encadenada, tabla `interfaces` por equipo |
-| 9 | Lun 19 - Mié 21 | Equipos autorizados del laboratorio: gestor SSH por backend (Netmiko), interfaces reales, troubleshooting (ping, traceroute/tracert, show/display), NTP, chequeo de consistencia, políticas Syslog aplicadas y verificadas. Inicio de la marcha blanca |
+| 8 | Sáb 18 - Lun 19 | ✅ Cerrada (v0.3.0): sesión y roles, ventana de seguridad, auditoría encadenada, interfaces por equipo |
+| 9 | Mar 20 - Mié 21 | Equipos autorizados del laboratorio: gestor SSH por backend (Netmiko), interfaces reales (comparadas con la tabla `interfaces`), verificación automática de la cadena de auditoría, troubleshooting (ping, traceroute/tracert, show/display), NTP, chequeo de consistencia, políticas Syslog aplicadas y verificadas. Inicio de la marcha blanca |
 | 10 | Jue 22 | Gestión de cambios: matriz de riesgo, versiones de configuración con diff, aprobación por etapas, rollback; tablero MTTA/MTTR |
 | 11 | Vie 23 | Alertas por Telegram (token en `.env`) y defensa IA mejorada |
 | 12 | Sáb 24 - Dom 25 | Pruebas funcionales, de seguridad, carga, respaldo, recuperación y rollback; cierre de la marcha blanca |

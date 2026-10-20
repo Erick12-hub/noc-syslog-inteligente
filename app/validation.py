@@ -25,7 +25,7 @@ KNOWN_FLAGS = (
     "puerto_invalido", "interfaz_invalida",
     # ingesta
     "equipo_desconocido", "fuente_no_autorizada", "posible_prompt_injection",
-    "fecha_futura", "marca_inconsistente",
+    "fecha_futura", "marca_inconsistente", "interfaz_desconocida",
     # reglas (app/rules.py)
     "login_fallido", "cambio_config", "fuerza_bruta", "cambio_fuera_de_horario",
     "cuenta_servicio", "logs_deshabilitados",

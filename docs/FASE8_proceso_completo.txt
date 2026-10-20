@@ -1,0 +1,1331 @@
+################################################################################
+#                                                                              #
+#                       NOC SYSLOG INTELIGENTE                                 #
+#         FASE 8 - PROCESO COMPLETO, COMANDOS EXPLICADOS Y CÓDIGO COMENTADO    #
+#   Seguridad de acceso, auditoría encadenada e interfaces (versión v0.3.0)    #
+#                                                                              #
+################################################################################
+
+  Proyecto    : NOC Syslog Inteligente (proyecto individual)
+  Asignatura  : Administración y Gestión de Redes - Periodo 2026-2
+  Docente     : Ing. John Harold Pérez Calderón
+  Estudiante  : Erick Santiago Castro Linares (GitHub: Erick12-hub)
+  Repositorio : https://github.com/Erick12-hub/noc-syslog-inteligente
+  Versión     : v0.3.0 (segunda versión del Corte 3)
+  Fechas      : 2026-10-18 a 2026-10-19
+  Rama        : feature/fase8-seguridad  ->  develop  ->  main
+  Entorno     : Windows 11 · Anaconda Prompt · Python 3.14 · Git · GitHub
+                GitHub Actions (Python 3.12 y 3.14 en ubuntu-latest)
+
+  Propósito de este documento:
+    Explicar qué se construyó en la Fase 8, por qué, cómo se probó en vivo y
+    cómo se publicó. Cada comando con su explicación y el código nuevo
+    numerado y comentado para poder explicarlo en la sustentación.
+
+  Convenciones:
+    >     comando escrito en Anaconda Prompt
+    =>    resultado obtenido
+    [OK]  verificación superada
+    [E]   evidencia (captura) guardada en docs/evidencias/
+    TODOS LOS EQUIPOS Y EVENTOS SON DATOS SIMULADOS (prefijo SIM-, IP RFC 5737).
+    NINGUNA CONTRASEÑA APARECE EN ESTE DOCUMENTO NI EN LAS CAPTURAS.
+
+
+================================================================================
+ ÍNDICE
+================================================================================
+   1. Resumen de la Fase 8
+   2. Conceptos nuevos
+   3. Cronología: cada paso y cada comando, explicado
+   4. Código nuevo comentado
+        4.1  Roles y control de permisos central (app/auth.py)
+        4.2  Contraseñas y creación de usuarios (app/auth.py)
+        4.3  Inicio de sesión y bloqueo (app/auth.py)
+        4.4  Separación de funciones (app/proposals.py)
+        4.5  Auditoría encadenada (app/db.py)
+        4.6  Simulación de alteración sobre una copia (scripts/)
+        4.7  Ventana de seguridad: salvaguardas (app/admin_api.py)
+        4.8  Interfaces por equipo (app/interfaces.py)
+        4.9  Marca interfaz_desconocida y huella (app/ingest.py, app/security.py)
+   5. Pruebas automáticas (168 -> 276)
+   6. Seguridad aplicada en la Fase 8
+   7. Problemas y observaciones
+   8. Control de versiones: historial de la fase
+   9. Evidencias de la Fase 8
+  10. Preguntas probables de sustentación (con respuesta)
+  11. Pregunta de validación del estudiante
+  12. Lista de verificación de cierre
+
+
+
+================================================================================
+ 1. RESUMEN DE LA FASE 8
+================================================================================
+
+
+ OBJETIVO
+   Antes de conectar el NOC a equipos reales por SSH (Fase 9), asegurar tres
+   cosas: (1) que cada acción la haga una PERSONA identificada con un ROL;
+   (2) que el registro de auditoría no se pueda alterar sin que se note; y
+   (3) que el inventario conozca las interfaces reales de cada equipo para
+   detectar mensajes que no cuadran.
+
+ RESULTADO
+   [OK] Inicio de sesión obligatorio; sin usuarios ni contraseñas por defecto.
+   [OK] Tres roles: operador (opera), auditor (solo lectura), admin_seguridad
+        (todo + aprobar propuestas + usuarios).
+   [OK] Contraseñas con scrypt; política de 10 caracteres, letras y números.
+   [OK] Bloqueo de la cuenta tras 5 intentos durante 15 minutos.
+   [OK] Token anti-CSRF en toda petición que cambia datos.
+   [OK] Nadie aprueba su propia propuesta (separación de funciones).
+   [OK] La auditoría registra el usuario REAL de la sesión.
+   [OK] Auditoría encadenada con SHA-256 + triggers de solo inserción.
+   [OK] Verificación de integridad por consola y en la web; alteración y
+        borrado detectados (probado sobre una COPIA de la base).
+   [OK] Ventana Seguridad para el administrador.
+   [OK] Interfaces por equipo con validación por fabricante; marca
+        'interfaz_desconocida' auditada y filtrable.
+   [OK] Corregida la huella de deduplicación (escondía interfaces distintas).
+   [OK] 276 pruebas automáticas en verde (168 en v0.2.1): +108.
+   [OK] Versión 0.3.0, CHANGELOG, README, PR y release.
+
+ RELACIÓN CON LOS REQUISITOS DEL CORTE 3
+   | Requisito del Corte 3                          | Cómo lo cubre la Fase 8            |
+   |------------------------------------------------|------------------------------------|
+   | Gestor SSH con roles                           | Roles y permisos listos (8.1)      |
+   | Auditoría de comandos y aprobación humana      | Usuario real + separación (8.1)    |
+   | Auditoría confiable                            | Cadena SHA-256 + triggers (8.2)    |
+   | Defensa ante agentes de IA                     | La IA no tiene rol: no aprueba     |
+   | Integración con equipos (interfaces reales)    | Tabla interfaces, base de Fase 9   |
+
+
+
+================================================================================
+ 2. CONCEPTOS NUEVOS
+================================================================================
+
+
+ AUTENTICACIÓN vs AUTORIZACIÓN
+   Autenticación = ¿quién eres? (usuario y contraseña).
+   Autorización  = ¿qué puedes hacer? (rol). Primero una, luego la otra.
+
+ ROL (RBAC, control de acceso basado en roles)
+   Los permisos se dan al ROL, no a cada persona. Cambiar a alguien de
+   operador a auditor cambia de golpe todo lo que puede hacer.
+
+ PRINCIPIO DEL MENOR PRIVILEGIO
+   Cada rol tiene solo lo que necesita. El auditor revisa, pero no puede
+   cambiar nada; así su revisión es independiente.
+
+ SEPARACIÓN DE FUNCIONES
+   Quien propone un cambio no puede aprobarlo. Hacen falta dos personas para
+   ejecutar una acción sobre la red: evita errores y abusos de una sola.
+
+ HASH DE CONTRASEÑA (scrypt)
+   No se guarda la contraseña, sino una huella irreversible con "sal"
+   aleatoria. scrypt es lento a propósito (~0,2 s): para el usuario no se
+   nota, pero hace muy costoso probar millones de contraseñas robadas.
+
+ BLOQUEO POR INTENTOS (anti fuerza bruta)
+   Tras 5 fallos la cuenta se bloquea 15 minutos, incluso con la contraseña
+   correcta. El mensaje es el mismo si el usuario no existe: no se revela
+   qué usuarios hay (enumeración de usuarios).
+
+ CSRF (Cross-Site Request Forgery)
+   Una página maliciosa podría hacer que el navegador del operador, que ya
+   tiene sesión, envíe un POST al NOC. Cada página lleva un token secreto
+   que la otra página no conoce; sin él, la petición se rechaza (403).
+
+ COOKIE HttpOnly y SameSite=Lax
+   HttpOnly: JavaScript no puede leer la cookie de sesión (frena el robo por
+   XSS). SameSite=Lax: el navegador no la envía en peticiones POST que
+   vienen de otro sitio (segunda barrera contra CSRF).
+
+ FUNCIÓN HASH SHA-256 Y CADENA DE HASHES
+   SHA-256 produce una huella de 64 caracteres; cambiar una letra cambia toda
+   la huella. En la cadena, cada registro incluye la huella del anterior:
+       hash_n = SHA-256( hash_(n-1) | datos_n )
+   Modificar un registro rompe su hash; borrarlo deja al siguiente apuntando
+   a una huella que ya no existe. Es la misma idea que usa una blockchain.
+
+ TRIGGER
+   Regla que la base de datos ejecuta sola ante un evento. Aquí: "ANTES de
+   UPDATE o DELETE en audit_log -> abortar". Ni la propia aplicación puede
+   modificar la auditoría.
+
+ HASH ANCLA
+   El último hash verificado, anotado FUERA de la base (bitácora). Si alguien
+   borra el final de la cadena o la recalcula entera, el ancla ya no coincide.
+
+ INTERFAZ REGISTRADA vs INTERFAZ DEL EVENTO
+   El inventario dice qué interfaces TIENE el equipo; el evento dice cuál
+   REPORTA. Si no coinciden: inventario desactualizado o mensaje fabricado.
+
+
+
+================================================================================
+ 3. CRONOLOGÍA: CADA PASO Y CADA COMANDO, EXPLICADO
+================================================================================
+
+
+--------------------------------------------------------------------------------
+ 3.0 Preparación de la rama
+--------------------------------------------------------------------------------
+
+
+ > git switch develop
+ > git pull
+ > git switch -c feature/fase8-seguridad
+   Rama nueva a partir de develop (v0.2.1). Todo el trabajo de la fase va
+   aquí; main solo recibe versiones publicadas.
+
+
+--------------------------------------------------------------------------------
+ 3.1 Paso 8.1 - Usuarios, sesión, roles, bloqueo y CSRF
+--------------------------------------------------------------------------------
+
+
+ > python -m pytest -q
+   => 206 passed   (168 + 38 nuevas; la captura C3-F8-01 muestra 203, antes
+                    de corregir el cierre de sesión del auditor)          [E] 01
+
+ > python manage.py create-user admin_noc --rol admin_seguridad --nombre "Administrador del NOC"
+   La contraseña se pide con getpass (no se ve al escribir) y dos veces para
+   confirmar. Si no cumple la política, se rechaza con todos los motivos.
+   Nota: "AdminNoc2026" se rechazó porque contiene el nombre de usuario:
+   comportamiento esperado.
+
+ > python manage.py create-user operador1 --rol operador --nombre "Turno noche"
+ > python manage.py create-user auditoria_interna --rol auditor
+ > python manage.py users
+   => lista usuario, rol, activo, intentos, bloqueo y último ingreso, SIN
+      contraseñas ni hashes                                               [E] 02
+
+ > python run.py
+   Prueba en vivo en el navegador:
+     - Usuario o contraseña incorrectos -> mismo mensaje genérico      [E] 03
+     - 5 intentos fallidos -> "Cuenta bloqueada 15 minutos" (423)      [E] 04
+     - Operador: menú sin Auditoría; /auditoria -> 403                 [E] 05, 06
+     - Auditor: franja "modo de solo lectura"                          [E] 07
+     - Auditoría: inicios, fallos, bloqueos y rechazos con el usuario  [E] 08
+     - HALLAZGO: el auditor recibía 403 al pulsar "Salir" -> corregido.
+
+ > python manage.py unlock operador1
+   Desbloquea la cuenta y pone el contador en cero (queda auditado).
+
+
+--------------------------------------------------------------------------------
+ 3.2 Paso 8.2 - Auditoría encadenada
+--------------------------------------------------------------------------------
+
+
+ > python -m pytest -q
+   => 220 passed                                                          [E] 09
+
+ > python manage.py verify-audit
+   Recorre toda la auditoría y recalcula cada hash.
+   => Cadena íntegra · último registro 71 · hash 54ea22b8...a59493c       [E] 10
+   Ese hash se anotó en la bitácora como ANCLA.
+
+   Web: Auditoría -> botón "Verificar integridad" -> cadena íntegra       [E] 11
+
+ > python scripts\simular_alteracion_auditoria.py --modificar 40
+   Copia la base con la API backup() de SQLite a data\noc_copia_alterada.db,
+   en la COPIA quita los triggers (como haría un atacante) y cambia el actor
+   del registro 40. Verifica la copia:
+   => CADENA ROTA en el registro 40: alterado                              [E] 12
+
+ > set DATABASE_PATH=data\noc_copia_alterada.db
+ > python run.py
+   Para ver la alteración en la web hay que apuntar la aplicación a la copia
+   (la simulación nunca toca data\noc.db).                               [E] 12b
+
+ > python scripts\simular_alteracion_auditoria.py --borrar 40
+   => CADENA ROTA en el registro 41: el 40 fue borrado (el 41 apunta a una
+      huella que ya no existe)                                           [E] 13
+
+ > set DATABASE_PATH=
+ > python manage.py verify-audit
+   => la base REAL sigue íntegra                                          [E] 14
+
+
+--------------------------------------------------------------------------------
+ 3.3 Paso 8.3 - Ventana de seguridad
+--------------------------------------------------------------------------------
+
+
+ > python -m pytest -q
+   => 235 passed (luego 237 con las 2 pruebas del contador)               [E] 15
+
+   Web, como admin_seguridad -> menú "Seguridad":
+     - Resumen 24 h: fallos, bloqueos, acciones bloqueadas, cadena         [E] 16
+     - Crear usuario con contraseña débil -> rechazo con los motivos      [E] 17
+     - Usuario creado                                                      [E] 18
+     - HALLAZGO: la cuenta bloqueada mostraba 0 intentos -> corregido;
+       ahora muestra "bloqueado hasta HH:MM" y conserva 5 fallidos        [E] 19
+     - Intentar desactivarse a sí mismo -> no permitido                   [E] 20
+     - Auditoría: secuencia de bloqueo y acciones del administrador       [E] 21a, 21b
+
+
+--------------------------------------------------------------------------------
+ 3.4 Paso 8.4 - Interfaces por equipo
+--------------------------------------------------------------------------------
+
+
+ > python -m pytest -q
+   => 276 passed                                                          [E] 22
+
+   Web, como operador -> Inventario -> SIM-CORE-RTR01 -> Ver (0):
+     - Gi0/0/0 (up), Gi0/0/1 (up), GigabitEthernet0/0/2 (down). Los nombres
+       cortos quedan como GigabitEthernet0/0/x                            [E] 23
+     - "port1" en un Cisco -> rechazado con ejemplos válidos               [E] 24
+
+ > python manage.py import-log samples\SIM-CORE-RTR01_interfaces.log --ip 192.0.2.1
+   => leidas 3, nuevas 3, duplicadas 0, ignoradas 5 (comentarios #)       [E] 25
+   HALLAZGO durante la preparación: antes de corregir la huella el
+   resultado era "nuevas 2, duplicadas 1": el evento de Gi0/0/9 se
+   fusionaba con el de Gi0/0/1 y su marca se perdía.
+
+   Web -> Eventos -> Marca de seguridad = "Interfaz no registrada":
+     => solo GigabitEthernet0/0/9                                         [E] 26
+   Web -> Auditoría -> Buscar "interf":
+     => interface.create (operador1) x3 y syslog.sospechoso (sistema,
+        alerta, marcas=interfaz_desconocida)                              [E] 27
+   Web, como auditor -> Inventario -> Ver (3): consulta sin formulario    [E] 28
+
+ > git status          (antes de CADA commit: lo que se confirma, en verde)
+
+
+
+================================================================================
+ 4. CÓDIGO NUEVO COMENTADO
+================================================================================
+
+
+--------------------------------------------------------------------------------
+ 4.1 Roles y control de permisos central (app/auth.py)
+--------------------------------------------------------------------------------
+
+
+ Todas las peticiones pasan por enforce() ANTES de llegar a la ruta. Las
+ reglas están en un solo lugar: si mañana se agrega una ruta y nadie la
+ registra, se aplica la regla por defecto segura (leer = todos; cambiar
+ datos = operador y administrador). Nunca queda abierta por olvido.
+
+  +--- app/auth.py -----------------------------------------------------------
+  |  41 | ROLES = ("operador", "auditor", "admin_seguridad")
+  |  42 | ROLE_NAMES = {"operador": "Operador", "auditor": "Auditor", "admin_seguridad": "Administrador de seguridad"}
+  |  43 |
+  |  44 | ALL = frozenset(ROLES)
+  |  45 | OPS = frozenset({"operador", "admin_seguridad"})        # pueden operar (cambiar datos)
+  |  46 | AUDIT = frozenset({"auditor", "admin_seguridad"})       # pueden ver la auditoría
+  |  47 | ADMIN = frozenset({"admin_seguridad"})
+  |  48 |
+  |  49 | # Rutas que NO exigen sesión
+  |  50 | PUBLIC = {"auth.login_page", "auth.login", "static", "health"}
+  |  51 |
+  |  52 | # Excepciones a la regla por defecto (endpoint -> roles permitidos)
+  |  53 | RULES = {
+  |  54 |     # Cerrar sesión es un POST (lleva token CSRF), pero NO cambia datos del NOC:
+  |  55 |     # cualquier rol debe poder salir. Sin esta línea el auditor (solo lectura)
+  |  56 |     # quedaba atrapado en su sesión (hallazgo de la prueba en vivo, Fase 8.1).
+  |  57 |     "auth.logout": ALL,
+  |  58 |     "audit.list_audit": AUDIT,          # la auditoría solo la ven auditor y admin
+  |  59 |     "audit.verify": AUDIT,              # verificar la cadena de integridad (Fase 8.2)
+  |  60 |     "views.auditoria": AUDIT,
+  |  61 |     "proposals.review": ADMIN,          # aprobar o rechazar propuestas
+  |  62 |     "configgen.generate": OPS,          # es GET, pero queda auditado como acción
+  |  63 |     "console.allowed": OPS,
+  |  64 |     "views.consola": OPS,
+  |  65 |     "views.configuraciones": OPS,
+  |  66 |     "views.seguridad": ADMIN,           # ventana de administración de seguridad (Fase 8.3)
+  |  67 | }
+  |  68 |
+  |  69 | # Todas las rutas de un blueprint con este prefijo quedan solo para estos roles
+  |  70 | PREFIX_RULES = {
+  |  71 |     "admin.": ADMIN,                    # /api/admin/... (usuarios, resumen de seguridad)
+  +----------------------------------------------------------------------------
+  +--- app/auth.py  (enforce: sesión, CSRF y rol) ----------------------------
+  | 184 | def allowed_roles(endpoint: str, method: str) -> frozenset:
+  | 185 |     """Roles que pueden usar un endpoint con un método HTTP (regla por defecto + excepciones)."""
+  | 186 |     if endpoint in RULES:
+  | 187 |         return RULES[endpoint]
+  | 188 |     for prefix, roles in PREFIX_RULES.items():
+  | 189 |         if endpoint.startswith(prefix):
+  | 190 |             return roles
+  | 191 |     return ALL if method in SAFE_METHODS else OPS
+  | 192 |
+  | 193 |
+  | 194 | def enforce():
+  | 195 |     """before_request: sesión, cuenta activa, CSRF y rol. Si algo falla, la ruta no se ejecuta."""
+  | 196 |     g.user = None
+  | 197 |     endpoint = request.endpoint or ""
+  | 198 |     if endpoint in PUBLIC:
+  | 199 |         if request.method not in SAFE_METHODS and not _csrf_ok():
+  | 200 |             msg = "La sesión del formulario expiró. Recargue la página e intente de nuevo."
+  | 201 |             if endpoint == "auth.login":
+  | 202 |                 csrf_token()
+  | 203 |                 return render_template("login.html", error=msg), 400
+  | 204 |             return _deny(400, msg)
+  | 205 |         return None
+  | 206 |
+  | 207 |     user = _load_user(session["user_id"]) if "user_id" in session else None
+  | 208 |     if user is None or not user["active"]:
+  | 209 |         session.clear()
+  | 210 |         if _is_api():
+  | 211 |             return jsonify(errors=["Debe iniciar sesión"]), 401
+  | 212 |         return redirect(url_for("auth.login_page", next=request.full_path.rstrip("?")))
+  | 213 |     g.user = user
+  | 214 |
+  | 215 |     if request.method not in SAFE_METHODS and not _csrf_ok():
+  | 216 |         audit(get_db(), user["username"], "security.csrf", None, None,
+  | 217 |               f"{request.method} {request.path}", "bloqueado")
+  | 218 |         return _deny(403, "Token de seguridad (CSRF) inválido o ausente. Recargue la página.")
+  | 219 |
+  | 220 |     if user["role"] not in allowed_roles(endpoint, request.method):
+  | 221 |         audit(get_db(), user["username"], "security.forbidden", None, None,
+  | 222 |               f"rol={user['role']} {request.method} {request.path}", "bloqueado")
+  | 223 |         return _deny(403, f"Su rol ({ROLE_NAMES[user['role']]}) no permite esta acción.")
+  +----------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+ 4.2 Contraseñas y creación de usuarios (app/auth.py)
+--------------------------------------------------------------------------------
+
+  +--- app/auth.py  (política y alta de usuarios) ----------------------------
+  |  89 | def validate_password(password: str, username: str) -> list[str]:
+  |  90 |     """Política mínima de contraseñas. Devuelve la lista de problemas."""
+  |  91 |     from .config import Config
+  |  92 |     errors = []
+  |  93 |     min_len = Config.PASSWORD_MIN_LENGTH
+  |  94 |     if len(password) < min_len:
+  |  95 |         errors.append(f"La contraseña debe tener al menos {min_len} caracteres")
+  |  96 |     if not re.search(r"[A-Za-z]", password) or not re.search(r"\d", password):
+  |  97 |         errors.append("La contraseña debe combinar letras y números")
+  |  98 |     if username and username.lower() in password.lower():
+  |  99 |         errors.append("La contraseña no puede contener el nombre de usuario")
+  | 100 |     return errors
+  | 101 |
+  | 102 |
+  | 103 | def create_user(conn, username: str, password: str, role: str, full_name: str = "",
+  | 104 |                 actor: str = "sistema") -> int:
+  | 105 |     """Crea un usuario. Lanza ValueError con todos los problemas si algo no es válido."""
+  | 106 |     username = (username or "").strip().lower()
+  | 107 |     errors = []
+  | 108 |     if not RE_USERNAME.match(username):
+  | 109 |         errors.append("Usuario inválido: 3 a 30 caracteres, empieza con letra; letras minúsculas, números, . _ -")
+  | 110 |     if role not in ROLES:
+  | 111 |         errors.append(f"Rol inválido. Opciones: {', '.join(ROLES)}")
+  | 112 |     errors += validate_password(password or "", username)
+  | 113 |     if not errors and conn.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone():
+  | 114 |         errors.append(f"El usuario '{username}' ya existe")
+  | 115 |     if errors:
+  | 116 |         raise ValueError(errors)
+  | 117 |     ts = now_iso()
+  | 118 |     cur = conn.execute(
+  | 119 |         "INSERT INTO users (username, full_name, password_hash, role, active, failed_attempts, "
+  | 120 |         "created_at, updated_at) VALUES (?, ?, ?, ?, 1, 0, ?, ?)",
+  | 121 |         (username, (full_name or "").strip()[:80], generate_password_hash(password, method=HASH_METHOD),
+  | 122 |          role, ts, ts))
+  | 123 |     conn.commit()
+  | 124 |     audit(conn, actor, "user.create", "users", cur.lastrowid, f"usuario={username} rol={role}")
+  | 125 |     return cur.lastrowid
+  | 126 |
+  | 127 |
+  | 128 | def _load_user(user_id):
+  +----------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+ 4.3 Inicio de sesión y bloqueo (app/auth.py)
+--------------------------------------------------------------------------------
+
+
+ Puntos clave: mismo mensaje y mismo tiempo de respuesta si el usuario no
+ existe (hash ficticio); el contador NO se reinicia al bloquear (hallazgo
+ 8.3); session.clear() al entrar evita la fijación de sesión.
+
+  +--- app/auth.py -----------------------------------------------------------
+  | 245 | @bp.post("/login")
+  | 246 | def login():
+  | 247 |     cfg = current_app.config
+  | 248 |     conn = get_db()
+  | 249 |     username = (request.form.get("username") or "").strip().lower()[:30]
+  | 250 |     password = request.form.get("password") or ""
+  | 251 |     nxt = request.form.get("next", "")
+  | 252 |     generic = "Usuario o contraseña incorrectos."     # mismo mensaje si el usuario no existe
+  | 253 |     row = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+  | 254 |     now = datetime.now(timezone.utc)
+  | 255 |
+  | 256 |     def fail(message, status=401):
+  | 257 |         return render_template("login.html", error=message, username=username, next=nxt), status
+  | 258 |
+  | 259 |     if row is None:
+  | 260 |         check_password_hash(_DUMMY_HASH, password)      # iguala el tiempo de respuesta
+  | 261 |         audit(conn, "desconocido", "auth.login_fallido", "users", None,
+  | 262 |               f"usuario inexistente={username!r} ip={request.remote_addr}", "bloqueado")
+  | 263 |         return fail(generic)
+  | 264 |
+  | 265 |     if not row["active"]:
+  | 266 |         audit(conn, row["username"], "auth.login_fallido", "users", row["id"], "cuenta desactivada", "bloqueado")
+  | 267 |         return fail(generic)
+  | 268 |
+  | 269 |     if row["locked_until"] and row["locked_until"] > now_iso():
+  | 270 |         until = datetime.fromisoformat(row["locked_until"].replace("Z", "+00:00"))
+  | 271 |         local = until.astimezone(timezone(timedelta(hours=cfg["LOCAL_UTC_OFFSET"])))
+  | 272 |         audit(conn, row["username"], "auth.login_fallido", "users", row["id"], "cuenta bloqueada", "bloqueado")
+  | 273 |         return fail(f"Cuenta bloqueada por intentos fallidos hasta las {local:%H:%M} (hora de Colombia).", 423)
+  | 274 |
+  | 275 |     if not check_password_hash(row["password_hash"], password):
+  | 276 |         # Si hubo un bloqueo que YA venció, se empieza a contar de nuevo desde cero;
+  | 277 |         # si no, se suma al contador actual.
+  | 278 |         lock_expired = bool(row["locked_until"])          # (si siguiera vigente, se habría salido arriba)
+  | 279 |         attempts = (0 if lock_expired else row["failed_attempts"]) + 1
+  | 280 |         locked_until = None
+  | 281 |         if attempts >= cfg["MAX_LOGIN_ATTEMPTS"]:
+  | 282 |             locked_until = (now + timedelta(minutes=cfg["LOCKOUT_MINUTES"])).strftime("%Y-%m-%dT%H:%M:%SZ")
+  | 283 |         # Corrección 8.3: mientras está bloqueada, la cuenta CONSERVA el número de
+  | 284 |         # fallidos (antes se ponía en 0 y el administrador veía "bloqueado, 0 fallidos").
+  | 285 |         conn.execute("UPDATE users SET failed_attempts = ?, locked_until = ?, updated_at = ? WHERE id = ?",
+  | 286 |                      (attempts, locked_until, now_iso(), row["id"]))
+  | 287 |         conn.commit()
+  | 288 |         detail = f"intento {attempts} de {cfg['MAX_LOGIN_ATTEMPTS']} ip={request.remote_addr}"
+  | 289 |         if locked_until:
+  | 290 |             detail += f" -> BLOQUEADA {cfg['LOCKOUT_MINUTES']} min"
+  | 291 |             audit(conn, row["username"], "auth.bloqueo", "users", row["id"], detail, "alerta")
+  | 292 |             return fail(f"Demasiados intentos. Cuenta bloqueada {cfg['LOCKOUT_MINUTES']} minutos.", 423)
+  | 293 |         audit(conn, row["username"], "auth.login_fallido", "users", row["id"], detail, "bloqueado")
+  | 294 |         return fail(generic)
+  | 295 |
+  | 296 |     # Inicio correcto: sesión NUEVA (evita la fijación de sesión) y contador en cero
+  | 297 |     conn.execute("UPDATE users SET failed_attempts = 0, locked_until = NULL, last_login_at = ?, "
+  | 298 |                  "updated_at = ? WHERE id = ?", (now_iso(), now_iso(), row["id"]))
+  | 299 |     conn.commit()
+  | 300 |     session.clear()
+  | 301 |     session.permanent = True                       # dura SESSION_HOURS (un turno)
+  | 302 |     session["user_id"] = row["id"]
+  | 303 |     session["csrf"] = secrets.token_urlsafe(32)
+  | 304 |     audit(conn, row["username"], "auth.login", "users", row["id"], f"rol={row['role']} ip={request.remote_addr}")
+  | 305 |     return redirect(_safe_next(nxt))
+  +----------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+ 4.4 Separación de funciones (app/proposals.py)
+--------------------------------------------------------------------------------
+
+  +--- app/proposals.py  (nadie se aprueba a sí mismo) -----------------------
+  | 183 |     if reviewer == p["proposed_by"]:
+  | 184 |         return jsonify(errors=["Quien propone no puede aprobar su propia propuesta"]), 403
+  +----------------------------------------------------------------------------
+
+ Además, en app/auth.py: "proposals.review": ADMIN. Dos barreras: el rol
+ (solo admin_seguridad revisa) y la persona (nunca la propia propuesta).
+
+
+--------------------------------------------------------------------------------
+ 4.5 Auditoría encadenada (app/db.py)
+--------------------------------------------------------------------------------
+
+
+ audit() escribe dentro de BEGIN IMMEDIATE: el receptor UDP y la web usan
+ conexiones distintas, y sin ese bloqueo dos registros podrían tomar el
+ mismo "hash anterior" y bifurcar la cadena. El separador \x1f entre campos
+ evita que ("ab","c") y ("a","bc") den el mismo texto y el mismo hash.
+
+  +--- app/db.py  (cadena, migración, triggers y verificación) ---------------
+  | 162 | GENESIS_HASH = "0" * 64      # "hash anterior" del primer registro
+  | 163 |
+  | 164 |
+  | 165 | def audit_hash(prev_hash, ts, actor, action, entity, entity_id, detail, result) -> str:
+  | 166 |     """SHA-256 de los datos del registro unidos al hash anterior (formato fijo)."""
+  | 167 |     fields = [prev_hash, ts, actor, action, entity, entity_id, detail, result]
+  | 168 |     # "\x1f" (separador de unidad) evita ambigüedades: ("ab","c") != ("a","bc")
+  | 169 |     payload = "\x1f".join("" if f is None else str(f) for f in fields)
+  | 170 |     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+  | 171 |
+  | 172 |
+  | 173 | def _last_hash(conn) -> str:
+  | 174 |     row = conn.execute("SELECT hash FROM audit_log WHERE hash IS NOT NULL ORDER BY id DESC LIMIT 1").fetchone()
+  | 175 |     return row[0] if row else GENESIS_HASH
+  | 176 |
+  | 177 |
+  | 178 | def audit(conn, actor, action, entity=None, entity_id=None, detail=None, result="ok"):
+  | 179 |     """Agrega un registro ENCADENADO de auditoría. Nunca se modifica ni borra después."""
+  | 180 |     # BEGIN IMMEDIATE toma el bloqueo de escritura ANTES de leer el último hash:
+  | 181 |     # así el receptor UDP y la web no pueden encadenar dos registros al mismo
+  | 182 |     # "anterior" al mismo tiempo (la cadena se bifurcaría).
+  | 183 |     if not conn.in_transaction:
+  | 184 |         conn.execute("BEGIN IMMEDIATE")
+  | 185 |     ts = now_iso()
+  | 186 |     prev = _last_hash(conn)
+  | 187 |     digest = audit_hash(prev, ts, actor, action, entity, entity_id, detail, result)
+  | 188 |     conn.execute(
+  | 189 |         "INSERT INTO audit_log (ts, actor, action, entity, entity_id, detail, result, prev_hash, hash) "
+  | 190 |         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  | 191 |         (ts, actor, action, entity, entity_id, detail, result, prev, digest),
+  | 192 |     )
+  | 193 |     conn.commit()
+  | 194 |
+  | 195 |
+  | 196 | def _chain_existing_audit(conn):
+  | 197 |     """Migración: los registros creados antes de la Fase 8.2 reciben su hash, en orden."""
+  | 198 |     pending = conn.execute("SELECT COUNT(*) FROM audit_log WHERE hash IS NULL").fetchone()[0]
+  | 199 |     if not pending:
+  | 200 |         return
+  | 201 |     conn.execute("DROP TRIGGER IF EXISTS audit_no_update")    # solo durante la migración
+  | 202 |     prev = GENESIS_HASH
+  | 203 |     for r in conn.execute("SELECT * FROM audit_log ORDER BY id").fetchall():
+  | 204 |         if r["hash"] is None:
+  | 205 |             digest = audit_hash(prev, r["ts"], r["actor"], r["action"], r["entity"],
+  | 206 |                                 r["entity_id"], r["detail"], r["result"])
+  | 207 |             conn.execute("UPDATE audit_log SET prev_hash = ?, hash = ? WHERE id = ?", (prev, digest, r["id"]))
+  | 208 |             prev = digest
+  | 209 |         else:
+  | 210 |             prev = r["hash"]
+  | 211 |     conn.commit()
+  | 212 |
+  | 213 |
+  | 214 | def _protect_audit(conn):
+  | 215 |     """Triggers: la base de datos rechaza modificar o borrar la auditoría."""
+  | 216 |     conn.executescript("""
+  | 217 |         CREATE TRIGGER IF NOT EXISTS audit_no_update BEFORE UPDATE ON audit_log
+  | 218 |         BEGIN SELECT RAISE(ABORT, 'La auditoría es de solo inserción: no se puede modificar'); END;
+  | 219 |         CREATE TRIGGER IF NOT EXISTS audit_no_delete BEFORE DELETE ON audit_log
+  | 220 |         BEGIN SELECT RAISE(ABORT, 'La auditoría es de solo inserción: no se puede borrar'); END;
+  | 221 |     """)
+  | 222 |
+  | 223 |
+  | 224 | def verify_audit_chain(conn) -> dict:
+  | 225 |     """
+  | 226 |     Recorre TODA la auditoría y recalcula cada hash.
+  | 227 |
+  | 228 |     Devuelve {"ok", "total", "last_id", "last_hash", "broken_at", "reason"}.
+  | 229 |     broken_at = id del primer registro donde la cadena se rompe:
+  | 230 |       - "registro alterado": su contenido ya no produce su hash.
+  | 231 |       - "registro anterior borrado o alterado": su prev_hash no es el hash del anterior.
+  | 232 |     Límite conocido: si se borran los ÚLTIMOS registros, la cadena que queda es
+  | 233 |     válida. Por eso se muestra el último hash: guardarlo aparte (bitácora,
+  | 234 |     informe) permite comprobar luego que la cadena no fue recortada.
+  | 235 |     """
+  | 236 |     prev = GENESIS_HASH
+  | 237 |     total, last_id = 0, None
+  | 238 |     for r in conn.execute("SELECT * FROM audit_log ORDER BY id"):
+  | 239 |         total += 1
+  | 240 |         if r["prev_hash"] != prev:
+  | 241 |             return {"ok": False, "total": total, "broken_at": r["id"], "last_id": last_id, "last_hash": prev,
+  | 242 |                     "reason": "registro anterior borrado o alterado (el enlace no coincide)"}
+  | 243 |         expected = audit_hash(prev, r["ts"], r["actor"], r["action"], r["entity"],
+  | 244 |                               r["entity_id"], r["detail"], r["result"])
+  | 245 |         if r["hash"] != expected:
+  | 246 |             return {"ok": False, "total": total, "broken_at": r["id"], "last_id": last_id, "last_hash": prev,
+  | 247 |                     "reason": "registro alterado (su contenido no coincide con su hash)"}
+  | 248 |         prev, last_id = r["hash"], r["id"]
+  | 249 |     return {"ok": True, "total": total, "broken_at": None, "last_id": last_id, "last_hash": prev, "reason": None}
+  +----------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+ 4.6 Simulación de alteración sobre una copia (scripts/simular_alteracion_auditoria.py)
+--------------------------------------------------------------------------------
+
+  +--- scripts/simular_alteracion_auditoria.py -------------------------------
+  |   1 | """
+  |   2 | Fase 8.2 - Demostración: ¿qué pasa si alguien altera la auditoría por fuera
+  |   3 | de la aplicación (abriendo el archivo .db con otra herramienta)?
+  |   4 |
+  |   5 | SEGURIDAD DE LA DEMOSTRACIÓN: el script NUNCA toca la base real. Trabaja sobre
+  |   6 | una COPIA (data/noc_copia_alterada.db) y la deja para revisarla.
+  |   7 |
+  |   8 | Uso:
+  |   9 |   python scripts\\simular_alteracion_auditoria.py --modificar 5
+  |  10 |   python scripts\\simular_alteracion_auditoria.py --borrar 5
+  |  11 |
+  |  12 | Pasos que hace:
+  |  13 |   1. Copia data/noc.db  ->  data/noc_copia_alterada.db
+  |  14 |   2. Verifica la cadena de la copia (debe estar íntegra)
+  |  15 |   3. Quita los triggers de protección (lo que haría un atacante)
+  |  16 |   4. Modifica o borra el registro pedido
+  |  17 |   5. Verifica de nuevo: la cadena aparece ROTA en ese punto
+  |  18 | """
+  |  19 | import argparse
+  |  20 | import sqlite3
+  |  21 | import sys
+  |  22 | from pathlib import Path
+  |  23 |
+  |  24 | sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+  |  25 |
+  |  26 | from app.config import Config                     # noqa: E402
+  |  27 | from app.db import verify_audit_chain             # noqa: E402
+  |  28 |
+  |  29 |
+  |  30 | def report(title, conn):
+  |  31 |     r = verify_audit_chain(conn)
+  |  32 |     state = "ÍNTEGRA" if r["ok"] else f"ROTA en el registro {r['broken_at']} ({r['reason']})"
+  |  33 |     print(f"  {title}: cadena {state} · {r['total']} registros revisados")
+  |  34 |
+  |  35 |
+  |  36 | def main():
+  |  37 |     ap = argparse.ArgumentParser(description="Simula una alteración de la auditoría en una COPIA de la base")
+  |  38 |     g = ap.add_mutually_exclusive_group(required=True)
+  |  39 |     g.add_argument("--modificar", type=int, metavar="ID", help="cambia el actor del registro ID")
+  |  40 |     g.add_argument("--borrar", type=int, metavar="ID", help="borra el registro ID")
+  |  41 |     args = ap.parse_args()
+  |  42 |
+  |  43 |     original = Path(Config.DATABASE_PATH)
+  |  44 |     copy = original.with_name("noc_copia_alterada.db")
+  |  45 |     # backup() de SQLite copia la base de forma CONSISTENTE, incluidos los cambios
+  |  46 |     # que aún están en el archivo noc.db-wal (copiar el .db a mano podría perderlos).
+  |  47 |     src, conn = sqlite3.connect(original), sqlite3.connect(copy)
+  |  48 |     src.backup(conn)
+  |  49 |     src.close()
+  |  50 |     print(f"[1] Copia creada: {copy}  (la base real {original.name} NO se modifica)")
+  |  51 |
+  |  52 |     conn.row_factory = sqlite3.Row
+  |  53 |     report("[2] Antes", conn)
+  |  54 |
+  |  55 |     conn.execute("DROP TRIGGER IF EXISTS audit_no_update")
+  |  56 |     conn.execute("DROP TRIGGER IF EXISTS audit_no_delete")
+  |  57 |     print("[3] Triggers de protección eliminados en la copia (simulación de atacante)")
+  |  58 |
+  |  59 |     target = args.modificar or args.borrar
+  |  60 |     if conn.execute("SELECT 1 FROM audit_log WHERE id = ?", (target,)).fetchone() is None:
+  |  61 |         print(f"[!] No existe el registro {target}")
+  |  62 |         return
+  |  63 |     if args.modificar:
+  |  64 |         conn.execute("UPDATE audit_log SET actor = 'usuario_inocente' WHERE id = ?", (target,))
+  |  65 |         print(f"[4] Registro {target}: actor cambiado a 'usuario_inocente' (borrar huellas)")
+  |  66 |     else:
+  |  67 |         conn.execute("DELETE FROM audit_log WHERE id = ?", (target,))
+  |  68 |         print(f"[4] Registro {target} BORRADO")
+  |  69 |     conn.commit()
+  |  70 |
+  |  71 |     report("[5] Después", conn)
+  |  72 |     conn.close()
+  |  73 |
+  |  74 |
+  |  75 | if __name__ == "__main__":
+  |  76 |     main()
+  +----------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+ 4.7 Ventana de seguridad: salvaguardas (app/admin_api.py)
+--------------------------------------------------------------------------------
+
+
+ Salvaguardas: nadie cambia su propio rol ni se desactiva a sí mismo, y
+ siempre queda al menos un administrador activo (si no, nadie podría
+ aprobar propuestas ni gestionar usuarios). La contraseña nunca se audita.
+
+  +--- app/admin_api.py ------------------------------------------------------
+  | 136 | @bp.post("/users/<int:uid>/role")
+  | 137 | def change_role(uid):
+  | 138 |     conn = get_db()
+  | 139 |     row, err = _load_target(conn, uid)
+  | 140 |     if err:
+  | 141 |         return err
+  | 142 |     role = (request.get_json(silent=True) or {}).get("role")
+  | 143 |     if role not in ROLES:
+  | 144 |         return jsonify(errors=[f"Rol inválido. Opciones: {', '.join(ROLES)}"]), 400
+  | 145 |     if _is_self(row):
+  | 146 |         return jsonify(errors=["No puede cambiar su propio rol"]), 409
+  | 147 |     if row["role"] == "admin_seguridad" and role != "admin_seguridad" and row["active"] and _active_admins(conn) <= 1:
+  | 148 |         return jsonify(errors=["Debe quedar al menos un administrador de seguridad activo"]), 409
+  | 149 |     conn.execute("UPDATE users SET role = ?, updated_at = ? WHERE id = ?", (role, now_iso(), uid))
+  | 150 |     conn.commit()
+  | 151 |     audit(conn, actor(), "user.role", "users", uid, f"usuario={row['username']} {row['role']}->{role}")
+  | 152 |     return jsonify(_public(_user(conn, uid)))
+  | 153 |
+  | 154 |
+  | 155 | @bp.post("/users/<int:uid>/active")
+  | 156 | def set_active(uid):
+  | 157 |     conn = get_db()
+  | 158 |     row, err = _load_target(conn, uid)
+  | 159 |     if err:
+  | 160 |         return err
+  | 161 |     active = (request.get_json(silent=True) or {}).get("active")
+  | 162 |     if not isinstance(active, bool):
+  | 163 |         return jsonify(errors=["Indique active: true o false"]), 400
+  | 164 |     if not active and _is_self(row):
+  | 165 |         return jsonify(errors=["No puede desactivar su propia cuenta"]), 409
+  | 166 |     if not active and row["role"] == "admin_seguridad" and row["active"] and _active_admins(conn) <= 1:
+  | 167 |         return jsonify(errors=["Debe quedar al menos un administrador de seguridad activo"]), 409
+  | 168 |     conn.execute("UPDATE users SET active = ?, updated_at = ? WHERE id = ?", (int(active), now_iso(), uid))
+  | 169 |     conn.commit()
+  | 170 |     # Un usuario desactivado pierde la sesión en su siguiente petición (ver auth.enforce)
+  | 171 |     audit(conn, actor(), "user.activate" if active else "user.deactivate", "users", uid,
+  | 172 |           f"usuario={row['username']}", "ok" if active else "alerta")
+  | 173 |     return jsonify(_public(_user(conn, uid)))
+  | 174 |
+  | 175 |
+  | 176 | @bp.post("/users/<int:uid>/unlock")
+  +----------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+ 4.8 Interfaces por equipo (app/interfaces.py, archivo nuevo)
+--------------------------------------------------------------------------------
+
+  +--- app/interfaces.py -----------------------------------------------------
+  |   1 | """
+  |   2 | Fase 8.4: interfaces de cada equipo del inventario.
+  |   3 |
+  |   4 |     GET    /api/devices/<id>/interfaces             Listar las interfaces del equipo
+  |   5 |     POST   /api/devices/<id>/interfaces             Registrar una interfaz
+  |   6 |     PUT    /api/devices/<id>/interfaces/<iid>       Editar nombre, descripción o estado
+  |   7 |     DELETE /api/devices/<id>/interfaces/<iid>       Eliminar
+  |   8 |
+  |   9 | Para qué sirve: la ingesta compara la interfaz que trae cada evento con esta
+  |  10 | lista. Si el equipo TIENE interfaces registradas y el evento menciona otra,
+  |  11 | el evento se marca 'interfaz_desconocida' (ver app/ingest.py).
+  |  12 |
+  |  13 | El nombre se valida SEGÚN EL FABRICANTE del equipo: un "port1" es válido en
+  |  14 | un FortiGate pero no en un router Cisco, y un "GigabitEthernet0/1" no existe
+  |  15 | en un FortiGate. Los nombres cortos de Cisco/Huawei (Gi0/1, GE0/0/1) se
+  |  16 | guardan con el nombre largo, igual que hace el parser con los eventos.
+  |  17 |
+  |  18 | Permisos (app/auth.py, regla por defecto): consultar = todos los roles;
+  |  19 | crear, editar y eliminar = operador y administrador. Todo queda en la auditoría.
+  |  20 | """
+  |  21 | import re
+  |  22 | import sqlite3
+  |  23 |
+  |  24 | from flask import Blueprint, jsonify, request
+  |  25 |
+  |  26 | from .auth import actor
+  |  27 | from .db import audit, get_db, now_iso
+  |  28 | from .syslog_parser import IFACE_ABBR, is_valid_interface
+  |  29 |
+  |  30 | bp = Blueprint("interfaces", __name__, url_prefix="/api/devices")
+  |  31 |
+  |  32 | STATUSES = ("up", "down", "admin_down", "desconocido")
+  |  33 | MAX_DESCRIPTION = 100
+  |  34 | MAX_PER_DEVICE = 200          # límite sano: evita llenar la base por error o abuso
+  |  35 |
+  |  36 | # Numeración de Cisco y Huawei:  0  |  0/1  |  0/0/1  |  1/0/1/2  |  0/0/1.100 (subinterfaz)
+  |  37 | _NUM = r"\d{1,4}(?:/\d{1,4}){0,3}(?:\.\d{1,4})?"
+  |  38 |
+  |  39 | # Familias de interfaces por fabricante (nombre largo, el que se guarda)
+  |  40 | CISCO_FAMILIES = ("GigabitEthernet", "TenGigabitEthernet", "TwentyFiveGigabitEthernet",
+  |  41 |                   "TwentyFiveGigE", "FortyGigabitEthernet", "HundredGigabitEthernet", "HundredGigE",
+  |  42 |                   "FastEthernet", "Ethernet",
+  |  43 |                   "Serial", "Loopback", "Vlan", "Port-channel", "Tunnel")
+  |  44 | HUAWEI_FAMILIES = ("GigabitEthernet", "XGigabitEthernet", "Ethernet", "Vlanif", "LoopBack",
+  |  45 |                    "Loopback", "Eth-Trunk", "Tunnel", "MEth", "NULL")
+  |  46 |
+  |  47 | RE_BY_VENDOR = {
+  |  48 |     "Cisco": re.compile(rf"^(?:{'|'.join(CISCO_FAMILIES)}){_NUM}$"),
+  |  49 |     "Huawei": re.compile(rf"^(?:{'|'.join(map(re.escape, HUAWEI_FAMILIES))}){_NUM}$"),
+  |  50 |     # FortiOS: nombre libre de hasta 15 caracteres, sin "/" ni espacios (port1, wan1, internal, dmz)
+  |  51 |     "Fortinet": re.compile(r"^[A-Za-z][A-Za-z0-9_.\-]{0,14}$"),
+  |  52 | }
+  |  53 |
+  |  54 | EXAMPLES = {
+  |  55 |     "Cisco": "GigabitEthernet0/0/1, Gi0/1, Vlan10, Loopback0, Port-channel1",
+  |  56 |     "Huawei": "GigabitEthernet0/0/1, GE0/0/1, Vlanif10, Eth-Trunk1, LoopBack0",
+  |  57 |     "Fortinet": "port1, wan1, internal, dmz (máx. 15 caracteres, sin '/')",
+  |  58 |     "Otro": "letras, números y . _ / : - (máx. 48 caracteres)",
+  |  59 | }
+  |  60 |
+  |  61 |
+  |  62 | def normalize_for_vendor(vendor: str, name: str) -> str:
+  |  63 |     """
+  |  64 |     Deja el nombre como lo muestra el equipo:
+  |  65 |       Cisco/Huawei: 'Gi0/1' o 'gigabitethernet0/1' -> 'GigabitEthernet0/1'
+  |  66 |       FortiGate:    se deja igual (los nombres los define el administrador).
+  |  67 |     """
+  |  68 |     name = (name or "").strip()
+  |  69 |     if vendor == "Fortinet":
+  |  70 |         return name
+  |  71 |     # Abreviatura sin importar mayúsculas: gi0/1, Gi0/1, GI0/1 -> GigabitEthernet0/1
+  |  72 |     m = re.match(r"^(?P<abbr>[A-Za-z\-]+?)(?P<num>\d.*)$", name)
+  |  73 |     abbr = {k.lower(): v for k, v in IFACE_ABBR.items()}
+  |  74 |     if m and m["abbr"].lower() in abbr:
+  |  75 |         name = abbr[m["abbr"].lower()] + m["num"]
+  |  76 |     families = HUAWEI_FAMILIES if vendor == "Huawei" else CISCO_FAMILIES
+  |  77 |     # La familia más larga primero: "TenGigabitEthernet" antes que "GigabitEthernet"
+  |  78 |     for family in sorted(families, key=len, reverse=True):
+  |  79 |         if name.lower().startswith(family.lower()) and name[len(family):][:1].isdigit():
+  |  80 |             return family + name[len(family):]
+  |  81 |     return name
+  |  82 |
+  |  83 |
+  |  84 | def validate_interface_name(vendor: str, name: str) -> list[str]:
+  |  85 |     """Devuelve la lista de errores del nombre (vacía si es válido para ese fabricante)."""
+  |  86 |     if not name:
+  |  87 |         return ["El nombre de la interfaz es obligatorio"]
+  |  88 |     if not is_valid_interface(name):        # sintaxis general (bloquea ';', espacios, '<'...)
+  |  89 |         return [f"Nombre de interfaz inválido: {name!r}"]
+  |  90 |     rx = RE_BY_VENDOR.get(vendor)
+  |  91 |     if rx and not rx.match(name):
+  |  92 |         return [f"'{name}' no es una interfaz válida de {vendor}. Ejemplos: {EXAMPLES[vendor]}"]
+  |  93 |     return []
+  |  94 |
+  |  95 |
+  |  96 | def validate(data: dict, vendor: str, partial: bool = False) -> tuple[dict, list]:
+  |  97 |     """Valida y normaliza nombre, descripción y estado. Junta TODOS los errores."""
+  |  98 |     clean, errors = {}, []
+  |  99 |     if not partial or data.get("name") is not None:
+  | 100 |         name = normalize_for_vendor(vendor, str(data.get("name") or ""))
+  | 101 |         errors += validate_interface_name(vendor, name)
+  | 102 |         clean["name"] = name
+  | 103 |     if data.get("description") is not None:
+  | 104 |         desc = str(data["description"]).strip()
+  | 105 |         if len(desc) > MAX_DESCRIPTION:
+  | 106 |             errors.append(f"La descripción supera {MAX_DESCRIPTION} caracteres")
+  | 107 |         clean["description"] = desc or None
+  | 108 |     if data.get("status") is not None:
+  | 109 |         if data["status"] not in STATUSES:
+  | 110 |             errors.append(f"Estado inválido. Opciones: {', '.join(STATUSES)}")
+  | 111 |         clean["status"] = data["status"]
+  | 112 |     return clean, errors
+  | 113 |
+  | 114 |
+  | 115 | def _device(conn, device_id):
+  | 116 |     return conn.execute("SELECT id, name, vendor FROM devices WHERE id = ?", (device_id,)).fetchone()
+  | 117 |
+  | 118 |
+  | 119 | def _interface(conn, device_id, iface_id):
+  | 120 |     return conn.execute("SELECT * FROM interfaces WHERE id = ? AND device_id = ?",
+  | 121 |                         (iface_id, device_id)).fetchone()
+  | 122 |
+  | 123 |
+  | 124 | @bp.get("/<int:device_id>/interfaces")
+  | 125 | def list_interfaces(device_id):
+  | 126 |     conn = get_db()
+  | 127 |     dev = _device(conn, device_id)
+  | 128 |     if dev is None:
+  | 129 |         return jsonify(error="Equipo no encontrado"), 404
+  | 130 |     rows = conn.execute("SELECT * FROM interfaces WHERE device_id = ? ORDER BY name",
+  | 131 |                         (device_id,)).fetchall()
+  | 132 |     return jsonify(device=dict(dev), example=EXAMPLES.get(dev["vendor"], ""),
+  | 133 |                    rows=[dict(r) for r in rows])
+  | 134 |
+  | 135 |
+  | 136 | @bp.post("/<int:device_id>/interfaces")
+  | 137 | def create_interface(device_id):
+  | 138 |     conn = get_db()
+  | 139 |     dev = _device(conn, device_id)
+  | 140 |     if dev is None:
+  | 141 |         return jsonify(error="Equipo no encontrado"), 404
+  | 142 |     data, errors = validate(request.get_json(silent=True) or {}, dev["vendor"])
+  | 143 |     count = conn.execute("SELECT COUNT(*) FROM interfaces WHERE device_id = ?", (device_id,)).fetchone()[0]
+  | 144 |     if count >= MAX_PER_DEVICE:
+  | 145 |         errors.append(f"El equipo ya tiene el máximo de {MAX_PER_DEVICE} interfaces")
+  | 146 |     if errors:
+  | 147 |         return jsonify(errors=errors), 400
+  | 148 |
+  | 149 |     ts = now_iso()
+  | 150 |     try:
+  | 151 |         cur = conn.execute(
+  | 152 |             "INSERT INTO interfaces (device_id, name, description, status, created_at, updated_at) "
+  | 153 |             "VALUES (?, ?, ?, ?, ?, ?)",
+  | 154 |             (device_id, data["name"], data.get("description"), data.get("status", "desconocido"), ts, ts))
+  | 155 |         conn.commit()
+  | 156 |     except sqlite3.IntegrityError:
+  | 157 |         return jsonify(errors=[f"{dev['name']} ya tiene la interfaz {data['name']}"]), 409
+  | 158 |
+  | 159 |     audit(conn, actor(), "interface.create", "interfaces", cur.lastrowid,
+  | 160 |           f"{dev['name']} {data['name']} estado={data.get('status', 'desconocido')}")
+  | 161 |     return jsonify(dict(_interface(conn, device_id, cur.lastrowid))), 201
+  | 162 |
+  | 163 |
+  | 164 | @bp.put("/<int:device_id>/interfaces/<int:iface_id>")
+  | 165 | def update_interface(device_id, iface_id):
+  | 166 |     conn = get_db()
+  | 167 |     dev = _device(conn, device_id)
+  | 168 |     row = _interface(conn, device_id, iface_id) if dev else None
+  | 169 |     if row is None:                       # también si la interfaz es de OTRO equipo
+  | 170 |         return jsonify(error="Interfaz no encontrada"), 404
+  | 171 |     data, errors = validate(request.get_json(silent=True) or {}, dev["vendor"], partial=True)
+  | 172 |     if errors:
+  | 173 |         return jsonify(errors=errors), 400
+  | 174 |     if not data:
+  | 175 |         return jsonify(errors=["No se enviaron campos para actualizar"]), 400
+  | 176 |
+  | 177 |     data["updated_at"] = now_iso()
+  | 178 |     sets = ", ".join(f"{k} = ?" for k in data)      # los nombres de columna vienen de validate()
+  | 179 |     try:
+  | 180 |         conn.execute(f"UPDATE interfaces SET {sets} WHERE id = ?", (*data.values(), iface_id))
+  | 181 |         conn.commit()
+  | 182 |     except sqlite3.IntegrityError:
+  | 183 |         return jsonify(errors=[f"{dev['name']} ya tiene la interfaz {data['name']}"]), 409
+  | 184 |
+  | 185 |     changed = ", ".join(f"{k}={v}" for k, v in data.items() if k != "updated_at")
+  | 186 |     audit(conn, actor(), "interface.update", "interfaces", iface_id, f"{dev['name']} {row['name']}: {changed}")
+  | 187 |     return jsonify(dict(_interface(conn, device_id, iface_id)))
+  | 188 |
+  | 189 |
+  | 190 | @bp.delete("/<int:device_id>/interfaces/<int:iface_id>")
+  | 191 | def delete_interface(device_id, iface_id):
+  | 192 |     conn = get_db()
+  | 193 |     dev = _device(conn, device_id)
+  | 194 |     row = _interface(conn, device_id, iface_id) if dev else None
+  | 195 |     if row is None:
+  | 196 |         return jsonify(error="Interfaz no encontrada"), 404
+  | 197 |     conn.execute("DELETE FROM interfaces WHERE id = ?", (iface_id,))
+  | 198 |     conn.commit()
+  | 199 |     audit(conn, actor(), "interface.delete", "interfaces", iface_id, f"{dev['name']} {row['name']}")
+  | 200 |     return jsonify(deleted=iface_id)
+  | 201 |
+  | 202 |
+  | 203 | def is_known_interface(conn, device_id, name) -> bool | None:
+  | 204 |     """
+  | 205 |     Usado por la ingesta. Devuelve:
+  | 206 |       None  -> el equipo no tiene interfaces registradas (no se puede comparar)
+  | 207 |       True  -> la interfaz (o su interfaz madre, si es subinterfaz) está registrada
+  | 208 |       False -> el equipo tiene interfaces y esta NO es una de ellas
+  | 209 |     """
+  | 210 |     if device_id is None or not name:
+  | 211 |         return None
+  | 212 |     if conn.execute("SELECT 1 FROM interfaces WHERE device_id = ? LIMIT 1", (device_id,)).fetchone() is None:
+  | 213 |         return None
+  | 214 |     candidates = [name]
+  | 215 |     if "." in name:                       # GigabitEthernet0/0/1.100 -> también vale GigabitEthernet0/0/1
+  | 216 |         candidates.append(name.split(".", 1)[0])
+  | 217 |     marks = ", ".join("?" for _ in candidates)
+  | 218 |     found = conn.execute(f"SELECT 1 FROM interfaces WHERE device_id = ? AND name IN ({marks}) LIMIT 1",
+  | 219 |                          (device_id, *candidates)).fetchone()
+  | 220 |     return found is not None
+  +----------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+ 4.9 Marca interfaz_desconocida y huella (app/ingest.py, app/security.py)
+--------------------------------------------------------------------------------
+
+  +--- app/ingest.py ---------------------------------------------------------
+  |  98 |     # --- 3c. Fase 8.4: interfaz registrada en el equipo ----------------------
+  |  99 |     # Solo se compara si el equipo TIENE interfaces registradas en el
+  | 100 |     # inventario (si no, no hay contra qué comparar y no se marca nada).
+  | 101 |     # Una interfaz que el equipo no tiene = inventario desactualizado o un
+  | 102 |     # mensaje fabricado por alguien que no conoce el equipo real.
+  | 103 |     if device is not None and is_known_interface(conn, device["id"], p["interface"]) is False:
+  | 104 |         flags.append("interfaz_desconocida")
+  +----------------------------------------------------------------------------
+  +--- app/security.py -------------------------------------------------------
+  |  37 | def fingerprint(source_ip: str, severity: int, mnemonic: str | None, message: str,
+  |  38 |                 interface: str | None = None) -> str:
+  |  39 |     """
+  |  40 |     Huella de un evento para detectar repeticiones.
+  |  41 |
+  |  42 |     Se reemplazan los números por '#' para que "intento 1" e "intento 2", o dos
+  |  43 |     puertos distintos, cuenten como el MISMO tipo de evento.
+  |  44 |
+  |  45 |     Fase 8.4: la INTERFAZ se agrega completa (con sus números). Sin ella,
+  |  46 |     "Gi0/0/1 down" y "Gi0/0/9 down" daban la misma huella: dos fallas
+  |  47 |     distintas quedaban como una sola, y un evento de una interfaz no
+  |  48 |     registrada se escondía como repetición de otro legítimo.
+  |  49 |     """
+  |  50 |     normalized = re.sub(r"\d+", "#", (message or "").lower()).strip()
+  |  51 |     base = f"{source_ip}|{severity}|{mnemonic or ''}|{normalized}|{(interface or '').lower()}"
+  |  52 |     return hashlib.sha256(base.encode("utf-8")).hexdigest()[:16]
+  +----------------------------------------------------------------------------
+  +--- app/schema.sql  (tabla nueva) -----------------------------------------
+  |  48 | -- 2b. Interfaces de cada equipo (Fase 8.4)
+  |  49 | --    Lista de las interfaces REALES del equipo. Si un evento menciona una
+  |  50 | --    interfaz que el equipo no tiene registrada, se marca 'interfaz_desconocida'
+  |  51 | --    (inventario desactualizado o mensaje suplantado).
+  |  52 | --    COLLATE NOCASE: 'gigabitethernet0/1' y 'GigabitEthernet0/1' son la misma.
+  |  53 | --    ON DELETE CASCADE: si se elimina el equipo, se eliminan sus interfaces.
+  |  54 | -- ---------------------------------------------------------------------
+  |  55 | CREATE TABLE IF NOT EXISTS interfaces (
+  |  56 |     id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  |  57 |     device_id   INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+  |  58 |     name        TEXT NOT NULL COLLATE NOCASE,   -- ej. GigabitEthernet0/0/1, port1, Vlanif10
+  |  59 |     description TEXT,                           -- ej. "Enlace a ISP principal"
+  |  60 |     status      TEXT NOT NULL DEFAULT 'desconocido'
+  |  61 |                 CHECK (status IN ('up', 'down', 'admin_down', 'desconocido')),
+  |  62 |     created_at  TEXT NOT NULL,
+  |  63 |     updated_at  TEXT NOT NULL,
+  |  64 |     UNIQUE (device_id, name)                    -- un equipo no repite interfaz
+  +----------------------------------------------------------------------------
+
+
+================================================================================
+ 5. PRUEBAS AUTOMÁTICAS (168 -> 276)
+================================================================================
+
+
+ > python -m pytest -q
+   => 276 passed
+
+   | Archivo                          | Pruebas | Qué verifica                                   |
+   |----------------------------------|---------|------------------------------------------------|
+   | tests/test_auth.py               |   40    | Sesión, bloqueo y contador, CSRF, roles,       |
+   |                                  |         | cierre de sesión, contraseñas, separación      |
+   | tests/test_auditoria_cadena.py   |   14    | Cadena, triggers, alteración, borrado,         |
+   |                                  |         | recorte del final, migración, API              |
+   | tests/test_admin_seguridad.py    |   15    | Ventana Seguridad, usuarios y salvaguardas     |
+   | tests/test_interfaces_equipo.py  |   39    | Nombres por fabricante, API, auditoría,        |
+   |                                  |         | marca, subinterfaz, huella, migración          |
+   | (ajustes en pruebas anteriores)  |    -    | Responsable = usuario de la sesión; 9 tablas   |
+
+   Las pruebas usan una base TEMPORAL por prueba y un hash de contraseña
+   rápido; una prueba verifica que la aplicación real usa scrypt.
+   Cada commit de la fase se ejecutó por separado (ver sección 8).
+
+
+
+================================================================================
+ 6. SEGURIDAD APLICADA EN LA FASE 8
+================================================================================
+
+
+   - Sin usuarios por defecto: el primero se crea por consola.
+   - Contraseñas: scrypt con sal; nunca en texto, en la auditoría ni en capturas.
+   - Fuerza bruta: bloqueo 5 intentos / 15 min, auditado con resultado alerta.
+   - Enumeración: mismo mensaje y mismo tiempo si el usuario no existe.
+   - Fijación de sesión: sesión nueva al iniciar; cookie HttpOnly + SameSite=Lax.
+   - CSRF: token por sesión en cada POST/PUT/DELETE; rechazos auditados.
+   - Redirección abierta: después del login solo se va a rutas internas.
+   - Menor privilegio: el auditor no cambia nada; la IA no tiene rol.
+   - Separación de funciones: nadie aprueba su propia propuesta.
+   - Integridad de la auditoría: triggers + cadena SHA-256 + hash ancla.
+   - Interfaces: un mensaje con una interfaz inexistente se marca y se audita.
+   - Deduplicación: un evento sospechoso ya no se esconde como repetición.
+
+ LÍMITES DECLARADOS
+   - La verificación de la cadena es manual (automática en la Fase 9).
+   - El hash no usa clave secreta: con acceso al archivo se podría recalcular
+     toda la cadena; lo delata el hash ancla guardado fuera de la base.
+   - HTTP en 127.0.0.1: la cookie no lleva Secure (con HTTPS se activa).
+
+
+
+================================================================================
+ 7. PROBLEMAS Y OBSERVACIONES
+================================================================================
+
+
+ 1. El auditor no podía cerrar sesión (403)
+    Causa : POST /logout caía en la regla por defecto (cambiar datos = OPS).
+    Acción: "auth.logout": ALL y 3 pruebas (una por rol). Hallazgo en vivo.
+
+ 2. Contraseña del administrador rechazada
+    "AdminNoc2026" contiene el usuario: la política lo impide. Esperado.
+
+ 3. Pruebas lentas (~19 s) con scrypt
+    Se usa un hash rápido solo en las pruebas; una prueba revisa scrypt.
+
+ 4. La variable local 'actor' tapaba la función importada (console.py)
+    Se importó como session_actor.
+
+ 5. La web no mostraba la alteración simulada
+    Correcto: solo se altera la COPIA. Se arrancó la web apuntando a ella.
+
+ 6. Cuenta bloqueada con 0 intentos fallidos
+    Al bloquear se reiniciaba el contador. Ahora se conserva y la ventana
+    muestra "bloqueado hasta HH:MM". 2 pruebas. Hallazgo en vivo.
+
+ 7. Barra superior partida a 1366 px
+    Se abrevió la etiqueta del rol y se compactó el menú.
+
+ 8. Commits del paso 8.3 en desorden
+    Un 'git add' pegado dos veces falló (fatal: pathspec); las pruebas y las
+    evidencias se confirmaron antes que la página. 93ced23 y 4897263 tienen
+    3 pruebas fallando; GitHub Actions marcó ese push en rojo y el siguiente
+    en verde. No se reescribió el historial publicado. Desde el 8.4 se usa
+    'git status' antes de cada commit. El mensaje de f3956bd dice
+    "17 pruebas" pero ese commit solo agrega 2.
+
+ 9. Interfaz no registrada oculta como duplicado
+    La huella cambia los números por '#'. Ahora incluye la interfaz; los
+    puertos siguen fuera (un atacante cambia de puerto de origen en cada
+    intento y esos intentos sí deben agruparse). Hallazgo en vivo.
+
+
+
+================================================================================
+ 8. CONTROL DE VERSIONES: HISTORIAL DE LA FASE
+================================================================================
+
+
+   980e186 feat(auth): usuarios, inicio de sesion, roles, bloqueo y CSRF
+   0a98535 refactor(auditoria): el responsable de cada accion es el usuario de la sesion
+   ef64657 feat(cli): comandos create-user, users y unlock
+   e7a972e test: 38 pruebas de sesion, bloqueo, CSRF, roles y separacion de funciones (206 en total)
+   ae91396 docs: evidencias del paso 8.1
+   ca55bf8 feat(auditoria): cadena de hashes SHA-256 y triggers de solo insercion
+   7252f34 feat(auditoria): verificacion de integridad en la web para auditor y administrador
+   0906c70 feat(cli): verify-audit y simulacion de alteracion sobre una copia
+   f03ebab test: 14 pruebas de la cadena de auditoria, triggers y alteraciones (220 en total)
+   f56237c docs: evidencias del paso 8.2
+   b80694e feat(seguridad): API de administracion de usuarios y resumen de seguridad
+   93ced23 test: 15 pruebas de la ventana de seguridad ...      (3 fallan aquí)
+   4897263 docs: evidencias del paso 8.3                        (3 fallan aquí)
+   d279962 feat(interfaz): ventana de administracion de seguridad para el administrador
+   f3956bd test: 17 pruebas ... (237 en total)
+   959438c feat(inventario): tabla y API de interfaces por equipo con validacion por fabricante
+   498f5d5 feat(ingesta): marca interfaz_desconocida y huella de deduplicacion con la interfaz
+   2bfd633 feat(interfaz): ventana de interfaces en el inventario y modo consulta para el auditor
+   46c1423 test: 39 pruebas de interfaces por equipo (276 en total)
+   9e9e7de docs: evidencias del paso 8.4
+   (cierre) chore(release): version 0.3.0, changelog, readme, bitacora y proceso de la fase 8
+
+ PUBLICACIÓN
+ > git add app/__init__.py CHANGELOG.md README.md docs/bitacora.md docs/FASE7_proceso_completo.txt docs/FASE8_proceso_completo.txt
+ > git status
+ > git commit -m "chore(release): version 0.3.0, changelog, readme, bitacora y proceso de la fase 8"
+ > git push
+ GitHub -> Pull request: base develop <- compare feature/fase8-seguridad (Merge commit)
+ GitHub -> Pull request: base main <- compare develop (Merge commit)
+ > git switch main
+ > git pull
+ > git tag -a v0.3.0 -m "v0.3.0 seguridad de acceso, auditoria encadenada e interfaces por equipo"
+ > git push origin v0.3.0
+ > git log --oneline -1 v0.3.0     (debe ser el merge del PR a main)
+ GitHub -> Releases -> Draft a new release -> tag v0.3.0 -> notas del CHANGELOG
+ > git switch develop
+ > git merge --ff-only main
+ > git push
+
+
+
+================================================================================
+ 9. EVIDENCIAS DE LA FASE 8
+================================================================================
+
+
+   [E] C3-F8-01_pruebas_203_passed.png
+   [E] C3-F8-02_consola_create_user_users.png
+   [E] C3-F8-03_web_login_error.png
+   [E] C3-F8-04_web_bloqueo_5_intentos.png
+   [E] C3-F8-05_web_operador_menu.png
+   [E] C3-F8-06_web_operador_403.png
+   [E] C3-F8-07_web_auditor_solo_lectura.png
+   [E] C3-F8-08_web_auditoria_sesiones.png
+   [E] C3-F8-09_pruebas_220_passed.png
+   [E] C3-F8-10_consola_verify_audit_integra.png
+   [E] C3-F8-11_web_verificar_integridad_ok.png
+   [E] C3-F8-12_consola_simulacion_modificar.png
+   [E] C3-F8-12b_web_cadena_rota_copia.png
+   [E] C3-F8-13_consola_simulacion_borrar.png
+   [E] C3-F8-14_consola_base_real_intacta.png
+   [E] C3-F8-15_pruebas_235_passed.png
+   [E] C3-F8-16_web_ventana_seguridad.png
+   [E] C3-F8-17_web_crear_usuario_rechazo.png
+   [E] C3-F8-18_web_usuario_creado.png
+   [E] C3-F8-19_web_desbloquear.png
+   [E] C3-F8-20_web_no_puede_desactivarse.png
+   [E] C3-F8-21a_web_auditoria_secuencia_bloqueo.png
+   [E] C3-F8-21b_web_auditoria_acciones_admin.png
+   [E] C3-F8-22_pruebas_276_passed.png
+   [E] C3-F8-23_web_interfaces_registradas.png
+   [E] C3-F8-24_web_interfaz_rechazada.png
+   [E] C3-F8-25_import_interfaces.png
+   [E] C3-F8-26_web_eventos_interfaz_no_registrada.png
+   [E] C3-F8-27_web_auditoria_interfaces.png
+   [E] C3-F8-28_web_auditor_solo_consulta.png
+
+
+
+================================================================================
+ 10. PREGUNTAS PROBABLES DE SUSTENTACIÓN (CON RESPUESTA)
+================================================================================
+
+
+ P: ¿Por qué no hay un usuario "admin/admin" por defecto?
+ R: Es lo primero que prueba un atacante. El primer usuario se crea por
+    consola, en el propio servidor, con una contraseña que cumple la política.
+
+ P: ¿Qué pasa si alguien roba la base de datos?
+ R: Las contraseñas no están: solo hashes scrypt con sal, muy costosos de
+    romper. Y la auditoría está encadenada: cualquier cambio se detecta.
+
+ P: ¿Por qué el mensaje es igual si el usuario no existe?
+ R: Para no revelar qué usuarios existen. También se iguala el tiempo de
+    respuesta comparando contra un hash ficticio.
+
+ P: ¿Qué es CSRF y cómo lo evitas?
+ R: Que otra página use la sesión abierta del operador para enviar acciones.
+    Cada página del NOC lleva un token secreto que se envía en cada cambio;
+    la otra página no lo conoce y la petición se rechaza y se audita.
+
+ P: ¿Dónde se definen los permisos?
+ R: En un solo lugar, app/auth.py: tabla RULES, prefijos y una regla por
+    defecto segura. enforce() se ejecuta antes de cada petición.
+
+ P: ¿Puede el asistente de IA aprobar una acción?
+ R: No. No tiene usuario ni rol; solo propone. Aprueba un admin_seguridad
+    que no sea quien propuso.
+
+ P: ¿Cómo sabes que nadie modificó la auditoría?
+ R: Cada registro guarda el SHA-256 del anterior. Al verificar se recalcula
+    toda la cadena; si algo se cambió o borró, se indica en qué registro.
+    Además, triggers impiden UPDATE y DELETE incluso a la aplicación.
+
+ P: ¿Y si el atacante borra el último registro?
+ R: La cadena restante es válida; por eso se anota el hash ancla fuera de
+    la base. Si ya no coincide, hubo un recorte.
+
+ P: ¿Por qué probaste la alteración sobre una copia?
+ R: Porque la auditoría real es evidencia; nunca se altera. La copia se hace
+    con la API de respaldo de SQLite.
+
+ P: ¿Para qué sirve registrar las interfaces?
+ R: Para detectar mensajes que no cuadran con el equipo real: inventario
+    desactualizado o un mensaje fabricado. En la Fase 9 se leerán por SSH.
+
+ P: ¿Por qué un FortiGate acepta "port1" y un Cisco no?
+ R: Cada fabricante nombra distinto sus interfaces; la validación usa las
+    familias de cada uno y normaliza los nombres cortos (Gi0/1).
+
+
+
+================================================================================
+ 11. PREGUNTA DE VALIDACIÓN DEL ESTUDIANTE
+================================================================================
+
+
+ Pregunta:
+   El usuario operador1 importa a las 3:00 a. m. un log del SIM-CORE-RTR01
+   con la línea "Interface GigabitEthernet0/0/9 changed state to down"; el
+   router solo tiene registradas Gi0/0/0, Gi0/0/1 y Gi0/0/2. Al día
+   siguiente alguien abre noc.db con otra herramienta y borra el registro de
+   auditoría de esa importación.
+   1. ¿Qué marca recibe el evento y por qué?
+   2. ¿Puede operador1 aprobar una propuesta para revisar esa interfaz?
+      ¿Quién sí y por qué?
+   3. ¿Cómo se descubre el borrado y qué limitación tiene ese mecanismo?
+
+ Respuesta del estudiante (con sus propias palabras, revisada el 2026-10-19):
+   El evento queda guardado (no se rechaza, es evidencia) con la marca
+   'interfaz_desconocida', porque SIM-CORE-RTR01 tiene interfaces
+   registradas en el inventario y Gi0/0/9 no es una de ellas: puede ser un
+   inventario desactualizado o un mensaje fabricado. Queda en la auditoría
+   como syslog.sospechoso con resultado alerta y, por ser severidad 3 de una
+   fuente autorizada, abre un incidente. operador1 no puede aprobar ninguna
+   propuesta porque solo el rol admin_seguridad revisa propuestas; además,
+   ni un administrador puede aprobar su propia propuesta (separación de
+   funciones), así que debe aprobarla un admin_seguridad distinto de quien
+   la propuso. Para borrar el registro, el atacante primero tiene que quitar
+   el trigger que impide los DELETE; aun así, al verificar la integridad, la
+   cadena SHA-256 aparece rota en el registro siguiente, porque su prev_hash
+   apunta a un registro que ya no existe. La limitación es que, si se borra
+   el último registro o se recalcula toda la cadena (el hash no usa clave
+   secreta), solo se detecta comparando con el hash ancla guardado fuera de
+   la base, en la bitácora. En esta versión la verificación es manual; en la
+   Fase 9 será automática.
+
+
+
+================================================================================
+ 12. LISTA DE VERIFICACIÓN DE CIERRE DE LA FASE 8
+================================================================================
+
+
+ [x] Usuarios, roles, sesión, bloqueo y CSRF (8.1)
+ [x] Separación de funciones y responsable real en la auditoría (8.1)
+ [x] Auditoría encadenada, triggers y verificación (8.2)
+ [x] Simulación de alteración y borrado sobre una copia (8.2)
+ [x] Hash ancla anotado en la bitácora (registro 71)
+ [x] Ventana Seguridad con salvaguardas (8.3)
+ [x] Interfaces por equipo y marca interfaz_desconocida (8.4)
+ [x] Huella de deduplicación con la interfaz (8.4)
+ [x] 276 pruebas en verde; cada commit verificado
+ [x] APP_VERSION = 0.3.0, CHANGELOG, README y bitácora
+ [x] Respuesta a la pregunta de validación de la Fase 7 (FASE7, sección 11)
+ [x] Respuesta a la pregunta de validación de la Fase 8
+ [ ] Pull Request feature/fase8-seguridad -> develop, y develop -> main
+ [ ] Etiqueta anotada v0.3.0 y release publicada
+ [ ] develop sincronizada con main
+
+################################################################################
+#                           FIN DEL DOCUMENTO - FASE 8                         #
+################################################################################

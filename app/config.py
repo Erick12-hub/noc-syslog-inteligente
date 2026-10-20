@@ -47,7 +47,20 @@ class Config:
     SYSLOG_HOST = os.getenv("SYSLOG_HOST", "127.0.0.1")
     SYSLOG_PORT = int(os.getenv("SYSLOG_PORT", "5514"))
 
-    # Nombre del operador por defecto (para auditoría en el MVP sin login)
+    # --- Fase 8: inicio de sesión ------------------------------------------
+    MAX_LOGIN_ATTEMPTS = int(os.getenv("MAX_LOGIN_ATTEMPTS", "5"))   # intentos antes de bloquear
+    LOCKOUT_MINUTES = int(os.getenv("LOCKOUT_MINUTES", "15"))        # duración del bloqueo
+    SESSION_HOURS = int(os.getenv("SESSION_HOURS", "8"))             # una sesión dura un turno
+    PASSWORD_MIN_LENGTH = int(os.getenv("PASSWORD_MIN_LENGTH", "10"))
+    # Cookie de sesión: JavaScript no la puede leer (HttpOnly) y el navegador no
+    # la envía desde otros sitios (SameSite). SECURE=1 solo cuando haya HTTPS.
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = "Lax"
+    SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "0") == "1"
+    SESSION_COOKIE_NAME = "noc_sesion"
+
+    # Nombre del operador por defecto: solo para acciones SIN sesión web
+    # (consola de comandos manage.py y receptor UDP). En la web se usa el usuario.
     DEFAULT_OPERATOR = os.getenv("DEFAULT_OPERATOR", "operador_noc")
 
     # --- Fase 4: política de defensa (ver docs/04_politica_ia.md) -----------

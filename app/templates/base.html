@@ -3,6 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Fase 8: token anti-CSRF; common.js lo agrega a cada petición que cambia datos -->
+  <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>{% block title %}NOC Syslog{% endblock %} · NOC Syslog Inteligente</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
   <!-- Fase 7: tema claro/oscuro. Va en el <head> para aplicar el tema antes de dibujar la página -->
@@ -20,18 +22,36 @@
       <a href="{{ url_for('views.inventario') }}" class="{{ 'active' if active == 'inventario' }}">Inventario</a>
       <a href="{{ url_for('views.eventos') }}" class="{{ 'active' if active == 'eventos' }}">Eventos</a>
       <a href="{{ url_for('views.incidentes') }}" class="{{ 'active' if active == 'incidentes' }}">Incidentes</a>
-      <a href="{{ url_for('views.configuraciones') }}" class="{{ 'active' if active == 'configuraciones' }}">Configuraciones</a>
-      <a href="{{ url_for('views.consola') }}" class="{{ 'active' if active == 'consola' }}">Consola</a>
-      <a href="{{ url_for('views.auditoria') }}" class="{{ 'active' if active == 'auditoria' }}">Auditoría</a>
+      {# Fase 8: el menú muestra solo lo que el rol puede usar #}
+      {% if can('views.configuraciones') %}<a href="{{ url_for('views.configuraciones') }}" class="{{ 'active' if active == 'configuraciones' }}">Configuraciones</a>{% endif %}
+      {% if can('views.consola') %}<a href="{{ url_for('views.consola') }}" class="{{ 'active' if active == 'consola' }}">Consola</a>{% endif %}
+      {% if can('views.auditoria') %}<a href="{{ url_for('views.auditoria') }}" class="{{ 'active' if active == 'auditoria' }}">Auditoría</a>{% endif %}
+      {% if can('views.seguridad') %}<a href="{{ url_for('views.seguridad') }}" class="{{ 'active' if active == 'seguridad' }}">Seguridad</a>{% endif %}
     </nav>
     <!-- Fase 7: selector de tema (el texto lo pone theme.js según el tema actual) -->
-    <button class="btn sm theme-toggle" id="theme-toggle" type="button" aria-label="Cambiar tema">
-      <span class="icon" aria-hidden="true">☀</span><span class="label">Claro</span>
-    </button>
+    <div class="topbar-right">
+      <button class="btn sm theme-toggle" id="theme-toggle" type="button" aria-label="Cambiar tema">
+        <span class="icon" aria-hidden="true">☀</span><span class="label">Claro</span>
+      </button>
+      {% if current_user %}
+      <!-- Fase 8: usuario de la sesión y cierre de sesión (POST con token CSRF) -->
+      <div class="user-box">
+        <span class="user-name">{{ current_user.full_name or current_user.username }}</span>
+        <span class="tag role-{{ current_user.role }}" title="{{ role_name }}">{{ {'operador': 'Operador', 'auditor': 'Auditor', 'admin_seguridad': 'Admin. seguridad'}[current_user.role] }}</span>
+        <form method="post" action="{{ url_for('auth.logout') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn sm" type="submit">Salir</button>
+        </form>
+      </div>
+      {% endif %}
+    </div>
   </header>
 
   <!-- Requisito del curso: los datos simulados deben estar claramente identificados -->
   <div class="sim-banner">Entorno de pruebas · los equipos y eventos marcados <b>SIM</b> son DATOS SIMULADOS</div>
+  {% if current_user and current_user.role == 'auditor' %}
+  <div class="readonly-banner">Rol <b>Auditor</b>: modo de solo lectura. Las acciones que cambian datos están deshabilitadas.</div>
+  {% endif %}
 
   <main>
     {% block content %}{% endblock %}

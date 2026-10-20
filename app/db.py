@@ -4,8 +4,10 @@ Acceso a la base de datos SQLite.
 - get_db():   conexión reutilizada durante una petición HTTP de Flask.
 - connect():  conexión independiente (para scripts y el receptor UDP).
 - init_db():  crea las tablas desde schema.sql y carga el catálogo de severidades.
-- audit():    registra una acción en la tabla de auditoría.
+- audit():    registra una acción en la tabla de auditoría (encadenada, Fase 8.2).
+- verify_audit_chain(): comprueba que nadie alteró ni borró registros.
 """
+import hashlib
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -82,6 +84,9 @@ MIGRATIONS = [
     ("syslog_events", "event_time_utc", "TEXT"),
     ("incidents", "assigned_at", "TEXT"),
     ("incidents", "started_at", "TEXT"),
+    # Fase 8.2: auditoría encadenada
+    ("audit_log", "prev_hash", "TEXT"),
+    ("audit_log", "hash", "TEXT"),
 ]
 
 
@@ -127,6 +132,8 @@ def init_db(conn: sqlite3.Connection):
     conn.executescript(SCHEMA_FILE.read_text(encoding="utf-8"))
     _migrate(conn)
     _ensure_indexes(conn)
+    _chain_existing_audit(conn)      # Fase 8.2: encadena registros anteriores (una sola vez)
+    _protect_audit(conn)             # Fase 8.2: triggers de solo inserción
     conn.executemany(
         "INSERT OR REPLACE INTO severities "
         "(code, keyword, name, description, creates_incident) VALUES (?, ?, ?, ?, ?)",
@@ -135,11 +142,108 @@ def init_db(conn: sqlite3.Connection):
     conn.commit()
 
 
+# ---------------------------------------------------------------------------
+# Fase 8.2: AUDITORÍA ENCADENADA
+#
+#   registro 1:  hash1 = SHA-256( GENESIS | datos1 )
+#   registro 2:  hash2 = SHA-256( hash1   | datos2 )
+#   registro 3:  hash3 = SHA-256( hash2   | datos3 )
+#
+# Cada registro "contiene" la huella del anterior. Si alguien cambia una letra
+# del registro 2, su hash ya no coincide; y si borra el registro 2, el
+# registro 3 apunta a un hash que no existe. La verificación lo detecta.
+#
+# Dos capas de protección:
+#   1) Triggers de SQLite: la base RECHAZA cualquier UPDATE o DELETE sobre
+#      audit_log (ni la propia aplicación puede modificarla).
+#   2) La cadena: si alguien salta los triggers (abre el archivo .db con otra
+#      herramienta), la alteración queda en evidencia al verificar.
+# ---------------------------------------------------------------------------
+GENESIS_HASH = "0" * 64      # "hash anterior" del primer registro
+
+
+def audit_hash(prev_hash, ts, actor, action, entity, entity_id, detail, result) -> str:
+    """SHA-256 de los datos del registro unidos al hash anterior (formato fijo)."""
+    fields = [prev_hash, ts, actor, action, entity, entity_id, detail, result]
+    # "\x1f" (separador de unidad) evita ambigüedades: ("ab","c") != ("a","bc")
+    payload = "\x1f".join("" if f is None else str(f) for f in fields)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _last_hash(conn) -> str:
+    row = conn.execute("SELECT hash FROM audit_log WHERE hash IS NOT NULL ORDER BY id DESC LIMIT 1").fetchone()
+    return row[0] if row else GENESIS_HASH
+
+
 def audit(conn, actor, action, entity=None, entity_id=None, detail=None, result="ok"):
-    """Agrega un registro de auditoría. Nunca se modifica ni borra después."""
+    """Agrega un registro ENCADENADO de auditoría. Nunca se modifica ni borra después."""
+    # BEGIN IMMEDIATE toma el bloqueo de escritura ANTES de leer el último hash:
+    # así el receptor UDP y la web no pueden encadenar dos registros al mismo
+    # "anterior" al mismo tiempo (la cadena se bifurcaría).
+    if not conn.in_transaction:
+        conn.execute("BEGIN IMMEDIATE")
+    ts = now_iso()
+    prev = _last_hash(conn)
+    digest = audit_hash(prev, ts, actor, action, entity, entity_id, detail, result)
     conn.execute(
-        "INSERT INTO audit_log (ts, actor, action, entity, entity_id, detail, result) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (now_iso(), actor, action, entity, entity_id, detail, result),
+        "INSERT INTO audit_log (ts, actor, action, entity, entity_id, detail, result, prev_hash, hash) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (ts, actor, action, entity, entity_id, detail, result, prev, digest),
     )
     conn.commit()
+
+
+def _chain_existing_audit(conn):
+    """Migración: los registros creados antes de la Fase 8.2 reciben su hash, en orden."""
+    pending = conn.execute("SELECT COUNT(*) FROM audit_log WHERE hash IS NULL").fetchone()[0]
+    if not pending:
+        return
+    conn.execute("DROP TRIGGER IF EXISTS audit_no_update")    # solo durante la migración
+    prev = GENESIS_HASH
+    for r in conn.execute("SELECT * FROM audit_log ORDER BY id").fetchall():
+        if r["hash"] is None:
+            digest = audit_hash(prev, r["ts"], r["actor"], r["action"], r["entity"],
+                                r["entity_id"], r["detail"], r["result"])
+            conn.execute("UPDATE audit_log SET prev_hash = ?, hash = ? WHERE id = ?", (prev, digest, r["id"]))
+            prev = digest
+        else:
+            prev = r["hash"]
+    conn.commit()
+
+
+def _protect_audit(conn):
+    """Triggers: la base de datos rechaza modificar o borrar la auditoría."""
+    conn.executescript("""
+        CREATE TRIGGER IF NOT EXISTS audit_no_update BEFORE UPDATE ON audit_log
+        BEGIN SELECT RAISE(ABORT, 'La auditoría es de solo inserción: no se puede modificar'); END;
+        CREATE TRIGGER IF NOT EXISTS audit_no_delete BEFORE DELETE ON audit_log
+        BEGIN SELECT RAISE(ABORT, 'La auditoría es de solo inserción: no se puede borrar'); END;
+    """)
+
+
+def verify_audit_chain(conn) -> dict:
+    """
+    Recorre TODA la auditoría y recalcula cada hash.
+
+    Devuelve {"ok", "total", "last_id", "last_hash", "broken_at", "reason"}.
+    broken_at = id del primer registro donde la cadena se rompe:
+      - "registro alterado": su contenido ya no produce su hash.
+      - "registro anterior borrado o alterado": su prev_hash no es el hash del anterior.
+    Límite conocido: si se borran los ÚLTIMOS registros, la cadena que queda es
+    válida. Por eso se muestra el último hash: guardarlo aparte (bitácora,
+    informe) permite comprobar luego que la cadena no fue recortada.
+    """
+    prev = GENESIS_HASH
+    total, last_id = 0, None
+    for r in conn.execute("SELECT * FROM audit_log ORDER BY id"):
+        total += 1
+        if r["prev_hash"] != prev:
+            return {"ok": False, "total": total, "broken_at": r["id"], "last_id": last_id, "last_hash": prev,
+                    "reason": "registro anterior borrado o alterado (el enlace no coincide)"}
+        expected = audit_hash(prev, r["ts"], r["actor"], r["action"], r["entity"],
+                              r["entity_id"], r["detail"], r["result"])
+        if r["hash"] != expected:
+            return {"ok": False, "total": total, "broken_at": r["id"], "last_id": last_id, "last_hash": prev,
+                    "reason": "registro alterado (su contenido no coincide con su hash)"}
+        prev, last_id = r["hash"], r["id"]
+    return {"ok": True, "total": total, "broken_at": None, "last_id": last_id, "last_hash": prev, "reason": None}
