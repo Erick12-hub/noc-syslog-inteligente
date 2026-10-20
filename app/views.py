@@ -40,3 +40,9 @@ def consola():
 @bp.get("/auditoria")
 def auditoria():
     return render_template("auditoria.html", active="auditoria")
+
+
+@bp.get("/seguridad")
+def seguridad():
+    """Fase 8.3: ventana de administración de seguridad (solo admin_seguridad)."""
+    return render_template("seguridad.html", active="seguridad")

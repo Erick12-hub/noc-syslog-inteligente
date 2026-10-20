@@ -26,6 +26,7 @@
       {% if can('views.configuraciones') %}<a href="{{ url_for('views.configuraciones') }}" class="{{ 'active' if active == 'configuraciones' }}">Configuraciones</a>{% endif %}
       {% if can('views.consola') %}<a href="{{ url_for('views.consola') }}" class="{{ 'active' if active == 'consola' }}">Consola</a>{% endif %}
       {% if can('views.auditoria') %}<a href="{{ url_for('views.auditoria') }}" class="{{ 'active' if active == 'auditoria' }}">Auditoría</a>{% endif %}
+      {% if can('views.seguridad') %}<a href="{{ url_for('views.seguridad') }}" class="{{ 'active' if active == 'seguridad' }}">Seguridad</a>{% endif %}
     </nav>
     <!-- Fase 7: selector de tema (el texto lo pone theme.js según el tema actual) -->
     <div class="topbar-right">
@@ -36,7 +37,7 @@
       <!-- Fase 8: usuario de la sesión y cierre de sesión (POST con token CSRF) -->
       <div class="user-box">
         <span class="user-name">{{ current_user.full_name or current_user.username }}</span>
-        <span class="tag role-{{ current_user.role }}">{{ role_name }}</span>
+        <span class="tag role-{{ current_user.role }}" title="{{ role_name }}">{{ {'operador': 'Operador', 'auditor': 'Auditor', 'admin_seguridad': 'Admin. seguridad'}[current_user.role] }}</span>
         <form method="post" action="{{ url_for('auth.logout') }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button class="btn sm" type="submit">Salir</button>

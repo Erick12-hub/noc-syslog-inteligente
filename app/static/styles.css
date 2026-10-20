@@ -213,6 +213,11 @@ textarea { background: var(--field-bg); color: var(--text); border: 1px solid va
 
 /* ---------- Fase 8: sesión y roles ---------- */
 .user-box { display: flex; align-items: center; gap: 8px; }
+/* Fase 8.3: con el enlace "Seguridad" el menú es más largo: se compacta un poco */
+nav a { padding: 6px 9px; }
+.topbar { gap: 12px; padding: 10px 20px; }
+.theme-toggle .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.user-name { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .user-box form { margin: 0; }
 .user-name { font-size: 13px; }
 .tag.role-operador { background: var(--blue-bg); color: var(--blue-fg); }
@@ -236,6 +241,11 @@ textarea { background: var(--field-bg); color: var(--text); border: 1px solid va
 .chain-result.chain-bad { border-left-color: var(--danger); background: var(--red-bg); }
 .chain-result.chain-bad h2 { color: var(--red-fg); }
 .hash-cell { color: var(--muted); white-space: nowrap; }
+
+/* ---------- Fase 8.3: ventana de seguridad ---------- */
+.kpi-ok { border-left: 4px solid var(--accent); }
+#tbl-users select { padding: 4px 6px; }
+#tbl-users .row-actions .btn.sm { margin: 2px 0 2px 4px; }
 
 /* ---------- Fase 7.4: paginación ---------- */
 .pager { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 10px; flex-wrap: wrap; }
