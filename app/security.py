@@ -34,15 +34,21 @@ def detect_prompt_injection(text: str) -> bool:
     return any(r.search(text or "") for r in _RE_INJECTION)
 
 
-def fingerprint(source_ip: str, severity: int, mnemonic: str | None, message: str) -> str:
+def fingerprint(source_ip: str, severity: int, mnemonic: str | None, message: str,
+                interface: str | None = None) -> str:
     """
     Huella de un evento para detectar repeticiones.
 
     Se reemplazan los números por '#' para que "intento 1" e "intento 2", o dos
     puertos distintos, cuenten como el MISMO tipo de evento.
+
+    Fase 8.4: la INTERFAZ se agrega completa (con sus números). Sin ella,
+    "Gi0/0/1 down" y "Gi0/0/9 down" daban la misma huella: dos fallas
+    distintas quedaban como una sola, y un evento de una interfaz no
+    registrada se escondía como repetición de otro legítimo.
     """
     normalized = re.sub(r"\d+", "#", (message or "").lower()).strip()
-    base = f"{source_ip}|{severity}|{mnemonic or ''}|{normalized}"
+    base = f"{source_ip}|{severity}|{mnemonic or ''}|{normalized}|{(interface or '').lower()}"
     return hashlib.sha256(base.encode("utf-8")).hexdigest()[:16]
 
 
