@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Seguridad{% endblock %}
+{% block content %}
+<!-- Fase 8.3: ventana de administración de seguridad (solo admin_seguridad) -->
+<section class="page-head">
+  <div>
+    <h1>Administración de seguridad</h1>
+    <p class="muted">Usuarios, intentos de acceso, acciones bloqueadas, integridad de la auditoría y parámetros vigentes. Todo cambio queda auditado.</p>
+  </div>
+  <div class="filter-actions">
+    <button class="btn primary" id="btn-new-user">+ Nuevo usuario</button>
+    <button class="btn" id="btn-refresh">Actualizar</button>
+  </div>
+</section>
+
+<section class="kpis" aria-label="Indicadores de seguridad">
+  <div class="kpi kpi-crit"><span class="kpi-label">Inicios fallidos 24 h</span>
+    <span class="kpi-value" id="k-failed">—</span><span class="kpi-sub" id="k-failed-sub"></span></div>
+  <div class="kpi kpi-inc"><span class="kpi-label">Cuentas bloqueadas ahora</span>
+    <span class="kpi-value" id="k-locked">—</span><span class="kpi-sub">por intentos fallidos</span></div>
+  <div class="kpi kpi-sec"><span class="kpi-label">Acciones bloqueadas 24 h</span>
+    <span class="kpi-value" id="k-blocked">—</span><span class="kpi-sub">roles, CSRF, consola, importación</span></div>
+  <div class="kpi" id="kpi-chain"><span class="kpi-label">Cadena de auditoría</span>
+    <span class="kpi-value" id="k-chain">—</span><span class="kpi-sub" id="k-chain-sub"></span></div>
+</section>
+
+<section class="card">
+  <h2>Usuarios</h2>
+  <div class="table-wrap">
+    <table class="compact">
+      <thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Estado</th><th>Fallidos</th>
+        <th>Último ingreso</th><th>Acciones</th></tr></thead>
+      <tbody id="tbl-users"></tbody>
+    </table>
+  </div>
+  <p class="muted small">Usted no puede cambiar su propio rol ni desactivarse. Siempre debe quedar al menos un administrador de seguridad activo.</p>
+</section>
+
+<div class="dash-grid">
+  <section class="card">
+    <h2>Eventos de seguridad recientes</h2>
+    <div class="table-wrap">
+      <table class="compact">
+        <thead><tr><th>Fecha</th><th>Actor</th><th>Acción</th><th>Detalle</th><th>Resultado</th></tr></thead>
+        <tbody id="tbl-recent"></tbody>
+      </table>
+    </div>
+  </section>
+  <section class="card">
+    <h2>Parámetros de seguridad vigentes</h2>
+    <dl class="detail" id="params"></dl>
+    <p class="muted small">Se leen del archivo <code>.env</code>. Para cambiarlos se edita el archivo y se reinicia el servidor: no se modifican desde la web.</p>
+  </section>
+</div>
+
+<!-- Crear usuario -->
+<dialog id="dlg-user">
+  <form id="frm-user" method="dialog" novalidate>
+    <h2>Nuevo usuario</h2>
+    <div class="grid2">
+      <label>Usuario *<input name="username" required maxlength="30" placeholder="operador2" autocomplete="off"></label>
+      <label>Rol *
+        <select name="role"><option value="operador">Operador</option><option value="auditor">Auditor</option>
+          <option value="admin_seguridad">Administrador de seguridad</option></select>
+      </label>
+      <label class="span2">Nombre<input name="full_name" maxlength="80" placeholder="Turno mañana"></label>
+      <label class="span2">Contraseña inicial * (mín. 10, letras y números)
+        <input name="password" type="password" required maxlength="128" autocomplete="new-password"></label>
+    </div>
+    <ul class="errors" id="user-errors"></ul>
+    <div class="actions">
+      <button type="button" class="btn" id="btn-cancel-user">Cancelar</button>
+      <button type="submit" class="btn primary">Crear</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Restablecer contraseña -->
+<dialog id="dlg-pass">
+  <form id="frm-pass" method="dialog" novalidate>
+    <h2>Restablecer contraseña de <span id="pass-user"></span></h2>
+    <label>Contraseña nueva (mín. 10, letras y números)
+      <input name="password" type="password" required maxlength="128" autocomplete="new-password"></label>
+    <ul class="errors" id="pass-errors"></ul>
+    <div class="actions">
+      <button type="button" class="btn" id="btn-cancel-pass">Cancelar</button>
+      <button type="submit" class="btn primary">Guardar</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='seguridad.js') }}"></script>{% endblock %}

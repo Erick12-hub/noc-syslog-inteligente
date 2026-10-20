@@ -25,8 +25,9 @@ cumplir cualquier agente de IA, incluido uno real en el Corte 3:
 import ipaddress
 import re
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, jsonify, request
 
+from .auth import actor
 from .db import audit, get_db, now_iso
 
 bp = Blueprint("proposals", __name__, url_prefix="/api")
@@ -112,8 +113,9 @@ def suggest_for(conn, inc) -> list[dict]:
     return out or [item("escalar_seguridad")]
 
 
-def _operator():
-    return current_app.config["DEFAULT_OPERATOR"]
+def _operator() -> str:
+    """Fase 8: responsable = usuario de la sesión (ver app/auth.py)."""
+    return actor()
 
 
 def _incident(conn, incident_id):

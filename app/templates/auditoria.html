@@ -6,7 +6,19 @@
     <h1>Auditoría</h1>
     <p class="muted">Registro de solo lectura: quién hizo qué, cuándo y con qué resultado. Incluye acciones del sistema, del operador y del asistente de IA.</p>
   </div>
-  <button class="btn" id="btn-refresh">Actualizar</button>
+  <div class="filter-actions">
+    <button class="btn primary" id="btn-verify">Verificar integridad</button>
+    <button class="btn" id="btn-refresh">Actualizar</button>
+  </div>
+</section>
+
+<!-- Fase 8.2: resultado de la verificación de la cadena de hashes -->
+<section class="card chain-result" id="chain-result" hidden>
+  <h2 id="chain-title"></h2>
+  <dl class="detail" id="chain-detail"></dl>
+  <p class="muted small">Cada registro guarda el hash SHA-256 de sus datos unido al hash del registro anterior.
+    Si alguien modifica o borra un registro, la cadena se rompe en ese punto. Guarde el último hash
+    en la bitácora: permite comprobar más adelante que no se borraron los registros finales.</p>
 </section>
 
 <section class="card filters">
@@ -23,7 +35,7 @@
 <section class="card">
   <div class="table-wrap">
     <table class="compact">
-      <thead><tr><th>#</th><th>Fecha</th><th>Actor</th><th>Acción</th><th>Detalle</th><th>Resultado</th></tr></thead>
+      <thead><tr><th>#</th><th>Fecha</th><th>Actor</th><th>Acción</th><th>Detalle</th><th>Resultado</th><th>Hash</th></tr></thead>
       <tbody id="tbl-audit"></tbody>
     </table>
   </div>

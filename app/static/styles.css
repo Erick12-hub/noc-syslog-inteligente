@@ -211,6 +211,42 @@ textarea { background: var(--field-bg); color: var(--text); border: 1px solid va
 .timeline li::before { content: ""; position: absolute; left: -20px; top: 5px; width: 10px; height: 10px;
                        border-radius: 50%; background: var(--panel); border: 2px solid var(--accent); }
 
+/* ---------- Fase 8: sesión y roles ---------- */
+.user-box { display: flex; align-items: center; gap: 8px; }
+/* Fase 8.3: con el enlace "Seguridad" el menú es más largo: se compacta un poco */
+nav a { padding: 6px 9px; }
+.topbar { gap: 12px; padding: 10px 20px; }
+.theme-toggle .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.user-name { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-box form { margin: 0; }
+.user-name { font-size: 13px; }
+.tag.role-operador { background: var(--blue-bg); color: var(--blue-fg); }
+.tag.role-auditor { background: var(--yellow-bg); color: var(--yellow-fg); }
+.tag.role-admin_seguridad { background: var(--red-bg); color: var(--red-fg); }
+.readonly-banner { background: var(--blue-bg); color: var(--blue-fg); text-align: center; padding: 5px; font-size: 12.5px; }
+.login-body { min-height: 100vh; display: grid; place-items: center; }
+.login-wrap { width: min(400px, 100% - 32px); padding: 0; }
+.login-card { display: grid; gap: 14px; padding: 24px; }
+.login-card h1 { font-size: 20px; margin: 4px 0 0; }
+.login-card .btn.primary { padding: 10px; }
+.login-error { margin: 0; padding: 10px 12px; border-radius: 6px; border-left: 4px solid var(--danger);
+               background: var(--red-bg); color: var(--red-fg); }
+.sim-note { text-align: center; }
+.error-card { max-width: 640px; margin: 40px auto; display: grid; gap: 10px; }
+
+/* ---------- Fase 8.2: auditoría encadenada ---------- */
+.chain-result { border-left: 4px solid var(--line); }
+.chain-result.chain-ok { border-left-color: var(--accent); }
+.chain-result.chain-ok h2 { color: var(--green-fg); }
+.chain-result.chain-bad { border-left-color: var(--danger); background: var(--red-bg); }
+.chain-result.chain-bad h2 { color: var(--red-fg); }
+.hash-cell { color: var(--muted); white-space: nowrap; }
+
+/* ---------- Fase 8.3: ventana de seguridad ---------- */
+.kpi-ok { border-left: 4px solid var(--accent); }
+#tbl-users select { padding: 4px 6px; }
+#tbl-users .row-actions .btn.sm { margin: 2px 0 2px 4px; }
+
 /* ---------- Fase 7.4: paginación ---------- */
 .pager { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 10px; flex-wrap: wrap; }
 .pager-buttons { display: flex; gap: 4px; }
@@ -249,3 +285,7 @@ nav { flex-wrap: wrap; }
   .dash-grid, .action-grid { grid-template-columns: 1fr; } .span-2 { grid-column: auto; }
   main { padding: 16px; } .grid2 { grid-template-columns: 1fr; } .span2 { grid-column: auto; }
 }
+
+/* ---------- Fase 8.4: interfaces del equipo ---------- */
+#frm-iface[hidden] { display: none; }        /* el auditor no ve el formulario */
+#tbl-ifaces td.mono { white-space: nowrap; }

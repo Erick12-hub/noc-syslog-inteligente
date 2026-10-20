@@ -9,6 +9,7 @@ Ingesta de eventos: el camino que sigue cada mensaje Syslog hasta la base de dat
     2. ¿IP en el inventario?   -> asocia el equipo
     3. ¿Equipo autorizado?     -> lista permitida de fuentes
     3b. ¿El formato coincide con la marca del inventario? -> 'marca_inconsistente' (Fase 7.3)
+    3c. ¿La interfaz existe en el equipo? -> 'interfaz_desconocida' (Fase 8.4)
     4. ¿Prompt injection?      -> marca (NO ejecuta nada)
     5. ¿Repetido en 60 s?      -> deduplica (suma al contador)
     6. Guarda en syslog_events (incluye interfaz y puertos, Fase 7)
@@ -25,6 +26,7 @@ from datetime import datetime, timedelta, timezone
 from .config import Config
 from .db import audit, now_iso
 from .incidents import auto_incident_from_event, create_incident
+from .interfaces import is_known_interface
 from .rules import apply_rule_hits, evaluate, info_flags
 from .security import STORM, detect_prompt_injection, fingerprint
 from .syslog_parser import parse
@@ -93,13 +95,21 @@ def ingest(conn, raw: str, source_ip: str, origin: str, is_simulated: bool = Fal
             and p["vendor_hint"] != device["vendor"]):
         flags.append("marca_inconsistente")
 
+    # --- 3c. Fase 8.4: interfaz registrada en el equipo ----------------------
+    # Solo se compara si el equipo TIENE interfaces registradas en el
+    # inventario (si no, no hay contra qué comparar y no se marca nada).
+    # Una interfaz que el equipo no tiene = inventario desactualizado o un
+    # mensaje fabricado por alguien que no conoce el equipo real.
+    if device is not None and is_known_interface(conn, device["id"], p["interface"]) is False:
+        flags.append("interfaz_desconocida")
+
     # --- 4. Prompt injection (solo se MARCA) --------------------------------
     if detect_prompt_injection(p["message"]):
         flags.append("posible_prompt_injection")
     flags += info_flags(p["message"], p["mnemonic"])   # login_fallido, cambio_config
 
     # --- 5. Deduplicación ---------------------------------------------------
-    fp = fingerprint(source_ip, p["severity"], p["mnemonic"], p["message"])
+    fp = fingerprint(source_ip, p["severity"], p["mnemonic"], p["message"], p["interface"])
     previous = conn.execute(
         "SELECT id, dup_count FROM syslog_events "
         "WHERE fingerprint = ? AND received_at >= ? ORDER BY id DESC LIMIT 1",
@@ -140,7 +150,7 @@ def ingest(conn, raw: str, source_ip: str, origin: str, is_simulated: bool = Fal
 
     # --- 7. Auditoría de lo sospechoso -------------------------------------
     suspicious = [f for f in flags if f in ("fuente_no_autorizada", "posible_prompt_injection",
-                                             "marca_inconsistente")]
+                                             "marca_inconsistente", "interfaz_desconocida")]
     if suspicious:
         audit(conn, "sistema", "syslog.sospechoso", "syslog_events", event_id,
               f"origen={source_ip} marcas={','.join(suspicious)}", "alerta")

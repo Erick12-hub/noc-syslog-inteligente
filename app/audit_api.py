@@ -2,13 +2,15 @@
 Consulta de la auditoría (RF-14): quién hizo qué, cuándo y con qué resultado.
 
     GET /api/audit?actor=asistente_ia&result=bloqueado&q=console&limit=200
+    GET /api/audit/verify      Verifica la cadena de integridad (Fase 8.2)
 
 Solo LECTURA: la aplicación no tiene ninguna ruta para modificar o borrar
 registros de auditoría (si se pudieran borrar, un atacante borraría sus huellas).
 """
 from flask import Blueprint, jsonify, request
 
-from .db import get_db
+from .auth import actor
+from .db import audit, get_db, verify_audit_chain
 from .validation import ParamValidator
 
 RESULTS = ("ok", "alerta", "bloqueado", "error")
@@ -40,3 +42,20 @@ def list_audit():
     rows = get_db().execute(sql + " ORDER BY id DESC LIMIT ?", (*params, limit)).fetchall()
     actors = [r[0] for r in get_db().execute("SELECT DISTINCT actor FROM audit_log ORDER BY actor")]
     return jsonify(rows=[dict(r) for r in rows], actors=actors)
+
+
+@bp.get("/verify")
+def verify():
+    """
+    Fase 8.2: recalcula toda la cadena de hashes. Primero se verifica y DESPUÉS
+    se registra la verificación (si no, el propio registro entraría al cálculo).
+    """
+    conn = get_db()
+    report = verify_audit_chain(conn)
+    if report["ok"]:
+        audit(conn, actor(), "audit.verify", "audit_log", report["last_id"],
+              f"cadena integra: {report['total']} registros, ultimo hash {report['last_hash'][:16]}")
+    else:
+        audit(conn, actor(), "audit.verify", "audit_log", report["broken_at"],
+              f"CADENA ROTA en el registro {report['broken_at']}: {report['reason']}", "alerta")
+    return jsonify(report)

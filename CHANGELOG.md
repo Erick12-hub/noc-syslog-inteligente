@@ -3,6 +3,40 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y
 [versionado semántico](https://semver.org/lang/es/). Todos los datos son **SIMULADOS**.
 
+## [0.3.0] - 2026-10-19 — Seguridad de acceso, auditoría encadenada e interfaces (Fase 8)
+
+Segunda versión del Corte 3. Cada acción queda firmada por un usuario real con un rol, la
+auditoría no se puede alterar sin que se note y el inventario conoce las interfaces de cada
+equipo. 276 pruebas automáticas (168 en v0.2.1).
+
+### Agregado
+- Usuarios con roles `operador`, `auditor` y `admin_seguridad`; inicio y cierre de sesión (`/login`, `/logout`).
+- Contraseñas con hash scrypt y política mínima (10 caracteres, letras y números, sin el nombre de usuario).
+- Bloqueo de la cuenta tras 5 intentos fallidos durante 15 minutos; mensaje genérico si el usuario no existe.
+- Token anti-CSRF en toda petición que cambia datos; rechazos por CSRF o por rol quedan auditados.
+- Control de permisos central (`app/auth.py`): tabla de reglas por ruta y regla por defecto segura.
+- Separación de funciones: solo `admin_seguridad` aprueba propuestas y nunca las propias.
+- Comandos `create-user`, `users`, `unlock` y `verify-audit` en `manage.py`.
+- Auditoría encadenada con SHA-256 (`prev_hash`, `hash`), triggers de solo inserción y verificación de integridad
+  (API `/api/audit/verify` y botón en la página Auditoría).
+- `scripts/simular_alteracion_auditoria.py`: demuestra la detección sobre una COPIA de la base.
+- Ventana **Seguridad** (solo administrador): resumen de 24 h, cuentas bloqueadas, usuarios (crear, rol, activar,
+  desbloquear, restablecer contraseña) y estado de la cadena.
+- Tabla `interfaces` por equipo, gestionada desde Inventario, con validación de nombres por fabricante
+  (Cisco, Huawei, FortiGate) y normalización (`Gi0/1` → `GigabitEthernet0/1`).
+- Marca `interfaz_desconocida` y su filtro en Eventos.
+
+### Cambiado
+- El responsable de cada acción en la auditoría es el usuario de la sesión (antes, `DEFAULT_OPERATOR`).
+- Menú y botones según el rol; el auditor ve la aplicación en modo de solo lectura.
+- La huella de deduplicación incluye la interfaz.
+
+### Corregido
+- El auditor recibía 403 al cerrar sesión.
+- Una cuenta bloqueada mostraba 0 intentos fallidos.
+- Dos interfaces distintas con el mismo tipo de evento (`Gi0/0/1 down` y `Gi0/0/9 down`) se agrupaban como
+  un solo evento repetido, y un evento de una interfaz no registrada podía quedar oculto.
+
 ## [0.2.1] - 2026-10-17 — Mejoras del Corte 2 (Fase 7)
 
 Primera versión del Corte 3: corrige los hallazgos de la revisión del MVP antes de

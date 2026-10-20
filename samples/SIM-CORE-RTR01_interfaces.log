@@ -1,0 +1,8 @@
+# DATOS SIMULADOS - Fase 8.4: prueba de interfaces registradas (SIM-CORE-RTR01, 192.0.2.1)
+# Antes de importar, registrar en Inventario > SIM-CORE-RTR01 > Interfaces:
+#   GigabitEthernet0/0/0, GigabitEthernet0/0/1 y GigabitEthernet0/0/2
+# Resultado esperado: 0/0/1 y 0/0/1.100 (subinterfaz) SIN marca; 0/0/9 con 'interfaz_desconocida'.
+# Importar con:  python manage.py import-log samples\SIM-CORE-RTR01_interfaces.log --ip 192.0.2.1
+<187>201: *Oct  5 09:10:01.100: %LINK-3-UPDOWN: Interface GigabitEthernet0/0/1, changed state to down
+<189>202: *Oct  5 09:10:02.200: %LINEPROTO-5-UPDOWN: Line protocol on Interface GigabitEthernet0/0/1.100, changed state to down
+<187>203: *Oct  5 09:10:03.300: %LINK-3-UPDOWN: Interface GigabitEthernet0/0/9, changed state to down

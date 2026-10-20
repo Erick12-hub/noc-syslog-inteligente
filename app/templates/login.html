@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Iniciar sesión · NOC Syslog Inteligente</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <script src="{{ url_for('static', filename='theme.js') }}"></script>
+</head>
+<body class="login-body">
+  <!-- Fase 8: inicio de sesión. Formulario HTML normal (POST /login), con token CSRF. -->
+  <main class="login-wrap">
+    <form class="card login-card" method="post" action="{{ url_for('auth.login') }}" autocomplete="on">
+      <div class="brand"><span class="brand-dot"></span><strong>NOC Syslog Inteligente</strong>
+        <span class="version">v{{ app_version }}</span></div>
+      <h1>Iniciar sesión</h1>
+      <p class="muted small">Acceso solo para personal autorizado. Todos los intentos quedan en la auditoría.</p>
+
+      {% if error %}<p class="login-error" role="alert">{{ error }}</p>{% endif %}
+
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="next" value="{{ next or '' }}">
+      <label>Usuario
+        <input name="username" value="{{ username or '' }}" required maxlength="30"
+               autocomplete="username" autocapitalize="none" autofocus>
+      </label>
+      <label>Contraseña
+        <input name="password" type="password" required maxlength="128" autocomplete="current-password">
+      </label>
+      <button class="btn primary" type="submit">Entrar</button>
+      <p class="muted small sim-note">Entorno de pruebas · DATOS SIMULADOS</p>
+    </form>
+  </main>
+</body>
+</html>

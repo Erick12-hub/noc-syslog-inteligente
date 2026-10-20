@@ -45,6 +45,26 @@ CREATE TABLE IF NOT EXISTS devices (
 );
 
 -- ---------------------------------------------------------------------
+-- 2b. Interfaces de cada equipo (Fase 8.4)
+--    Lista de las interfaces REALES del equipo. Si un evento menciona una
+--    interfaz que el equipo no tiene registrada, se marca 'interfaz_desconocida'
+--    (inventario desactualizado o mensaje suplantado).
+--    COLLATE NOCASE: 'gigabitethernet0/1' y 'GigabitEthernet0/1' son la misma.
+--    ON DELETE CASCADE: si se elimina el equipo, se eliminan sus interfaces.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS interfaces (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    device_id   INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    name        TEXT NOT NULL COLLATE NOCASE,   -- ej. GigabitEthernet0/0/1, port1, Vlanif10
+    description TEXT,                           -- ej. "Enlace a ISP principal"
+    status      TEXT NOT NULL DEFAULT 'desconocido'
+                CHECK (status IN ('up', 'down', 'admin_down', 'desconocido')),
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL,
+    UNIQUE (device_id, name)                    -- un equipo no repite interfaz
+);
+
+-- ---------------------------------------------------------------------
 -- 3. Eventos Syslog recibidos o importados
 --    'raw' guarda el mensaje original TAL CUAL llegó. Se trata como DATO
 --    NO CONFIABLE: nunca se interpreta como instrucción ni se ejecuta.
@@ -156,7 +176,31 @@ CREATE TABLE IF NOT EXISTS audit_log (
     entity    TEXT,                      -- tabla/objeto afectado
     entity_id INTEGER,
     detail    TEXT,
-    result    TEXT NOT NULL DEFAULT 'ok' -- ok | bloqueado | error
+    result    TEXT NOT NULL DEFAULT 'ok', -- ok | alerta | bloqueado | error
+    -- Fase 8.2: cadena de integridad (ver audit() y verify_audit_chain() en app/db.py)
+    prev_hash TEXT,                      -- hash del registro anterior
+    hash      TEXT                       -- SHA-256(prev_hash + datos de este registro)
 );
 
 CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(ts);
+
+-- ---------------------------------------------------------------------
+-- 7. Usuarios del NOC (Fase 8)
+--    password_hash: SOLO el hash scrypt; la contraseña nunca se guarda.
+--    failed_attempts / locked_until: bloqueo tras varios intentos fallidos.
+--    No hay usuarios por defecto: el primero se crea con
+--    "python manage.py create-user" (contraseña escrita por consola).
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS users (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    username        TEXT NOT NULL UNIQUE,
+    full_name       TEXT,
+    password_hash   TEXT NOT NULL,
+    role            TEXT NOT NULL CHECK (role IN ('operador', 'auditor', 'admin_seguridad')),
+    active          INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+    failed_attempts INTEGER NOT NULL DEFAULT 0,
+    locked_until    TEXT,                  -- UTC; NULL = no bloqueada
+    last_login_at   TEXT,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL
+);
