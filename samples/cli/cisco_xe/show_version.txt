@@ -1,0 +1,27 @@
+Cisco IOS XE Software, Version 17.09.04a
+Cisco IOS Software [Cupertino], c8000be Software (X86_64_LINUX_IOSD-UNIVERSALK9-M), Version 17.9.4a, RELEASE SOFTWARE (fc3)
+Technical Support: http://www.cisco.com/techsupport
+Copyright (c) 1986-2023 by Cisco Systems, Inc.
+Compiled Fri 20-Oct-23 10:44 by mcpre
+
+
+ROM: 17.3(2r)
+BOOTLDR: System Bootstrap, Version 17.3(2r), RELEASE SOFTWARE
+
+SIM-CORE-RTR01 uptime is 2 hours, 14 minutes
+Uptime for this control processor is 2 hours, 16 minutes
+System returned to ROM by Reload Command
+System image file is "bootflash:c8000be-universalk9.17.09.04a.SPA.bin"
+Last reload reason: Reload Command
+
+Router operating mode: Autonomous
+
+cisco C8200L-1N-4T (1RU) processor with 1626426K/6147K bytes of memory.
+Processor board ID FGL2601SIM1
+1 Virtual Ethernet interface
+4 Gigabit Ethernet interfaces
+32768K bytes of non-volatile configuration memory.
+3745824K bytes of physical memory.
+6598655K bytes of flash memory at bootflash:.
+
+Configuration register is 0x2102

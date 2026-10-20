@@ -38,6 +38,7 @@ RE_META = re.compile(r"[;|&`$><\n\r\\]")
 ALLOWLIST = {
     "Cisco": [
         (r"show version", "Versión de software y hardware"),
+        (r"show inventory", "Modelo y número de serie de chasis y módulos"),
         (r"show clock", "Fecha y hora del equipo"),
         (r"show ip interface brief", "Estado resumido de interfaces"),
         (r"show logging", "Configuración de logging y últimos mensajes"),
@@ -45,7 +46,7 @@ ALLOWLIST = {
         (r"show users", "Sesiones abiertas"),
     ],
     "Fortinet": [
-        (r"get system status", "Versión y estado del sistema"),
+        (r"get system status", "Versión, modelo y número de serie"),
         (r"get system performance status", "CPU y memoria"),
         (r"get log syslogd setting", "Configuración Syslog"),
         (r"diagnose sys ntp status", "Estado de sincronización NTP"),
@@ -53,6 +54,7 @@ ALLOWLIST = {
     ],
     "Huawei": [
         (r"display version", "Versión de software y hardware"),
+        (r"display esn", "Número de serie del equipo"),
         (r"display clock", "Fecha y hora del equipo"),
         (r"display ip interface brief", "Estado resumido de interfaces"),
         (r"display info-center", "Configuración del centro de información (Syslog)"),

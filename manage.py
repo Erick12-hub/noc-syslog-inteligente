@@ -11,6 +11,8 @@ Uso:
     python manage.py users                    Lista los usuarios (sin contraseñas)
     python manage.py unlock USUARIO           Desbloquea una cuenta bloqueada
     python manage.py verify-audit             Verifica la cadena de la auditoría (Fase 8.2)
+    python manage.py device-session EQUIPO ["comando" ...]   Conecta, identifica y ejecuta (Fase 9.1)
+    python manage.py device-sessions EQUIPO   Historial de sesiones del equipo (Fase 9.1)
 
 La contraseña se escribe en la consola SIN mostrarse (getpass) y nunca queda
 en el historial de comandos ni en el código. Solo quien tiene acceso al
@@ -133,6 +135,47 @@ def cmd_verify_audit():
     conn.close()
 
 
+def cmd_device_session(name: str, commands: list[str]):
+    """Fase 9.1: misma sesión que la web (mismas reglas y la misma auditoría)."""
+    from app.connector import run_session
+    conn = connect(Config.DATABASE_PATH)
+    init_db(conn)
+    device = conn.execute("SELECT * FROM devices WHERE name = ?", (name,)).fetchone()
+    if device is None:
+        print(f"[!] No existe el equipo {name!r} en el inventario")
+        return
+    print(f"[..] Conectando con {name} (modo {device['connection_mode']})...")
+    result, status = run_session(conn, device, commands, Config.DEFAULT_OPERATOR)
+    for e in result.get("errors", []):
+        print(f"[!] {e}")
+    if "id" in result:
+        print(f"[{'OK' if result['status'] == 'cerrada' else '!'}] Sesión {result['id']}: {result['status']} "
+              f"· {result['transport']} {result['target']}")
+        if result["serial_number"] or result["model"]:
+            print(f"     Equipo físico: serie={result['serial_number']}  modelo={result['model']}  "
+                  f"versión={result['os_version']}")
+        for w in result["warnings"]:
+            print(f"[!] {w}")
+        for c in result["commands"]:
+            print(f"\n--- {c['command']} ({c['duration_ms']} ms, huella {c['output_sha256'][:16]}...) ---")
+            print(c["output"] if c["command"] != "show version" else "(identificación: ver arriba)")
+    conn.close()
+
+
+def cmd_device_sessions(name: str):
+    conn = connect(Config.DATABASE_PATH)
+    init_db(conn)
+    rows = conn.execute("SELECT * FROM device_sessions WHERE device_name = ? ORDER BY id DESC LIMIT 20",
+                        (name,)).fetchall()
+    if not rows:
+        print(f"Sin sesiones registradas para {name}")
+    print(f"{'#':>4}  {'Inicio (UTC)':20}  {'Modo':9}  {'Estado':8}  {'Serie':14}  {'Cmds':>4}  Usuario")
+    for r in rows:
+        print(f"{r['id']:>4}  {r['started_at']:20}  {r['transport']:9}  {r['status']:8}  "
+              f"{(r['serial_number'] or '-'):14}  {r['commands_count']:>4}  {r['started_by']}")
+    conn.close()
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Administración NOC Syslog Inteligente")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -151,6 +194,11 @@ if __name__ == "__main__":
     p_un = sub.add_parser("unlock", help="Desbloquear una cuenta")
     p_un.add_argument("usuario")
     sub.add_parser("verify-audit", help="Verificar la cadena de integridad de la auditoría")
+    p_ds = sub.add_parser("device-session", help="Conectar con un equipo, identificarlo y ejecutar comandos")
+    p_ds.add_argument("equipo")
+    p_ds.add_argument("comandos", nargs="*", help='Comandos de solo lectura, entre comillas')
+    p_dl = sub.add_parser("device-sessions", help="Historial de sesiones de un equipo")
+    p_dl.add_argument("equipo")
     args = parser.parse_args()
 
     if args.command == "init-db":
@@ -170,3 +218,7 @@ if __name__ == "__main__":
         cmd_unlock(args.usuario)
     elif args.command == "verify-audit":
         cmd_verify_audit()
+    elif args.command == "device-session":
+        cmd_device_session(args.equipo, args.comandos)
+    elif args.command == "device-sessions":
+        cmd_device_sessions(args.equipo)

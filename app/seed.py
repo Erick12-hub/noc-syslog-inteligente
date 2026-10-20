@@ -24,6 +24,14 @@ SIMULATED_DEVICES = [
 ]
 
 
+# Fase 9.1: equipos SIM que el NOC puede "conectar" en modo simulado, con las
+# salidas de ejemplo de samples/cli/ (formato real de un C8200 y un 2960).
+SIMULATED_CONNECTIONS = {
+    "SIM-CORE-RTR01": "cisco_xe",
+    "SIM-DIST-SW01": "cisco_ios",
+}
+
+
 def seed_devices(conn) -> int:
     """Inserta los equipos simulados que aún no existan. Devuelve cuántos insertó."""
     inserted = 0
@@ -39,6 +47,9 @@ def seed_devices(conn) -> int:
             (name, ip, vendor, model, version, location, status, authorized, ts, ts),
         )
         inserted += 1
+        if name in SIMULATED_CONNECTIONS:
+            conn.execute("UPDATE devices SET connection_mode = 'simulado', platform = ? WHERE name = ?",
+                         (SIMULATED_CONNECTIONS[name], name))
     conn.commit()
     if inserted:
         audit(conn, "sistema", "seed.devices", "devices", None,

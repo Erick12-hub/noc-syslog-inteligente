@@ -1,0 +1,8 @@
+Interface              IP-Address      OK? Method Status                Protocol
+Vlan1                  192.168.100.2   YES manual up                    up
+FastEthernet0/1        unassigned      YES unset  up                    up
+FastEthernet0/2        unassigned      YES unset  up                    up
+FastEthernet0/3        unassigned      YES unset  down                  down
+FastEthernet0/4        unassigned      YES unset  down                  down
+GigabitEthernet0/1     unassigned      YES unset  down                  down
+GigabitEthernet0/2     unassigned      YES unset  down                  down
