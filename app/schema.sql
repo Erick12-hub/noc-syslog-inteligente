@@ -45,6 +45,26 @@ CREATE TABLE IF NOT EXISTS devices (
 );
 
 -- ---------------------------------------------------------------------
+-- 2b. Interfaces de cada equipo (Fase 8.4)
+--    Lista de las interfaces REALES del equipo. Si un evento menciona una
+--    interfaz que el equipo no tiene registrada, se marca 'interfaz_desconocida'
+--    (inventario desactualizado o mensaje suplantado).
+--    COLLATE NOCASE: 'gigabitethernet0/1' y 'GigabitEthernet0/1' son la misma.
+--    ON DELETE CASCADE: si se elimina el equipo, se eliminan sus interfaces.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS interfaces (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    device_id   INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    name        TEXT NOT NULL COLLATE NOCASE,   -- ej. GigabitEthernet0/0/1, port1, Vlanif10
+    description TEXT,                           -- ej. "Enlace a ISP principal"
+    status      TEXT NOT NULL DEFAULT 'desconocido'
+                CHECK (status IN ('up', 'down', 'admin_down', 'desconocido')),
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL,
+    UNIQUE (device_id, name)                    -- un equipo no repite interfaz
+);
+
+-- ---------------------------------------------------------------------
 -- 3. Eventos Syslog recibidos o importados
 --    'raw' guarda el mensaje original TAL CUAL llegó. Se trata como DATO
 --    NO CONFIABLE: nunca se interpreta como instrucción ni se ejecuta.

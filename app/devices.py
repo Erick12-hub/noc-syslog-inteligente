@@ -92,7 +92,10 @@ def _row(row) -> dict:
 
 @bp.get("")
 def list_devices():
-    rows = get_db().execute("SELECT * FROM devices ORDER BY name").fetchall()
+    # Fase 8.4: cuántas interfaces tiene registradas cada equipo
+    rows = get_db().execute(
+        "SELECT d.*, (SELECT COUNT(*) FROM interfaces i WHERE i.device_id = d.id) AS interface_count "
+        "FROM devices d ORDER BY d.name").fetchall()
     return jsonify([dict(r) for r in rows])
 
 
@@ -162,7 +165,10 @@ def delete_device(device_id):
         return jsonify(error="Equipo no encontrado"), 404
     # Los eventos del equipo NO se borran: quedan con device_id = NULL
     # (ON DELETE SET NULL en schema.sql) para conservar la trazabilidad.
+    # Sus interfaces SÍ se borran (ON DELETE CASCADE, Fase 8.4).
+    n_ifaces = conn.execute("SELECT COUNT(*) FROM interfaces WHERE device_id = ?", (device_id,)).fetchone()[0]
     conn.execute("DELETE FROM devices WHERE id = ?", (device_id,))
     conn.commit()
-    audit(conn, _operator(), "device.delete", "devices", device_id, f"{row['name']} {row['ip']}")
+    audit(conn, _operator(), "device.delete", "devices", device_id,
+          f"{row['name']} {row['ip']} interfaces={n_ifaces}")
     return jsonify(deleted=device_id)
