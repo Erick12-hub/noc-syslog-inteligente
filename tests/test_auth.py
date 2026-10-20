@@ -75,6 +75,25 @@ def test_bloqueo_tras_5_intentos_fallidos(app, anon_client, conn):
     assert conn.execute("SELECT result FROM audit_log WHERE action = 'auth.bloqueo'").fetchone()["result"] == "alerta"
 
 
+def test_la_cuenta_bloqueada_conserva_los_fallidos(app, anon_client, conn):
+    # Hallazgo de la prueba en vivo (8.3): se veía "bloqueado" con 0 fallidos
+    make_user(app, "erick", "operador")
+    for _ in range(5):
+        login(anon_client, "erick", "Equivocada2026")
+    row = conn.execute("SELECT failed_attempts, locked_until FROM users WHERE username = 'erick'").fetchone()
+    assert row["failed_attempts"] == 5 and row["locked_until"]
+
+
+def test_tras_vencer_el_bloqueo_se_cuenta_desde_cero(app, anon_client, conn):
+    make_user(app, "erick", "operador")
+    conn.execute("UPDATE users SET failed_attempts = 5, locked_until = '2000-01-01T00:00:00Z' "
+                 "WHERE username = 'erick'")
+    conn.commit()
+    assert login(anon_client, "erick", "Equivocada2026").status_code == 401    # NO se re-bloquea
+    row = conn.execute("SELECT failed_attempts, locked_until FROM users WHERE username = 'erick'").fetchone()
+    assert row["failed_attempts"] == 1 and row["locked_until"] is None
+
+
 def test_el_bloqueo_vence(app, anon_client, conn):
     make_user(app, "erick", "operador")
     conn.execute("UPDATE users SET locked_until = '2000-01-01T00:00:00Z' WHERE username = 'erick'")
