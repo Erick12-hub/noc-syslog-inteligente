@@ -285,3 +285,7 @@ nav { flex-wrap: wrap; }
   .dash-grid, .action-grid { grid-template-columns: 1fr; } .span-2 { grid-column: auto; }
   main { padding: 16px; } .grid2 { grid-template-columns: 1fr; } .span2 { grid-column: auto; }
 }
+
+/* ---------- Fase 8.4: interfaces del equipo ---------- */
+#frm-iface[hidden] { display: none; }        /* el auditor no ve el formulario */
+#tbl-ifaces td.mono { white-space: nowrap; }
