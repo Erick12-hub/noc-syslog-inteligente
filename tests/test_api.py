@@ -7,7 +7,7 @@ NEW_DEVICE = {"name": "SIM-TEST-SW09", "ip": "192.0.2.99", "vendor": "Huawei",
 
 def test_health(client):
     r = client.get("/api/health")
-    assert r.status_code == 200 and r.json["status"] == "ok" and r.json["tables"] == 9   # Fase 8: + users, + interfaces (8.4)
+    assert r.status_code == 200 and r.json["status"] == "ok" and r.json["tables"] == 11   # Fase 8: users, interfaces; Fase 9.1: sesiones y comandos
 
 
 def test_listar_equipos_simulados(client):

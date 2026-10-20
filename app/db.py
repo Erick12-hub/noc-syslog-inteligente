@@ -87,6 +87,15 @@ MIGRATIONS = [
     # Fase 8.2: auditoría encadenada
     ("audit_log", "prev_hash", "TEXT"),
     ("audit_log", "hash", "TEXT"),
+    # Fase 9.1: conexión con los equipos e identidad física
+    ("devices", "connection_mode", "TEXT NOT NULL DEFAULT 'ninguno'"),
+    ("devices", "platform", "TEXT"),
+    ("devices", "console_port", "TEXT"),
+    ("devices", "serial_number", "TEXT"),
+    ("devices", "detected_model", "TEXT"),
+    ("devices", "detected_version", "TEXT"),
+    ("devices", "host_key_fp", "TEXT"),
+    ("devices", "last_identified_at", "TEXT"),
 ]
 
 

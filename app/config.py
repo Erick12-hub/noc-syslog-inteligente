@@ -78,3 +78,13 @@ class Config:
     # Prefijos de cuentas de servicio: no deberían cambiar configuraciones.
     SERVICE_ACCOUNT_PREFIXES = tuple(
         p.strip() for p in os.getenv("SERVICE_ACCOUNT_PREFIXES", "svc_").split(",") if p.strip())
+
+    # --- Fase 9: conexión con los equipos (app/connector.py) ----------------
+    # Modo "ssh" (equipos fijos): el usuario y la contraseña SOLO viven en .env.
+    # Modo "consola" (equipos prestados): cable de consola, sin contraseñas.
+    SSH_USERNAME = os.getenv("SSH_USERNAME", "")
+    SSH_PASSWORD = os.getenv("SSH_PASSWORD", "")
+    SSH_PORT = int(os.getenv("SSH_PORT", "22"))
+    CONSOLE_BAUDRATE = int(os.getenv("CONSOLE_BAUDRATE", "9600"))
+    CONNECT_TIMEOUT = int(os.getenv("CONNECT_TIMEOUT", "15"))     # segundos para conectar
+    COMMAND_TIMEOUT = int(os.getenv("COMMAND_TIMEOUT", "30"))     # segundos por comando
