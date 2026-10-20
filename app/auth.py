@@ -63,6 +63,12 @@ RULES = {
     "console.allowed": OPS,
     "views.consola": OPS,
     "views.configuraciones": OPS,
+    "views.seguridad": ADMIN,           # ventana de administración de seguridad (Fase 8.3)
+}
+
+# Todas las rutas de un blueprint con este prefijo quedan solo para estos roles
+PREFIX_RULES = {
+    "admin.": ADMIN,                    # /api/admin/... (usuarios, resumen de seguridad)
 }
 
 # Método de hash de contraseñas. scrypt es LENTO a propósito (~0,2 s): para el
@@ -179,6 +185,9 @@ def allowed_roles(endpoint: str, method: str) -> frozenset:
     """Roles que pueden usar un endpoint con un método HTTP (regla por defecto + excepciones)."""
     if endpoint in RULES:
         return RULES[endpoint]
+    for prefix, roles in PREFIX_RULES.items():
+        if endpoint.startswith(prefix):
+            return roles
     return ALL if method in SAFE_METHODS else OPS
 
 
@@ -264,12 +273,17 @@ def login():
         return fail(f"Cuenta bloqueada por intentos fallidos hasta las {local:%H:%M} (hora de Colombia).", 423)
 
     if not check_password_hash(row["password_hash"], password):
-        attempts = row["failed_attempts"] + 1
+        # Si hubo un bloqueo que YA venció, se empieza a contar de nuevo desde cero;
+        # si no, se suma al contador actual.
+        lock_expired = bool(row["locked_until"])          # (si siguiera vigente, se habría salido arriba)
+        attempts = (0 if lock_expired else row["failed_attempts"]) + 1
         locked_until = None
         if attempts >= cfg["MAX_LOGIN_ATTEMPTS"]:
             locked_until = (now + timedelta(minutes=cfg["LOCKOUT_MINUTES"])).strftime("%Y-%m-%dT%H:%M:%SZ")
+        # Corrección 8.3: mientras está bloqueada, la cuenta CONSERVA el número de
+        # fallidos (antes se ponía en 0 y el administrador veía "bloqueado, 0 fallidos").
         conn.execute("UPDATE users SET failed_attempts = ?, locked_until = ?, updated_at = ? WHERE id = ?",
-                     (0 if locked_until else attempts, locked_until, now_iso(), row["id"]))
+                     (attempts, locked_until, now_iso(), row["id"]))
         conn.commit()
         detail = f"intento {attempts} de {cfg['MAX_LOGIN_ATTEMPTS']} ip={request.remote_addr}"
         if locked_until:
