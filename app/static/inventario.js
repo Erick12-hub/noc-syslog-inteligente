@@ -130,6 +130,8 @@ async function openConnection(d) {
   const sel = frmCn.elements.command;
   sel.replaceChildren(new Option("— solo identificar el equipo —", ""));
   frmCn.hidden = !CAN_EDIT || d.connection_mode === "ninguno";
+  document.getElementById("frm-diag").hidden = frmCn.hidden;          // Fase 9.4
+  document.getElementById("cn-diag").replaceChildren();
   if (!frmCn.hidden) {
     try {
       const a = await api(`/api/console/allowed?vendor=${encodeURIComponent(d.vendor)}`);
@@ -210,6 +212,49 @@ frmCn.addEventListener("submit", async (ev) => {
   finally { btn.disabled = false; btn.textContent = "Conectar"; }
 });
 document.getElementById("btn-cn-close").onclick = () => dlgCn.close();
+
+/* Fase 9.4: ping / traceroute ejecutado por el equipo (destino validado en el servidor) */
+const frmDiag = document.getElementById("frm-diag");
+frmDiag.addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const btn = document.getElementById("btn-diag");
+  const box = document.getElementById("cn-diag");
+  const errs = document.getElementById("cn-errors");
+  errs.replaceChildren(); box.replaceChildren();
+  btn.disabled = true; btn.textContent = "Ejecutando… (un traceroute puede tardar)";
+  try {
+    const res = await fetch(`/api/devices/${cnDevice.id}/diagnostic`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: frmDiag.elements.type.value, target: frmDiag.elements.target.value.trim() }),
+    });
+    const body = await res.json();
+    if (!res.ok) {
+      errs.replaceChildren(...(body.errors || [body.error]).map(m => el("li", m)));
+    } else {
+      const ok = body.type === "ping" ? body.result.reachable : body.result.reached;
+      const head = el("p", "", "diag-summary");
+      head.append(el("span", ok ? "OK" : "SIN RESPUESTA", `tag ${ok ? "ok" : "bad"}`), " ",
+                  el("strong", body.summary), el("span", ` · sesión ${body.session}`, "muted small"));
+      box.append(head);
+      if (body.type === "traceroute" && body.result.hops.length) {
+        const t = el("table", "", "hops");
+        const hr = document.createElement("tr");
+        for (const h of ["Salto", "IP", "Promedio"]) hr.append(el("th", h));
+        t.append(hr);
+        for (const h of body.result.hops) {
+          const tr = document.createElement("tr");
+          tr.append(el("td", h.hop), el("td", h.ip || "* (sin respuesta)", "mono"),
+                    el("td", h.avg_ms !== null ? `${h.avg_ms} ms` : "—"));
+          t.append(tr);
+        }
+        box.append(t);
+      }
+      box.append(el("div", body.command, "cmd-head mono"), el("pre", body.output, "cmd-out"));
+    }
+    await loadSessions();
+  } catch (err) { toast(err.message, "err"); }
+  finally { btn.disabled = false; btn.textContent = "Ejecutar desde el equipo"; }
+});
 
 /* ---------------------------------------------------------------------------
  * Fase 8.4: interfaces del equipo  (/api/devices/<id>/interfaces)

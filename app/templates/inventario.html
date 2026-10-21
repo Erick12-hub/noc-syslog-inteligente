@@ -95,8 +95,17 @@
     </label>
     <button type="submit" class="btn primary" id="btn-cn-run">Conectar</button>
   </form>
+  <!-- Fase 9.4: diagnóstico ejecutado POR el equipo -->
+  <form id="frm-diag" class="inline-form diag-row" novalidate>
+    <label class="diag-type">Diagnóstico
+      <select name="type"><option value="ping">ping</option><option value="traceroute">traceroute</option></select>
+    </label>
+    <label>Destino (IPv4)<input name="target" maxlength="15" placeholder="192.168.100.10"></label>
+    <button type="submit" class="btn" id="btn-diag">Ejecutar desde el equipo</button>
+  </form>
   <ul class="errors" id="cn-errors"></ul>
   <ul class="warn-list" id="cn-warnings"></ul>
+  <div id="cn-diag"></div>
   <div id="cn-output"></div>
   <h3 class="small-title">Historial de sesiones</h3>
   <div class="table-wrap">
