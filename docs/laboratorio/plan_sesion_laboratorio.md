@@ -56,7 +56,9 @@ le agrega la parte de Syslog con el generador de arriba.
 **IP fija del adaptador Ethernet** (Configuración → Red → Ethernet → Editar IP → Manual):
 IPv4 `192.168.100.10`, máscara `255.255.255.0`, sin puerta de enlace ni DNS (la red es aislada).
 
-**Firewall de Windows** (Anaconda Prompt **como administrador**), solo durante la sesión:
+**Firewall de Windows**, solo durante la sesión. Se ejecuta en **PowerShell como administrador**
+(Windows + X → *Terminal (Administrador)*): Anaconda Prompt no se abre como administrador en este
+PC (verificado el 2026-10-20: la regla se creó y se borró sin problema desde PowerShell).
 
 ```bat
 netsh advfirewall firewall add rule name="NOC lab Syslog UDP 5514" dir=in action=allow protocol=UDP localport=5514 remoteip=192.168.100.0/24
@@ -75,7 +77,7 @@ SYSLOG_PORT=5514
 Se usa la IP del laboratorio y **no** `0.0.0.0`: así el receptor no queda abierto en el Wi-Fi
 de la universidad. La web sigue en `127.0.0.1` (solo este PC).
 
-## 4. Cronograma (1 h 45 min)
+## 4. Cronograma (sesión del miércoles 21-oct, 6:00 a 8:00 p. m.)
 
 | Min | Actividad | Evidencia |
 |---|---|---|
@@ -83,7 +85,8 @@ de la universidad. La web sigue en `127.0.0.1` (solo este PC).
 | 10–25 | Router: bloque 0 (de fábrica), bloque 1 (hora), **pegar** bloque 2. Switch: bloque 0 y bloque 2 | C3-F9-LAB-03 |
 | 25–35 | Verificación (bloque 3) en los dos equipos; ping al PC | C3-F9-LAB-04 |
 | 35–45 | PC: `python serve.py` y `python manage.py receiver`. **Cerrar PuTTY.** Conexión por consola desde el NOC: identificar el router; cambiar el cable y identificar el switch | C3-F9-LAB-05, 06 |
-| 45–85 | Syslog en vivo (`send log`, `shutdown`/`no shutdown` de un puerto del switch, login fallido en consola), eventos e incidentes en el NOC, NTP | C3-F9-LAB-07 … |
+| — | Ventanas abiertas: PowerShell (Administrador) para el firewall; Anaconda 1 `serve.py`; Anaconda 2 `receiver`; Anaconda 3 comandos (`device-session`, `device-interfaces`, `device-diag`) | |
+| 45–85 | **Leer del equipo** (interfaces reales de los dos). Syslog en vivo (`send log`, `shutdown`/`no shutdown` de un puerto del switch), eventos e incidentes en el NOC. **Diagnóstico**: ping del router al PC y al switch, traceroute al PC. NTP | C3-F9-LAB-07 … |
 | 85–100 | **Limpieza** (bloque 4) en los dos equipos. Borrar reglas del firewall y volver el `.env` a `127.0.0.1` | C3-F9-LAB-final |
 | 100–105 | Margen | |
 
