@@ -302,3 +302,9 @@ nav { flex-wrap: wrap; }
            margin: 4px 0 0; max-height: 280px; overflow: auto; font-size: 12px; white-space: pre; }
 .small-title { font-size: 14px; margin: 18px 0 6px; }
 @media (max-width: 760px) { .identity { grid-template-columns: 1fr 1fr; } }
+
+/* ---------- Fase 9.2: configuración base ---------- */
+.block-pegar { border-left: 3px solid var(--green-fg); }
+.block-manual { border-left: 3px solid var(--yellow-fg); }
+.block-verificar { border-left: 3px solid var(--blue-fg); }
+#bs-blocks h2 .tag { vertical-align: middle; margin-left: 6px; }
