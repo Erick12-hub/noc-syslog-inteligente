@@ -119,11 +119,18 @@
   </div>
   <div class="table-wrap">
     <table id="tbl-ifaces">
-      <thead><tr><th>Interfaz</th><th>Descripción</th><th>Estado</th><th>Actualizado</th><th></th></tr></thead>
+      <thead><tr><th>Interfaz</th><th>IP</th><th>Descripción</th><th>Estado</th><th>Origen</th><th>Actualizado</th><th></th></tr></thead>
       <tbody></tbody>
     </table>
   </div>
   <p class="muted small" id="if-count"></p>
+
+  <!-- Fase 9.3: leer las interfaces reales del equipo -->
+  <div class="inline-form sync-row" id="if-sync">
+    <button type="button" class="btn primary" id="btn-if-sync">Leer del equipo</button>
+    <label class="check"><input type="checkbox" id="if-remove"> Eliminar las que el equipo ya no reporta</label>
+  </div>
+  <ul class="warn-list" id="if-sync-summary"></ul>
 
   <form id="frm-iface" class="action-grid" novalidate>
     <input type="hidden" name="iface_id">

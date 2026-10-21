@@ -308,3 +308,8 @@ nav { flex-wrap: wrap; }
 .block-manual { border-left: 3px solid var(--yellow-fg); }
 .block-verificar { border-left: 3px solid var(--blue-fg); }
 #bs-blocks h2 .tag { vertical-align: middle; margin-left: 6px; }
+
+/* ---------- Fase 9.3: interfaces reales ---------- */
+#if-sync[hidden] { display: none; }
+.sync-row { margin: 10px 0 4px; align-items: center; }
+.sync-row label.check { flex: 0 1 auto; min-width: 0; }

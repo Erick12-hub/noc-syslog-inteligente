@@ -225,6 +225,9 @@ async function openInterfaces(d) {
   currentDevice = d;
   document.getElementById("if-title").textContent = `Interfaces de ${d.name} (${d.vendor})`;
   frmIf.hidden = !CAN_EDIT;
+  // Fase 9.3: leer del equipo solo si el rol puede y el equipo tiene modo de conexión
+  document.getElementById("if-sync").hidden = !CAN_EDIT || d.connection_mode === "ninguno";
+  document.getElementById("if-sync-summary").replaceChildren();
   resetIfaceForm();
   await loadInterfaces();
   dlgIf.showModal();
@@ -237,8 +240,10 @@ async function loadInterfaces() {
   for (const i of data.rows) {
     const tr = document.createElement("tr");
     const st = el("td"); st.append(el("span", i.status, `tag ${IF_STATUS_CLASS[i.status] || ""}`));
-    tr.append(el("td", i.name, "mono"), el("td", i.description || "—"), st,
-              el("td", fmtDate(i.updated_at), "small"));
+    const src = el("td"); src.append(el("span", i.source === "equipo" ? "equipo" : "manual",
+                                        `tag ${i.source === "equipo" ? "dup" : ""}`));
+    tr.append(el("td", i.name, "mono"), el("td", i.ip_address || "—", "mono"),
+              el("td", i.description || "—"), st, src, el("td", fmtDate(i.updated_at), "small"));
     const act = el("td", "", "row-actions");
     if (CAN_EDIT) {
       const bE = el("button", "Editar", "btn sm");
@@ -253,7 +258,7 @@ async function loadInterfaces() {
   if (!data.rows.length) {
     const tr = document.createElement("tr");
     const td = el("td", "Sin interfaces registradas: los eventos de este equipo no se comparan.", "muted");
-    td.colSpan = 5; tr.append(td); ifBody.append(tr);
+    td.colSpan = 7; tr.append(td); ifBody.append(tr);
   }
   document.getElementById("if-count").textContent = `${data.rows.length} interfaces registradas`;
 }
@@ -306,6 +311,38 @@ async function removeIface(i) {
     loadDevices();
   } catch (err) { toast(err.message, "err"); }
 }
+
+/* Fase 9.3: leer las interfaces reales (conecta, ejecuta y compara) */
+const SYNC_LABELS = [["nuevas", "Nuevas"], ["actualizadas", "Cambiaron"], ["desaparecidas", "Ya no están en el equipo"],
+                     ["eliminadas", "Eliminadas del inventario"], ["invalidas", "Rechazadas (nombre inválido)"]];
+document.getElementById("btn-if-sync").onclick = async () => {
+  const btn = document.getElementById("btn-if-sync");
+  const box = document.getElementById("if-sync-summary");
+  btn.disabled = true; btn.textContent = "Leyendo…";
+  try {
+    const res = await fetch(`/api/devices/${currentDevice.id}/interfaces/sync`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ remove_missing: document.getElementById("if-remove").checked }),
+    });
+    const body = await res.json();
+    if (!res.ok) {
+      box.replaceChildren(...(body.errors || [body.error]).map(m => el("li", m)));
+    } else {
+      const s = body.summary;
+      const items = [el("li", `Sesión ${body.session} · equipo físico ${body.serial_number || "?"} · ` +
+                              `${s.sin_cambios.length} sin cambios`)];
+      for (const [k, label] of SYNC_LABELS) {
+        if (s[k].length) items.push(el("li", `${label} (${s[k].length}): ${s[k].join(", ")}`));
+      }
+      for (const w of body.warnings || []) items.push(el("li", w));
+      box.replaceChildren(...items);
+      toast("Interfaces leídas del equipo");
+    }
+    await loadInterfaces();
+    loadDevices();
+  } catch (err) { toast(err.message, "err"); }
+  finally { btn.disabled = false; btn.textContent = "Leer del equipo"; }
+};
 
 document.getElementById("btn-if-reset").onclick = resetIfaceForm;
 document.getElementById("btn-if-close").onclick = () => dlgIf.close();
