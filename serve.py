@@ -3,12 +3,16 @@ Punto de entrada para OPERACIÓN (Fase 7.5): servidor WSGI waitress.
 
     python serve.py   ->  http://127.0.0.1:5000
 
-¿Por qué no "python run.py"? El servidor incluido en Flask es solo para
-desarrollo: atiende de a una petición, y en modo depuración expone una consola
-que ejecuta código. waitress es un servidor WSGI de producción:
-  - atiende varias peticiones a la vez (WEB_THREADS hilos),
-  - NUNCA activa el modo depuración,
+¿Por qué no "python run.py"? El servidor incluido en Flask (Werkzeug) es solo
+para DESARROLLO: el propio Flask advierte "Do not use it in a production
+deployment", y en modo depuración expone una consola que ejecuta código.
+(Corrección Fase 9.2: antes decía que "atiende de a una petición"; no es así,
+desde Flask 1.0 también atiende varias a la vez.)
+waitress es un servidor WSGI de producción:
+  - NUNCA activa el modo depuración, aunque .env diga FLASK_DEBUG=1,
+  - número de hilos controlado (WEB_THREADS) y no anuncia su versión,
   - es Python puro: funciona en Windows sin compilar nada.
+Se usa en las pruebas en vivo, el laboratorio, la marcha blanca y la sustentación.
 
 WSGI = la interfaz estándar entre un servidor web y una aplicación Python.
 Flask es la aplicación; waitress es el servidor que la publica.
