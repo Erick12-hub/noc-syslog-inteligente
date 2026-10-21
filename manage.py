@@ -13,6 +13,7 @@ Uso:
     python manage.py verify-audit             Verifica la cadena de la auditoría (Fase 8.2)
     python manage.py device-session EQUIPO ["comando" ...]   Conecta, identifica y ejecuta (Fase 9.1)
     python manage.py device-sessions EQUIPO   Historial de sesiones del equipo (Fase 9.1)
+    python manage.py device-interfaces EQUIPO [--eliminar-ausentes]   Lee las interfaces reales (Fase 9.3)
 
 La contraseña se escribe en la consola SIN mostrarse (getpass) y nunca queda
 en el historial de comandos ni en el código. Solo quien tiene acceso al
@@ -176,6 +177,39 @@ def cmd_device_sessions(name: str):
     conn.close()
 
 
+def cmd_device_interfaces(name: str, remove_missing: bool):
+    """Fase 9.3: lee las interfaces del equipo y actualiza el inventario (igual que la web)."""
+    from app.connector import run_session
+    from app.interfaces import SYNC_COMMAND, apply_sync, parse_interfaces
+    conn = connect(Config.DATABASE_PATH)
+    init_db(conn)
+    device = conn.execute("SELECT * FROM devices WHERE name = ?", (name,)).fetchone()
+    if device is None or SYNC_COMMAND.get(device["platform"]) is None:
+        print(f"[!] {name!r} no existe o no tiene plataforma en el inventario")
+        return
+    command = SYNC_COMMAND[device["platform"]]
+    print(f"[..] Leyendo interfaces de {name} ({command})...")
+    result, status = run_session(conn, device, [command], Config.DEFAULT_OPERATOR)
+    if status != 200:
+        for e in result.get("errors", []):
+            print(f"[!] {e}")
+        return
+    output = next(c["output"] for c in result["commands"] if c["command"] == command)
+    rows = parse_interfaces(device["platform"], output)
+    if not rows:
+        print("[!] El equipo respondió, pero no se reconoció ninguna interfaz")
+        return
+    s = apply_sync(conn, device, rows, Config.DEFAULT_OPERATOR, remove_missing)
+    print(f"[OK] Sesión {result['id']} · equipo físico {result['serial_number']}")
+    labels = [("nuevas", "Nuevas"), ("actualizadas", "Cambiaron"), ("sin_cambios", "Sin cambios"),
+              ("desaparecidas", "Ya no están en el equipo"), ("eliminadas", "Eliminadas del inventario"),
+              ("invalidas", "Rechazadas (nombre inválido)")]
+    for key, label in labels:
+        if s[key]:
+            print(f"     {label} ({len(s[key])}): {', '.join(s[key])}")
+    conn.close()
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Administración NOC Syslog Inteligente")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -199,6 +233,10 @@ if __name__ == "__main__":
     p_ds.add_argument("comandos", nargs="*", help='Comandos de solo lectura, entre comillas')
     p_dl = sub.add_parser("device-sessions", help="Historial de sesiones de un equipo")
     p_dl.add_argument("equipo")
+    p_di = sub.add_parser("device-interfaces", help="Leer las interfaces reales del equipo")
+    p_di.add_argument("equipo")
+    p_di.add_argument("--eliminar-ausentes", action="store_true",
+                      help="Eliminar del inventario las interfaces que el equipo ya no reporta")
     args = parser.parse_args()
 
     if args.command == "init-db":
@@ -222,3 +260,5 @@ if __name__ == "__main__":
         cmd_device_session(args.equipo, args.comandos)
     elif args.command == "device-sessions":
         cmd_device_sessions(args.equipo)
+    elif args.command == "device-interfaces":
+        cmd_device_interfaces(args.equipo, args.eliminar_ausentes)

@@ -96,6 +96,10 @@ MIGRATIONS = [
     ("devices", "detected_version", "TEXT"),
     ("devices", "host_key_fp", "TEXT"),
     ("devices", "last_identified_at", "TEXT"),
+    # Fase 9.3: interfaces leídas del equipo real
+    ("interfaces", "ip_address", "TEXT"),
+    ("interfaces", "source", "TEXT NOT NULL DEFAULT 'manual'"),
+    ("interfaces", "last_seen_at", "TEXT"),
 ]
 
 

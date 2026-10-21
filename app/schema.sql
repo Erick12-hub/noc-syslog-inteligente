@@ -71,6 +71,10 @@ CREATE TABLE IF NOT EXISTS interfaces (
                 CHECK (status IN ('up', 'down', 'admin_down', 'desconocido')),
     created_at  TEXT NOT NULL,
     updated_at  TEXT NOT NULL,
+    -- Fase 9.3: datos leídos del equipo real (show ip interface brief)
+    ip_address  TEXT,                           -- IP de la interfaz o NULL (unassigned)
+    source      TEXT NOT NULL DEFAULT 'manual', -- manual | equipo
+    last_seen_at TEXT,                          -- última vez que el equipo la reportó
     UNIQUE (device_id, name)                    -- un equipo no repite interfaz
 );
 
