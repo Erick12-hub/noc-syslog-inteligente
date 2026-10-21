@@ -14,6 +14,7 @@ Uso:
     python manage.py device-session EQUIPO ["comando" ...]   Conecta, identifica y ejecuta (Fase 9.1)
     python manage.py device-sessions EQUIPO   Historial de sesiones del equipo (Fase 9.1)
     python manage.py device-interfaces EQUIPO [--eliminar-ausentes]   Lee las interfaces reales (Fase 9.3)
+    python manage.py device-diag EQUIPO ping|traceroute DESTINO   Diagnóstico desde el equipo (Fase 9.4)
 
 La contraseña se escribe en la consola SIN mostrarse (getpass) y nunca queda
 en el historial de comandos ni en el código. Solo quien tiene acceso al
@@ -210,6 +211,26 @@ def cmd_device_interfaces(name: str, remove_missing: bool):
     conn.close()
 
 
+def cmd_device_diag(name: str, kind: str, target: str):
+    """Fase 9.4: ping o traceroute ejecutado POR el equipo (mismas reglas que la web)."""
+    from app.diagnostics import run_diagnostic
+    conn = connect(Config.DATABASE_PATH)
+    init_db(conn)
+    device = conn.execute("SELECT * FROM devices WHERE name = ?", (name,)).fetchone()
+    if device is None:
+        print(f"[!] No existe el equipo {name!r} en el inventario")
+        return
+    print(f"[..] {kind} {target} desde {name} (modo {device['connection_mode']})...")
+    result, status = run_diagnostic(conn, device, kind, target, Config.DEFAULT_OPERATOR)
+    for e in result.get("errors", []):
+        print(f"[!] {e}")
+    if status == 200:
+        print(f"[OK] Sesión {result['session']} · equipo físico {result['serial_number']}")
+        print(f"     {result['summary']}")
+        print("\n" + result["output"])
+    conn.close()
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Administración NOC Syslog Inteligente")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -237,6 +258,10 @@ if __name__ == "__main__":
     p_di.add_argument("equipo")
     p_di.add_argument("--eliminar-ausentes", action="store_true",
                       help="Eliminar del inventario las interfaces que el equipo ya no reporta")
+    p_dg = sub.add_parser("device-diag", help="Ping o traceroute ejecutado por el equipo")
+    p_dg.add_argument("equipo")
+    p_dg.add_argument("tipo", choices=["ping", "traceroute"])
+    p_dg.add_argument("destino", help="IPv4 de destino (redes permitidas: DIAG_ALLOWED_NETS)")
     args = parser.parse_args()
 
     if args.command == "init-db":
@@ -262,3 +287,5 @@ if __name__ == "__main__":
         cmd_device_sessions(args.equipo)
     elif args.command == "device-interfaces":
         cmd_device_interfaces(args.equipo, args.eliminar_ausentes)
+    elif args.command == "device-diag":
+        cmd_device_diag(args.equipo, args.tipo, args.destino)

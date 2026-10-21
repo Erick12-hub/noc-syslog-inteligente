@@ -88,3 +88,12 @@ class Config:
     CONSOLE_BAUDRATE = int(os.getenv("CONSOLE_BAUDRATE", "9600"))
     CONNECT_TIMEOUT = int(os.getenv("CONNECT_TIMEOUT", "15"))     # segundos para conectar
     COMMAND_TIMEOUT = int(os.getenv("COMMAND_TIMEOUT", "30"))     # segundos por comando
+
+    # --- Fase 9.4: diagnóstico desde el equipo (ping / traceroute) -----------
+    # Solo se permiten destinos en estas redes (privadas y de documentación):
+    # los equipos del laboratorio no se usan para sondear Internet.
+    DIAG_ALLOWED_NETS = os.getenv(
+        "DIAG_ALLOWED_NETS",
+        "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,192.0.2.0/24,198.51.100.0/24,203.0.113.0/24")
+    DIAG_MAX_PER_MINUTE = int(os.getenv("DIAG_MAX_PER_MINUTE", "5"))   # por usuario y equipo
+    DIAG_TIMEOUT = int(os.getenv("DIAG_TIMEOUT", "120"))               # segundos (traceroute)

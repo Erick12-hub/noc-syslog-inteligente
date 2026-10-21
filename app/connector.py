@@ -84,6 +84,8 @@ class SimulatedTransport:
         pass
 
     def send(self, command: str) -> str:
+        if command.startswith(("ping ", "traceroute ")):
+            return simulated_diagnostic(command)
         sample = SAMPLES_DIR / (self.device["platform"] or "") / (command.replace(" ", "_") + ".txt")
         if sample.is_file():
             return sample.read_text(encoding="utf-8")
@@ -91,6 +93,25 @@ class SimulatedTransport:
 
     def close(self):
         pass
+
+
+def simulated_diagnostic(command: str) -> str:
+    """Salida con formato IOS para el modo simulado: responde la red del laboratorio
+    (192.168.100.0/24) y las de documentación; lo demás no responde."""
+    kind, ip = command.split()[0], command.split()[-1]
+    reach = ip.startswith(("192.168.100.", "192.0.2.", "198.51.100.", "203.0.113."))
+    if kind == "ping":
+        head = ["Type escape sequence to abort.",
+                f"Sending 5, 100-byte ICMP Echos to {ip}, timeout is 2 seconds:"]
+        if reach:
+            return "\n".join(head + ["!!!!!", "Success rate is 100 percent (5/5), round-trip min/avg/max = 1/1/2 ms"])
+        return "\n".join(head + [".....", "Success rate is 0 percent (0/5)"])
+    lines = ["Type escape sequence to abort.", f"Tracing the route to {ip}", "VRF info: (vrf in name/id, vrf out name/id)"]
+    if reach:
+        lines += [f"  1 {ip} 1 msec 0 msec 1 msec"]
+    else:
+        lines += ["  1 192.168.100.1 1 msec 1 msec 0 msec", "  2  *  *  *", "  3  *  *  *"]
+    return "\n".join(lines)
 
 
 class NetmikoTransport:
@@ -153,8 +174,11 @@ class NetmikoTransport:
         return f"No se pudo conectar {where}: {type(e).__name__}: {first}"
 
     def send(self, command: str) -> str:
+        # Fase 9.4: un traceroute con saltos que no responden tarda más que un "show"
+        slow = command.startswith(("traceroute", "tracert", "execute traceroute"))
         try:
-            return self._conn.send_command(command, read_timeout=Config.COMMAND_TIMEOUT)
+            return self._conn.send_command(command, read_timeout=Config.DIAG_TIMEOUT if slow
+                                           else Config.COMMAND_TIMEOUT)
         except Exception as e:
             raise ConnectionError_(f"Error ejecutando '{command}': {type(e).__name__}")
 
@@ -248,7 +272,7 @@ def readiness_errors(device) -> list[str]:
 # ---------------------------------------------------------------------------
 # 4. LA SESIÓN
 # ---------------------------------------------------------------------------
-def run_session(conn, device, commands: list[str], user: str) -> tuple[dict, int]:
+def run_session(conn, device, commands: list[str], user: str, diagnostic: bool = False) -> tuple[dict, int]:
     """Ejecuta una sesión completa. Devuelve (resultado, código HTTP)."""
     # --- 1. Validar todo ANTES de conectar ----------------------------------
     problems = readiness_errors(device)
@@ -258,7 +282,7 @@ def run_session(conn, device, commands: list[str], user: str) -> tuple[dict, int
         return {"errors": [f"Máximo {MAX_COMMANDS} comandos por sesión"]}, 400
     blocked = []
     for cmd in commands:
-        ok, reason = check_command(device["vendor"], cmd, user)
+        ok, reason = check_command(device["vendor"], cmd, user, diagnostic=diagnostic)
         if not ok:
             blocked.append(f"'{cmd[:60]}': {reason}")
             audit(conn, user, "device.command_blocked", "devices", device["id"],

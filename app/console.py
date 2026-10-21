@@ -64,6 +64,17 @@ ALLOWLIST = {
 }
 ALLOWLIST["Otro"] = []
 
+# Fase 9.4: diagnóstico (ping/traceroute). NO están en la lista general: solo los
+# acepta check(..., diagnostic=True), que usa app/diagnostics.py DESPUÉS de
+# validar el destino. Así nadie puede pedir "ping 8.8.8.8" por la sesión normal.
+_IP = r"\d{1,3}(?:\.\d{1,3}){3}"
+DIAGNOSTIC_PATTERNS = {
+    "Cisco": [rf"ping {_IP}", rf"traceroute {_IP}"],
+    "Huawei": [rf"ping -c 5 {_IP}", rf"tracert -m 15 -w 2000 {_IP}"],
+    "Fortinet": [rf"execute ping {_IP}", rf"execute traceroute {_IP}"],
+    "Otro": [],
+}
+
 # Comandos que modifican, reinician, borran o exponen secretos
 DANGEROUS = [
     (r"^(conf(igure)?( t(erminal)?)?|system-view|config\b)", "entra a modo de configuración"),
@@ -82,7 +93,7 @@ def _normalize(cmd: str) -> str:
     return re.sub(r"\s+", " ", cmd.strip()).lower()
 
 
-def check(vendor: str, command: str, actor: str) -> tuple[bool, str]:
+def check(vendor: str, command: str, actor: str, diagnostic: bool = False) -> tuple[bool, str]:
     """Aplica la política. Devuelve (permitido, motivo)."""
     if actor == "asistente_ia":
         return False, ("Un agente de IA no ejecuta comandos. Debe crear una PROPUESTA "
@@ -100,6 +111,11 @@ def check(vendor: str, command: str, actor: str) -> tuple[bool, str]:
     for pattern, _desc in ALLOWLIST.get(vendor, []):
         if re.fullmatch(pattern, cmd):
             return True, "Permitido (solo lectura)"
+    for pattern in DIAGNOSTIC_PATTERNS.get(vendor, []):
+        if re.fullmatch(pattern, cmd):
+            if diagnostic:
+                return True, "Permitido (diagnóstico con destino validado)"
+            return False, "El diagnóstico se ejecuta desde la opción Diagnóstico (valida el destino)"
     return False, f"No está en la lista permitida de {vendor} (bloqueado por defecto)"
 
 
