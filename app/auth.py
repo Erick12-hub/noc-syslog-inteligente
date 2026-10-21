@@ -60,6 +60,7 @@ RULES = {
     "views.auditoria": AUDIT,
     "proposals.review": ADMIN,          # aprobar o rechazar propuestas
     "configgen.generate": OPS,          # es GET, pero queda auditado como acción
+    "configgen.baseline_endpoint": OPS, # configuración base de laboratorio (Fase 9.2)
     "console.allowed": OPS,
     "views.consola": OPS,
     "views.configuraciones": OPS,

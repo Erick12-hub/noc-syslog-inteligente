@@ -22,11 +22,14 @@ equipo y aplíquelas solo en equipos autorizados.
 """
 import ipaddress
 import re
+from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, jsonify, request
 
 from .auth import actor
+from .config import Config
 from .db import audit, get_db
+from .interfaces import normalize_for_vendor, validate_interface_name
 
 bp = Blueprint("configgen", __name__, url_prefix="/api/config")
 
@@ -235,3 +238,315 @@ def generate():
     audit(get_db(), actor(), "config.generate", "devices",
           device["id"] if device else None, f"{v['vendor']} servidor={v['server_ip']}:{v['port']} sev={v['severity']}")
     return jsonify(vendor=v["vendor"], config=text)
+
+
+# ===========================================================================
+# Fase 9.2: CONFIGURACIÓN BASE DESDE CERO (laboratorio)
+#
+#   GET /api/config/baseline?role=router&mode=prestamo&hostname=LAB-RTR01
+#       &mgmt_ip=192.168.100.1&prefix=24&noc_ip=192.168.100.10&port=5514
+#       &severity=6&device_id=8
+#
+# Los equipos del laboratorio son PRESTADOS: cualquiera los usa y se
+# configuran desde cero en cada sesión por el cable de consola. Por eso:
+#   - modo "prestamo": SIN usuarios, SIN contraseñas, SIN llaves SSH y SIN
+#     guardar (write memory). Si la sesión se corta, el siguiente estudiante
+#     no queda bloqueado y al reiniciar el equipo no queda nada nuestro.
+#   - modo "fijo": agrega SSH v2 con usuario local; la credencial NO la
+#     escribe el NOC: el bloque trae marcadores <USUARIO>/<CONTRASEÑA> que se
+#     reemplazan a mano, y la misma credencial va SOLO en el .env del NOC.
+# El resultado se divide en bloques: cuáles se escriben a mano, cuál se
+# pega y cuáles se usan para verificar y para dejar el equipo limpio.
+# ===========================================================================
+ROLES = {
+    # rol: (equipo de referencia, plataforma, interfaz de gestión, origen del Syslog)
+    "router": ("Cisco Catalyst 8200L-1N-4T (IOS XE)", "cisco_xe", "GigabitEthernet0/0/0", "GigabitEthernet0/0/0"),
+    "switch": ("Cisco Catalyst 2960-24TT-L (IOS)", "cisco_ios", "Vlan1", "Vlan1"),
+}
+BASELINE_MODES = ("prestamo", "fijo")
+RE_HOSTNAME = re.compile(r"^[A-Za-z][A-Za-z0-9-]{0,62}$")   # regla de IOS: letra, letras/números/guion
+# Palabras que NUNCA deben aparecer en una configuración de préstamo
+CREDENTIAL_WORDS = ("username", "password", "secret", "crypto key", "write memory")
+
+
+def _local_now():
+    return datetime.now(timezone.utc) + timedelta(hours=Config.LOCAL_UTC_OFFSET)
+
+
+def parse_mask(value) -> int:
+    """'24', '/24' o '255.255.255.0' -> 24. Rango permitido: /8 a /30."""
+    text = str(value or "").strip().lstrip("/")
+    if "." in text:
+        prefix = ipaddress.IPv4Network(f"0.0.0.0/{text}").prefixlen   # rechaza máscaras no contiguas
+    else:
+        prefix = int(text)
+    if not 8 <= prefix <= 30:
+        raise ValueError
+    return prefix
+
+
+def _validate_baseline(args) -> tuple[dict, list]:
+    errors, v = [], {}
+    v["role"] = args.get("role", "")
+    if v["role"] not in ROLES:
+        errors.append("Rol inválido. Opciones: router, switch")
+    v["mode"] = args.get("mode", "prestamo")
+    if v["mode"] not in BASELINE_MODES:
+        errors.append("Modo inválido. Opciones: prestamo, fijo")
+    v["hostname"] = args.get("hostname", "").strip()
+    if not RE_HOSTNAME.match(v["hostname"]):
+        errors.append("Hostname inválido: debe empezar con letra y llevar solo letras, números y guion (máx. 63)")
+    prefix_ok = True
+    try:
+        v["prefix"] = parse_mask(args.get("prefix", "24"))
+    except ValueError:
+        errors.append("Máscara inválida: use prefijo (24) o máscara (255.255.255.0), entre /8 y /30")
+        v["prefix"], prefix_ok = 24, False
+    # Interfaz de gestión: la sugerida por rol o la que tenga el equipo real
+    role_default = ROLES.get(v["role"], (None, None, ""))[2]
+    raw_if = args.get("mgmt_if", "").strip() or role_default
+    v["mgmt_if"] = normalize_for_vendor("Cisco", raw_if) if raw_if else ""
+    if v["role"] in ROLES:
+        if validate_interface_name("Cisco", v["mgmt_if"]):
+            errors.append(f"Interfaz de gestión inválida: {raw_if!r} (ej. GigabitEthernet0/0/1, Vlan1)")
+        elif v["role"] == "switch" and not v["mgmt_if"].startswith("Vlan"):
+            errors.append("En el switch la gestión va en una interfaz Vlan (ej. Vlan1)")
+        elif v["role"] == "router" and v["mgmt_if"].startswith("Vlan"):
+            errors.append("En el router la gestión va en una interfaz física (ej. GigabitEthernet0/0/0)")
+    ips = {}
+    for field, label in (("mgmt_ip", "IP de gestión del equipo"), ("noc_ip", "IP del PC del NOC")):
+        try:
+            ips[field] = ipaddress.ip_address(args.get(field, "").strip())
+            if ips[field].version != 4:
+                raise ValueError
+            v[field] = str(ips[field])
+        except ValueError:
+            errors.append(f"{label} inválida (IPv4)")
+    gw = args.get("gateway", "").strip()
+    v["gateway"], gw_ok = None, True
+    if gw:
+        try:
+            v["gateway"] = str(ipaddress.IPv4Address(gw))
+        except ValueError:
+            errors.append("Puerta de enlace inválida")
+            gw_ok = False
+    try:
+        v["port"] = int(args.get("port", "5514"))
+        if not 1 <= v["port"] <= 65535:
+            raise ValueError
+    except ValueError:
+        errors.append("Puerto inválido (1-65535)")
+    try:
+        v["severity"] = int(args.get("severity", "6"))
+        if not 0 <= v["severity"] <= 7:
+            raise ValueError
+    except ValueError:
+        errors.append("Severidad inválida (0-7)")
+    # Coherencia de la red: el equipo, el PC y la puerta de enlace en la MISMA subred.
+    # Se revisa siempre que las direcciones sean válidas, para mostrar TODOS los errores juntos.
+    if len(ips) == 2 and prefix_ok and gw_ok:
+        net = ipaddress.ip_interface(f"{v['mgmt_ip']}/{v['prefix']}").network
+        v["netmask"] = str(net.netmask)
+        v["network"] = str(net)
+        if v["mgmt_ip"] == v["noc_ip"]:
+            errors.append("La IP del equipo y la del PC del NOC no pueden ser iguales")
+        if ips["noc_ip"] not in net:
+            errors.append(f"El PC del NOC ({v['noc_ip']}) no está en la red del equipo ({net})")
+        if v["gateway"] and ipaddress.ip_address(v["gateway"]) not in net:
+            errors.append(f"La puerta de enlace no está en la red {net}")
+        if ips["mgmt_ip"] in (net.network_address, net.broadcast_address):
+            errors.append("La IP del equipo no puede ser la dirección de red ni la de broadcast")
+    if v["role"] == "switch" and not gw:
+        errors.append("El switch necesita la puerta de enlace (la IP del router)")
+    return v, errors
+
+
+def baseline(v: dict, device=None) -> list[dict]:
+    """Devuelve los bloques de la configuración base: [{title, kind, text}]."""
+    ref, platform, _default_if, _ = ROLES[v["role"]]
+    mgmt_if = src_if = v["mgmt_if"]          # gestión y origen del Syslog: la misma interfaz
+    lvl = CISCO_LEVELS[v["severity"]]
+    is_router = v["role"] == "router"
+    now = _local_now()
+    months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    blocks = []
+
+    # --- 0. Desde cero (a mano, en modo privilegiado) -------------------------
+    clean = ["! Escriba estos comandos A MANO en PuTTY (no los pegue)",
+             "enable",
+             "write erase",
+             "! Confirme con Enter."]
+    if not is_router:
+        clean += ["delete flash:vlan.dat",
+                  "! Confirme dos veces con Enter (si dice que no existe, siga)."]
+    clean += ["reload",
+              "! 'System configuration has been modified. Save?' -> no",
+              "! 'Proceed with reload?' -> Enter",
+              "! Al arrancar: 'Would you like to enter the initial configuration dialog?' -> no",
+              "! 'Would you like to terminate autoinstall?' -> yes (si aparece)"]
+    blocks.append({"title": "0. Dejar el equipo de fábrica (a mano)", "kind": "manual", "text": "\n".join(clean)})
+
+    # --- 1. Hora (solo el router: es el servidor NTP del laboratorio) ----------
+    if is_router:
+        blocks.append({"title": "1. Poner la hora (a mano, antes de pegar)", "kind": "manual", "text": "\n".join([
+            "! El laboratorio no tiene Internet: el router será el servidor NTP.",
+            "! Hora de Colombia al generar esta configuración; ajústela a la hora real.",
+            "enable",
+            f"clock set {now:%H:%M:%S} {now.day} {months[now.month - 1]} {now.year}",
+        ])})
+
+    # --- 2. Bloque para pegar --------------------------------------------------
+    lines = [
+        "! ======================================================================",
+        f"! NOC Syslog Inteligente - Configuración base {v['role'].upper()} ({v['mode'].upper()})",
+        f"! Equipo de referencia: {ref}",
+        f"! Generada: {now:%Y-%m-%d %H:%M} (hora de Colombia)",
+        f"! Gestión: {mgmt_if} {v['mgmt_ip']}/{v['prefix']} -> NOC {v['noc_ip']} UDP {v['port']}",
+    ]
+    if v["mode"] == "prestamo":
+        lines += ["! EQUIPO PRESTADO: sin usuarios, sin contraseñas y sin guardar.",
+                  "! Al reiniciarlo no queda nada de esta configuración."]
+    lines += [
+        "! Si alguna línea responde '% Invalid input', anótela: las demás siguen",
+        "! aplicándose (la sintaxis puede variar según la versión del sistema).",
+        "! ======================================================================",
+        "configure terminal",
+        f"hostname {v['hostname']}",
+        "no ip domain-lookup",
+        "!",
+        "! --- Gestión: IP del equipo en la red del laboratorio ---------------------",
+        f"interface {mgmt_if}",
+        f" description Gestion NOC lab ({v['network']})",
+        f" ip address {v['mgmt_ip']} {v['netmask']}",
+        " no shutdown",
+        " exit",
+    ]
+    if not is_router:
+        vlan = int(mgmt_if[4:])
+        if vlan != 1:          # la VLAN de gestión debe existir y los puertos deben estar en ella
+            lines[-6:-6] = [f"vlan {vlan}", f" name GESTION-NOC", " exit"]
+        lines += [f"ip default-gateway {v['gateway']}",
+                  "interface range FastEthernet0/1 - 2",
+                  " description Router / PC del NOC",
+                  " switchport mode access"]
+        if vlan != 1:
+            lines += [f" switchport access vlan {vlan}"]
+        lines += [" no shutdown",
+                  " exit"]
+    lines += [
+        "!",
+        "! --- Hora: zona de Colombia y NTP ----------------------------------------",
+        "clock timezone COT -5 0",
+    ]
+    lines += (["ntp master 3",
+               "! (el switch se sincroniza con esta IP)"] if is_router
+              else [f"ntp server {v['gateway']}"])
+    lines += [
+        "!",
+        "! --- Marcas de tiempo precisas (base del cálculo del desfase NTP) --------",
+        "service timestamps log datetime msec localtime show-timezone year",
+        "service timestamps debug datetime msec localtime show-timezone year",
+        "service sequence-numbers",
+        "!",
+        "! --- Syslog hacia el NOC ------------------------------------------------",
+        f"logging host {v['noc_ip']} transport udp port {v['port']}",
+        f"logging trap {lvl}",
+        "logging facility local7",
+        f"logging source-interface {src_if}",
+        f"logging buffered 16384 {lvl}",
+        "!",
+        "! --- Registro de cambios de configuración y de accesos ------------------",
+        "archive",
+        " log config",
+        "  logging enable",
+        "  notify syslog contenttype plaintext",
+        "  exit",
+        " exit",
+        "login on-failure log",
+        "login on-success log",
+        "!",
+        "! --- Consola: los mensajes no cortan lo que se escribe ------------------",
+        "line console 0",
+        " logging synchronous",
+        " exec-timeout 30 0",
+        " exit",
+        "end",
+    ]
+    if v["mode"] == "fijo":
+        lines += ["write memory"]
+    else:
+        lines += ["! (préstamo: la configuración NO se guarda en la memoria del equipo)"]
+    blocks.append({"title": "2. Configuración base (pegar en PuTTY)", "kind": "pegar", "text": "\n".join(lines)})
+
+    # --- 2b. SSH para equipos FIJOS (editar antes de pegar) --------------------
+    if v["mode"] == "fijo":
+        blocks.append({"title": "2b. SSH para equipo fijo (reemplace los marcadores ANTES de pegar)",
+                       "kind": "manual", "text": "\n".join([
+            "! Reemplace <USUARIO> y <CONTRASEÑA>. La MISMA credencial va SOLO en el .env",
+            "! del NOC (SSH_USERNAME / SSH_PASSWORD). Nunca en GitHub ni en capturas.",
+            "configure terminal",
+            "ip domain-name noc.lab",
+            "crypto key generate rsa modulus 2048",
+            "ip ssh version 2",
+            "ip ssh time-out 60",
+            "ip ssh authentication-retries 3",
+            "username <USUARIO> privilege 15 algorithm-type scrypt secret <CONTRASEÑA>",
+            "line vty 0 4",
+            " login local",
+            " transport input ssh",
+            " exec-timeout 15 0",
+            " exit",
+            "end",
+            "write memory",
+        ])})
+
+    # --- 3. Verificación --------------------------------------------------------
+    verify = [
+        "! Ejecute cada uno y revise lo indicado:",
+        "show version | include uptime|Version|board|operating mode",
+        "!   -> modelo y número de serie (el NOC los leerá igual al conectarse)",
+        "show ip interface brief",
+        f"!   -> {mgmt_if} con {v['mgmt_ip']} 'up / up'",
+        f"ping {v['noc_ip']}",
+        "!   -> !!!!! (si falla: cable, IP del PC o firewall de Windows)",
+        "show clock",
+        "!   -> hora correcta y zona COT",
+        "show ntp associations" if is_router else "show ntp status",
+        "!   -> " + ("127.127.1.1 como referencia (es el servidor)" if is_router
+                    else f"'Clock is synchronized' con {v['gateway']} (puede tardar 2-5 min)"),
+        "show logging | include Logging to|Trap",
+        f"!   -> 'Logging to {v['noc_ip']} (udp port {v['port']}...)'",
+        f'send log 6 "Prueba NOC desde {v["hostname"]}"',
+        "!   -> el mensaje debe aparecer en la página Eventos del NOC",
+    ]
+    blocks.append({"title": "3. Verificación (por consola)", "kind": "verificar", "text": "\n".join(verify)})
+
+    # --- 4. Al terminar la sesión ------------------------------------------------
+    end = ["! Antes de devolver el equipo (a mano):", "enable", "write erase"]
+    if not is_router:
+        end += ["delete flash:vlan.dat"]
+    end += ["reload", "! 'Save?' -> no   ·   el equipo queda de fábrica para el siguiente estudiante"]
+    blocks.append({"title": "4. Al terminar: dejar el equipo limpio", "kind": "manual", "text": "\n".join(end)})
+    return blocks
+
+
+@bp.get("/baseline")
+def baseline_endpoint():
+    v, errors = _validate_baseline(request.args)
+    device = None
+    if request.args.get("device_id"):
+        device = get_db().execute("SELECT * FROM devices WHERE id = ?", (request.args["device_id"],)).fetchone()
+        if device is None:
+            errors.append("El equipo seleccionado no existe en el inventario")
+        elif device["vendor"] != "Cisco":
+            errors.append(f"La configuración base es para Cisco; {device['name']} es {device['vendor']}")
+        elif v.get("mgmt_ip") and device["ip"] != v["mgmt_ip"]:
+            errors.append(f"La IP de gestión ({v['mgmt_ip']}) no coincide con la del inventario "
+                          f"para {device['name']} ({device['ip']}): el NOC rechazaría su Syslog")
+    if errors:
+        return jsonify(errors=errors), 400
+    blocks = baseline(v, device)
+    audit(get_db(), actor(), "config.baseline", "devices", device["id"] if device else None,
+          f"{v['role']} {v['mode']} {v['hostname']} {v['mgmt_if']} {v['mgmt_ip']}/{v['prefix']} "
+          f"-> NOC {v['noc_ip']}:{v['port']}")
+    return jsonify(role=v["role"], mode=v["mode"], platform=ROLES[v["role"]][1], blocks=blocks)
