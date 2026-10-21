@@ -131,8 +131,26 @@ class NetmikoTransport:
             except Exception:
                 pass                           # en modo usuario los "show" básicos funcionan
         except Exception as e:                 # sin contraseñas en el mensaje
-            raise ConnectionError_(f"No se pudo conectar ({self.transport} {self.target}): "
-                                   f"{type(e).__name__}: {str(e).splitlines()[0][:160] if str(e) else ''}")
+            raise ConnectionError_(self._friendly_error(e))
+
+    def _friendly_error(self, e: Exception) -> str:
+        """Mensaje en español que dice QUÉ revisar (Fase 9.2: antes salía el texto de Netmiko)."""
+        text = str(e)
+        where = f"({self.transport} {self.target})"
+        if self.transport == "consola":
+            if "not found" in text:
+                ports = text.split("available devices are:")[-1].strip(" ,.") if "available" in text else ""
+                return (f"No se pudo conectar {where}: el puerto {self.target} no existe en este PC. "
+                        f"Puertos disponibles: {ports or 'ninguno'} (¿está conectado el cable de consola?)")
+            if "denied" in text.lower() or "PermissionError" in text or "busy" in text.lower():
+                return (f"No se pudo conectar {where}: el puerto {self.target} está en uso "
+                        "(¿PuTTY sigue abierto? Ciérrelo y vuelva a intentar)")
+        if "Authentication" in type(e).__name__:
+            return f"No se pudo conectar {where}: usuario o contraseña SSH rechazados (revise el .env)"
+        if "Timeout" in type(e).__name__:
+            return f"No se pudo conectar {where}: el equipo no respondió a tiempo (¿IP, cable o SSH activo?)"
+        first = text.splitlines()[0][:160] if text else ""
+        return f"No se pudo conectar {where}: {type(e).__name__}: {first}"
 
     def send(self, command: str) -> str:
         try:
@@ -275,8 +293,9 @@ def _session(conn, device, commands, user):
                      "commands_count = ? WHERE id = ?",
                      (status, error, now_iso(), " | ".join(warnings) or None, n, sid))
         conn.commit()
+        where = transport.transport + ("" if transport.target == transport.transport else f" {transport.target}")
         audit(conn, user, "device.session", "device_sessions", sid,
-              f"{device['name']} {transport.transport} {transport.target} estado={status} comandos={n}"
+              f"{device['name']} {where} estado={status} comandos={n}"
               + (f" error={error}" if error else ""), "ok" if status == "cerrada" else "alerta")
         result = get_session(conn, sid)
         if error:

@@ -149,8 +149,8 @@ def cmd_device_session(name: str, commands: list[str]):
     for e in result.get("errors", []):
         print(f"[!] {e}")
     if "id" in result:
-        print(f"[{'OK' if result['status'] == 'cerrada' else '!'}] Sesión {result['id']}: {result['status']} "
-              f"· {result['transport']} {result['target']}")
+        where = result["transport"] + ("" if result["target"] == result["transport"] else f" {result['target']}")
+        print(f"[{'OK' if result['status'] == 'cerrada' else '!'}] Sesión {result['id']}: {result['status']} · {where}")
         if result["serial_number"] or result["model"]:
             print(f"     Equipo físico: serie={result['serial_number']}  modelo={result['model']}  "
                   f"versión={result['os_version']}")
