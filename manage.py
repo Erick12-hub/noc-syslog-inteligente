@@ -11,6 +11,11 @@ Uso:
     python manage.py users                    Lista los usuarios (sin contraseñas)
     python manage.py unlock USUARIO           Desbloquea una cuenta bloqueada
     python manage.py verify-audit             Verifica la cadena de la auditoría (Fase 8.2)
+    python manage.py device-session EQUIPO ["comando" ...]   Conecta, identifica y ejecuta (Fase 9.1)
+    python manage.py device-sessions EQUIPO   Historial de sesiones del equipo (Fase 9.1)
+    python manage.py device-interfaces EQUIPO [--eliminar-ausentes]   Lee las interfaces reales (Fase 9.3)
+    python manage.py device-diag EQUIPO ping|traceroute DESTINO   Diagnóstico desde el equipo (Fase 9.4)
+    python manage.py check-consistency        Reloj, consistencia y cadena de auditoría (Fase 9.5)
 
 La contraseña se escribe en la consola SIN mostrarse (getpass) y nunca queda
 en el historial de comandos ni en el código. Solo quien tiene acceso al
@@ -133,6 +138,120 @@ def cmd_verify_audit():
     conn.close()
 
 
+def cmd_device_session(name: str, commands: list[str]):
+    """Fase 9.1: misma sesión que la web (mismas reglas y la misma auditoría)."""
+    from app.connector import run_session
+    conn = connect(Config.DATABASE_PATH)
+    init_db(conn)
+    device = conn.execute("SELECT * FROM devices WHERE name = ?", (name,)).fetchone()
+    if device is None:
+        print(f"[!] No existe el equipo {name!r} en el inventario")
+        return
+    print(f"[..] Conectando con {name} (modo {device['connection_mode']})...")
+    result, status = run_session(conn, device, commands, Config.DEFAULT_OPERATOR)
+    for e in result.get("errors", []):
+        print(f"[!] {e}")
+    if "id" in result:
+        where = result["transport"] + ("" if result["target"] == result["transport"] else f" {result['target']}")
+        print(f"[{'OK' if result['status'] == 'cerrada' else '!'}] Sesión {result['id']}: {result['status']} · {where}")
+        if result["serial_number"] or result["model"]:
+            print(f"     Equipo físico: serie={result['serial_number']}  modelo={result['model']}  "
+                  f"versión={result['os_version']}")
+        for w in result["warnings"]:
+            print(f"[!] {w}")
+        for c in result["commands"]:
+            print(f"\n--- {c['command']} ({c['duration_ms']} ms, huella {c['output_sha256'][:16]}...) ---")
+            print(c["output"] if c["command"] != "show version" else "(identificación: ver arriba)")
+    conn.close()
+
+
+def cmd_device_sessions(name: str):
+    conn = connect(Config.DATABASE_PATH)
+    init_db(conn)
+    rows = conn.execute("SELECT * FROM device_sessions WHERE device_name = ? ORDER BY id DESC LIMIT 20",
+                        (name,)).fetchall()
+    if not rows:
+        print(f"Sin sesiones registradas para {name}")
+    print(f"{'#':>4}  {'Inicio (UTC)':20}  {'Modo':9}  {'Estado':8}  {'Serie':14}  {'Cmds':>4}  Usuario")
+    for r in rows:
+        print(f"{r['id']:>4}  {r['started_at']:20}  {r['transport']:9}  {r['status']:8}  "
+              f"{(r['serial_number'] or '-'):14}  {r['commands_count']:>4}  {r['started_by']}")
+    conn.close()
+
+
+def cmd_device_interfaces(name: str, remove_missing: bool):
+    """Fase 9.3: lee las interfaces del equipo y actualiza el inventario (igual que la web)."""
+    from app.connector import run_session
+    from app.interfaces import SYNC_COMMAND, apply_sync, parse_interfaces
+    conn = connect(Config.DATABASE_PATH)
+    init_db(conn)
+    device = conn.execute("SELECT * FROM devices WHERE name = ?", (name,)).fetchone()
+    if device is None or SYNC_COMMAND.get(device["platform"]) is None:
+        print(f"[!] {name!r} no existe o no tiene plataforma en el inventario")
+        return
+    command = SYNC_COMMAND[device["platform"]]
+    print(f"[..] Leyendo interfaces de {name} ({command})...")
+    result, status = run_session(conn, device, [command], Config.DEFAULT_OPERATOR)
+    if status != 200:
+        for e in result.get("errors", []):
+            print(f"[!] {e}")
+        return
+    output = next(c["output"] for c in result["commands"] if c["command"] == command)
+    rows = parse_interfaces(device["platform"], output)
+    if not rows:
+        print("[!] El equipo respondió, pero no se reconoció ninguna interfaz")
+        return
+    s = apply_sync(conn, device, rows, Config.DEFAULT_OPERATOR, remove_missing)
+    print(f"[OK] Sesión {result['id']} · equipo físico {result['serial_number']}")
+    labels = [("nuevas", "Nuevas"), ("actualizadas", "Cambiaron"), ("sin_cambios", "Sin cambios"),
+              ("desaparecidas", "Ya no están en el equipo"), ("eliminadas", "Eliminadas del inventario"),
+              ("invalidas", "Rechazadas (nombre inválido)")]
+    for key, label in labels:
+        if s[key]:
+            print(f"     {label} ({len(s[key])}): {', '.join(s[key])}")
+    conn.close()
+
+
+def cmd_device_diag(name: str, kind: str, target: str):
+    """Fase 9.4: ping o traceroute ejecutado POR el equipo (mismas reglas que la web)."""
+    from app.diagnostics import run_diagnostic
+    conn = connect(Config.DATABASE_PATH)
+    init_db(conn)
+    device = conn.execute("SELECT * FROM devices WHERE name = ?", (name,)).fetchone()
+    if device is None:
+        print(f"[!] No existe el equipo {name!r} en el inventario")
+        return
+    print(f"[..] {kind} {target} desde {name} (modo {device['connection_mode']})...")
+    result, status = run_diagnostic(conn, device, kind, target, Config.DEFAULT_OPERATOR)
+    for e in result.get("errors", []):
+        print(f"[!] {e}")
+    if status == 200:
+        print(f"[OK] Sesión {result['session']} · equipo físico {result['serial_number']}")
+        print(f"     {result['summary']}")
+        print("\n" + result["output"])
+    conn.close()
+
+
+def cmd_check_consistency():
+    """Fase 9.5: la misma revisión que hace el receptor cada N minutos (con efectos)."""
+    from app.consistency import run_consistency
+    conn = connect(Config.DATABASE_PATH)
+    init_db(conn)
+    r = run_consistency(conn, Config.DEFAULT_OPERATOR)
+    print("Reloj de los equipos (desfase = recibido - hora del evento):")
+    for c in r["clocks"]:
+        if c["samples"]:
+            print(f"  {c['device']:<16} {c['status']:<8} {c['text']}  ({c['samples']} eventos)")
+    c = r["counts"]
+    print(f"\nHallazgos -> críticos: {c['critico']} · avisos: {c['aviso']} · informativos: {c['info']}")
+    for f in r["findings"]:
+        print(f"  [{f['severity'].upper():<7}] {f['device']}: {f['detail']}")
+        print(f"            -> {f['suggestion']}")
+    print(f"\nCadena de auditoría: {'íntegra' if r['chain']['ok'] else 'ROTA'} ({r['chain']['total']} registros)"
+          + (f" · incidente #{r['incident']}" if r["incident"] else ""))
+    conn.close()
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Administración NOC Syslog Inteligente")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -151,6 +270,20 @@ if __name__ == "__main__":
     p_un = sub.add_parser("unlock", help="Desbloquear una cuenta")
     p_un.add_argument("usuario")
     sub.add_parser("verify-audit", help="Verificar la cadena de integridad de la auditoría")
+    p_ds = sub.add_parser("device-session", help="Conectar con un equipo, identificarlo y ejecutar comandos")
+    p_ds.add_argument("equipo")
+    p_ds.add_argument("comandos", nargs="*", help='Comandos de solo lectura, entre comillas')
+    p_dl = sub.add_parser("device-sessions", help="Historial de sesiones de un equipo")
+    p_dl.add_argument("equipo")
+    p_di = sub.add_parser("device-interfaces", help="Leer las interfaces reales del equipo")
+    p_di.add_argument("equipo")
+    p_di.add_argument("--eliminar-ausentes", action="store_true",
+                      help="Eliminar del inventario las interfaces que el equipo ya no reporta")
+    p_dg = sub.add_parser("device-diag", help="Ping o traceroute ejecutado por el equipo")
+    p_dg.add_argument("equipo")
+    p_dg.add_argument("tipo", choices=["ping", "traceroute"])
+    p_dg.add_argument("destino", help="IPv4 de destino (redes permitidas: DIAG_ALLOWED_NETS)")
+    sub.add_parser("check-consistency", help="Revisar reloj, consistencia y cadena de auditoría")
     args = parser.parse_args()
 
     if args.command == "init-db":
@@ -170,3 +303,13 @@ if __name__ == "__main__":
         cmd_unlock(args.usuario)
     elif args.command == "verify-audit":
         cmd_verify_audit()
+    elif args.command == "device-session":
+        cmd_device_session(args.equipo, args.comandos)
+    elif args.command == "device-sessions":
+        cmd_device_sessions(args.equipo)
+    elif args.command == "device-interfaces":
+        cmd_device_interfaces(args.equipo, args.eliminar_ausentes)
+    elif args.command == "device-diag":
+        cmd_device_diag(args.equipo, args.tipo, args.destino)
+    elif args.command == "check-consistency":
+        cmd_check_consistency()

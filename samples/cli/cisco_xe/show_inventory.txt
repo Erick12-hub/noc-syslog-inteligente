@@ -1,0 +1,11 @@
+NAME: "Chassis", DESCR: "Cisco C8200L-1N-4T Chassis"
+PID: C8200L-1N-4T      , VID: V01  , SN: FGL2601SIM1
+
+NAME: "Power Supply Module 0", DESCR: "External Power Supply Module"
+PID: PWR-12V           , VID: V01  , SN: JAB2601SIM2
+
+NAME: "module 0", DESCR: "Cisco C8200L-1N-4T Built-In NIM controller"
+PID: C8200L-1N-4T      , VID:      , SN:
+
+NAME: "NIM subslot 0/0", DESCR: "Front Panel 4 ports Gigabitethernet Module"
+PID: 4x1G-2xSFP        , VID: V01  , SN:

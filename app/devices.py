@@ -26,6 +26,11 @@ STATUSES = ("activo", "alerta", "caido", "mantenimiento", "desconocido")
 RE_NAME = re.compile(r"^[A-Za-z0-9._-]{2,64}$")   # sin espacios ni símbolos raros
 TEXT_FIELDS = ("model", "version", "location")
 MAX_TEXT = 100
+# Fase 9.1: conexión con el equipo (ver app/connector.py)
+CONNECTION_MODES = ("ninguno", "simulado", "consola", "ssh")
+PLATFORMS = ("cisco_ios", "cisco_xe", "fortinet", "huawei")
+PLATFORM_VENDOR = {"cisco_ios": "Cisco", "cisco_xe": "Cisco", "fortinet": "Fortinet", "huawei": "Huawei"}
+RE_CONSOLE_PORT = re.compile(r"^(COM\d{1,3}|/dev/tty[A-Za-z0-9]{1,12})$")
 
 
 def _operator() -> str:
@@ -83,7 +88,40 @@ def validate(data: dict, partial: bool = False) -> tuple[dict, list]:
         if present(field):
             clean[field] = 1 if data[field] in (True, 1, "1", "true", "on") else 0
 
+    # --- Fase 9.1: modo de conexión, plataforma y puerto de consola ---------
+    if present("connection_mode"):
+        if data["connection_mode"] not in CONNECTION_MODES:
+            errors.append(f"Modo de conexión inválido. Opciones: {', '.join(CONNECTION_MODES)}")
+        clean["connection_mode"] = data["connection_mode"]
+    if "platform" in data:
+        value = data["platform"] or None
+        if value is not None and value not in PLATFORMS:
+            errors.append(f"Plataforma inválida. Opciones: {', '.join(PLATFORMS)}")
+        clean["platform"] = value
+    if "console_port" in data:
+        value = (str(data["console_port"] or "").strip().upper() or None)
+        if value and value.startswith("/DEV/"):
+            value = str(data["console_port"]).strip()          # Linux: se respeta el nombre
+        if value is not None and not RE_CONSOLE_PORT.match(value):
+            errors.append("Puerto de consola inválido (ej. COM3 o /dev/ttyUSB0)")
+        clean["console_port"] = value
     return clean, errors
+
+
+def check_connection(merged: dict) -> list[str]:
+    """Coherencia entre marca, plataforma y modo (con los datos ya combinados)."""
+    errors = []
+    mode, platform, vendor = merged.get("connection_mode") or "ninguno", merged.get("platform"), merged.get("vendor")
+    if platform and PLATFORM_VENDOR.get(platform) != vendor:
+        errors.append(f"La plataforma {platform} no corresponde a un equipo {vendor}")
+    if mode != "ninguno" and not platform:
+        errors.append("Elija la plataforma del equipo para poder conectarse")
+    if mode == "consola":
+        if vendor != "Cisco":
+            errors.append("La conexión por consola solo está disponible para Cisco")
+        if not merged.get("console_port"):
+            errors.append("El modo consola necesita el puerto (ej. COM3)")
+    return errors
 
 
 def _row(row) -> dict:
@@ -110,6 +148,8 @@ def get_device(device_id):
 @bp.post("")
 def create_device():
     data, errors = validate(request.get_json(silent=True) or {})
+    if not errors:
+        errors = check_connection(data)
     if errors:
         return jsonify(errors=errors), 400
     data.setdefault("status", "desconocido")
@@ -135,10 +175,13 @@ def create_device():
 @bp.put("/<int:device_id>")
 def update_device(device_id):
     conn = get_db()
-    if conn.execute("SELECT 1 FROM devices WHERE id = ?", (device_id,)).fetchone() is None:
+    current = conn.execute("SELECT * FROM devices WHERE id = ?", (device_id,)).fetchone()
+    if current is None:
         return jsonify(error="Equipo no encontrado"), 404
 
     data, errors = validate(request.get_json(silent=True) or {}, partial=True)
+    if not errors:
+        errors = check_connection({**dict(current), **data})
     if errors:
         return jsonify(errors=errors), 400
     if not data:

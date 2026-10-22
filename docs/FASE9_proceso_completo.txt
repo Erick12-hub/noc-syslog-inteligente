@@ -1,0 +1,1612 @@
+################################################################################
+#                                                                              #
+#                       NOC SYSLOG INTELIGENTE                                 #
+#         FASE 9 - PROCESO COMPLETO, COMANDOS EXPLICADOS Y CÓDIGO COMENTADO    #
+#   Equipos del laboratorio, diagnóstico y consistencia (versión v0.4.0)       #
+#                                                                              #
+################################################################################
+
+  Proyecto    : NOC Syslog Inteligente (proyecto individual)
+  Asignatura  : Administración y Gestión de Redes - Periodo 2026-2
+  Docente     : Ing. John Harold Pérez Calderón
+  Estudiante  : Erick Santiago Castro Linares (GitHub: Erick12-hub)
+  Repositorio : https://github.com/Erick12-hub/noc-syslog-inteligente
+  Versión     : v0.4.0 (tercera versión del Corte 3)
+  Fechas      : 2026-10-20 a 2026-10-22
+  Rama        : feature/fase9-laboratorio  ->  develop  ->  main
+  Entorno     : Windows 11 · Anaconda Prompt · Python 3.14 · Git · GitHub
+                Netmiko 4.8.0 · PuTTY · PowerShell (Administrador)
+                Laboratorio: Cisco Catalyst 8200L-1N-4T y Catalyst 2960-24TT-L
+
+  Propósito de este documento:
+    Explicar qué se construyó en la Fase 9, por qué, cómo se probó (en
+    simulación y con los equipos reales del laboratorio) y cómo se publicó.
+    Cada comando con su explicación y el código nuevo numerado y comentado
+    para poder explicarlo en la sustentación.
+
+  Convenciones:
+    >     comando escrito en Anaconda Prompt
+    R#    comando escrito en el router por consola (PuTTY)
+    S#    comando escrito en el switch por consola (PuTTY)
+    PS>   comando en PowerShell (Administrador)
+    =>    resultado obtenido
+    [OK]  verificación superada
+    [E]   evidencia (captura) guardada en docs/evidencias/
+    Los equipos SIM- son DATOS SIMULADOS. LAB-RTR01 y LAB-SW01 son equipos
+    REALES, prestados y autorizados por el laboratorio.
+    NINGUNA CONTRASEÑA APARECE EN ESTE DOCUMENTO NI EN LAS CAPTURAS.
+
+
+================================================================================
+ ÍNDICE
+================================================================================
+   1. Resumen de la Fase 9
+   2. Conceptos nuevos
+   3. Cronología: cada paso y cada comando, explicado
+   4. Código nuevo comentado
+        4.1  Tablas de sesiones y comandos (app/schema.sql)
+        4.2  Transporte real: consola y SSH con Netmiko (app/connector.py)
+        4.3  Identidad del equipo físico (app/connector.py)
+        4.4  La sesión: validar, reservar, identificar, registrar (app/connector.py)
+        4.5  Configuración base en trozos (app/configgen.py)
+        4.6  Interfaces reales (app/interfaces.py)
+        4.7  Diagnóstico desde el equipo (app/diagnostics.py, app/console.py)
+        4.8  Consistencia y reloj (app/consistency.py)
+        4.9  Revisión periódica en el receptor (app/receiver.py)
+   5. Pruebas automáticas (276 -> 423)
+   6. Seguridad aplicada en la Fase 9
+   7. Problemas y observaciones
+   8. Control de versiones: historial de la fase
+   9. Evidencias de la Fase 9
+  10. Preguntas probables de sustentación (con respuesta)
+  11. Pregunta de validación del estudiante
+  12. Lista de verificación de cierre
+
+
+
+================================================================================
+ 1. RESUMEN DE LA FASE 9
+================================================================================
+
+
+ OBJETIVO
+   Llevar el NOC de los datos simulados a equipos REALES y autorizados:
+   conectarse a ellos de forma trazable, saber qué equipo físico respondió,
+   conocer sus interfaces reales, diagnosticar desde el propio equipo y
+   revisar que la red (y la auditoría del NOC) sean consistentes. Iniciar la
+   marcha blanca con el router y el switch prestados del laboratorio.
+
+ RESULTADO
+   [OK] Gestor de conexiones: simulado, consola (sin contraseñas) y SSH
+        (credencial solo en .env, llave del equipo fijada).
+   [OK] Cada sesión identifica el equipo FÍSICO por su número de serie y
+        alerta si cambia (mismo nombre, otro equipo).
+   [OK] Trazabilidad: quién, cuándo, a qué equipo, qué comandos, cuánto
+        tardaron y la huella SHA-256 de cada salida.
+   [OK] Configuración base desde cero (préstamo o fijo) con direccionamiento
+        manual o sugerido; en trozos para pegar por consola.
+   [OK] Interfaces reales leídas del equipo (Cisco, Huawei, Fortinet).
+   [OK] Ping y traceroute ejecutados por el equipo, solo hacia redes
+        privadas o de documentación, 5 por minuto.
+   [OK] Consistencia: reloj (NTP) de cada equipo, equipos callados,
+        interfaces desconocidas, marca inconsistente, IP del inventario e IP
+        duplicadas.
+   [OK] Verificación AUTOMÁTICA de la cadena de auditoría (cada 10 min) con
+        incidente de severidad 1 si se rompe (pendiente desde la Fase 8).
+   [OK] Sesión 1 de laboratorio: equipos configurados desde cero y PRIMER
+        EVENTO SYSLOG REAL (#178 del LAB-SW01).
+   [OK] 4 hallazgos del laboratorio corregidos en el generador (9.5).
+   [OK] 423 pruebas automáticas en verde (276 en v0.3.0): +147.
+   [OK] Los 26 commits de la fase pasan sus pruebas uno por uno.
+   [OK] Versión 0.4.0, CHANGELOG, README, PR y release.
+
+ RELACIÓN CON LOS REQUISITOS DEL CORTE 3
+   | Requisito del Corte 3                          | Cómo lo cubre la Fase 9            |
+   |------------------------------------------------|------------------------------------|
+   | Integración con equipos autorizados            | Gestor consola/SSH (9.1)           |
+   | Gestor SSH con trazabilidad                    | device_sessions/commands + SHA-256 |
+   | Interfaces reales                              | Leer del equipo (9.3)              |
+   | Troubleshooting (ping, traceroute, show)       | Diagnóstico (9.4) + lista permitida|
+   | NTP y consistencia                             | Reloj por equipo y chequeos (9.5)  |
+   | Políticas Syslog aplicadas y verificadas       | Configuración base + bloque 3      |
+   | Auditoría confiable                            | Verificación automática (9.5)      |
+   | Marcha blanca                                  | Sesión 1 (21-oct), sesión 2 (23)   |
+
+
+
+================================================================================
+ 2. CONCEPTOS NUEVOS
+================================================================================
+
+
+ CONSOLA vs SSH
+   Consola: cable físico al puerto de consola del equipo (USB en el PC, que
+   Windows ve como un puerto COM). Funciona aunque el equipo no tenga IP ni
+   configuración: por eso sirve para configurar DESDE CERO. Velocidad típica
+   9600 baudios, 8 bits, sin paridad, 1 bit de parada (8N1).
+   SSH: acceso remoto cifrado por la red. Necesita IP, usuario, contraseña y
+   llaves RSA en el equipo. Se usa en equipos FIJOS, no en los prestados.
+
+ NETMIKO
+   Biblioteca de Python que habla con equipos de red (Cisco, Huawei,
+   Fortinet...): abre la sesión, espera el prompt, envía el comando y
+   devuelve la salida. 'cisco_ios_serial' es su modo por cable de consola.
+
+ IDENTIDAD POR NÚMERO DE SERIE
+   El nombre (hostname) lo escribe cualquiera: el router prestado se llamaba
+   "MiSwitch". El número de serie viene de fábrica. El NOC lo lee en cada
+   sesión ('show version') y, si cambia, alerta "EQUIPO FÍSICO DISTINTO".
+
+ LLAVE DEL EQUIPO FIJADA (TOFU, Trust On First Use)
+   La primera conexión SSH guarda la huella de la llave del equipo. Si en
+   otra conexión la llave es distinta, alguien podría estar suplantando el
+   equipo (ataque de intermediario): la sesión se aborta sin enviar nada.
+
+ HUELLA DE LA SALIDA (SHA-256)
+   Cada salida de un comando se guarda con su SHA-256. Si alguien cambia la
+   salida guardada, la huella deja de coincidir: evidencia confiable.
+
+ RECUPERACIÓN DE CONTRASEÑA (ROMMON, config-register)
+   El config-register 0x2102 arranca leyendo la configuración guardada;
+   0x2142 la IGNORA. Con Break se entra a ROMMON, se cambia a 0x2142, el
+   equipo arranca sin la contraseña, se borra la configuración y se vuelve a
+   0x2102. Es el procedimiento oficial de Cisco y requiere acceso físico.
+
+ NTP, ESTRATO Y 'ntp master'
+   NTP sincroniza relojes. El estrato indica la distancia a la fuente: el
+   router con 'ntp master 3' se declara fuente de estrato 3 (el laboratorio
+   no tiene Internet) y el switch ('ntp server 192.168.100.1') se sincroniza
+   con él.
+
+ SINCRONIZADO NO ES LO MISMO QUE EN HORA
+   NTP copia la hora de la referencia. Si la referencia tiene la hora puesta
+   a mano con 1 min 24 s de atraso, todos quedan sincronizados... y 1 min
+   24 s atrasados. Por eso el NOC compara contra la hora del PC, que sí está
+   sincronizada con Internet.
+
+ ZONA HORARIA ANTES DE LA HORA
+   'clock set' se interpreta en la zona configurada en ese momento. Sin zona
+   (UTC), escribir 18:55 deja el equipo en 18:55 UTC = 13:55 en Colombia:
+   5 horas atrás. Primero 'clock timezone COT -5 0' y después 'clock set'.
+
+ DESFASE MEDIDO POR EL NOC
+   offset = hora en que el NOC recibió el evento - hora que trae el evento.
+   Positivo = el equipo está ATRASADO. Se toma la MEDIANA de los últimos 20
+   eventos: un evento demorado no cambia el resultado.
+       aviso > 2 s     crítico > 60 s
+
+ DIAGNÓSTICO DESDE EL EQUIPO
+   El ping lo hace el ROUTER o el SWITCH, no el PC: muestra lo que ve el
+   equipo desde su lugar en la red. Un equipo de red no debe usarse para
+   sondear Internet o atacar a terceros: destino solo en redes privadas
+   (RFC 1918) y de documentación (RFC 5737), y máximo 5 por minuto.
+
+ CHEQUEO DE CONSISTENCIA
+   Comparar lo que el NOC CREE (inventario) con lo que la red DICE (eventos,
+   interfaces, reloj). Una diferencia es un error de configuración o una
+   suplantación: IP duplicada, IP del inventario que el equipo no tiene,
+   interfaz desconocida, equipo que dejó de enviar eventos.
+
+ MARCHA BLANCA
+   Operar el sistema con equipos reales en condiciones controladas antes de
+   darlo por terminado, anotando cada sesión, falla y ajuste.
+
+
+
+================================================================================
+ 3. CRONOLOGÍA: CADA PASO Y CADA COMANDO, EXPLICADO
+================================================================================
+
+
+--------------------------------------------------------------------------------
+ 3.0 Preparación de la rama y de Netmiko
+--------------------------------------------------------------------------------
+
+
+ > git switch develop
+ > git pull
+ > git switch -c feature/fase9-laboratorio
+   Rama nueva a partir de develop (v0.3.0).
+
+ > python -m pip install -r requirements.txt
+   Instala netmiko==4.8.0 (y pyserial para la consola) dentro del .venv.
+   Se instaló también en el Python base de Anaconda; lo que usa el NOC es
+   el del .venv (el que aparece como "(.venv)" en el prompt).
+
+
+--------------------------------------------------------------------------------
+ 3.1 Paso 9.1 - Gestor de conexiones
+--------------------------------------------------------------------------------
+
+
+ > python -m pytest -q
+   => 306 passed   (276 + 30)                                             [E] 01
+
+   Web -> Inventario -> Editar: modo de conexión, plataforma y puerto COM  [E] 02
+   Web -> Conexión con SIM-CORE-RTR01 (modo simulado) -> Conectar:
+   => N.º de serie FGL2601SIM1, modelo C8200L-1N-4T, versión 17.09.04a, y
+      cada comando con su duración y su SHA-256                           [E] 03
+
+ > python manage.py device-session <EQUIPO SIM>
+   => identifica el equipo y guarda la sesión                             [E] 04
+ > python manage.py device-session SIM-DIST-SW01 "configure terminal"
+   => [!] No se abrió la conexión: hay comandos bloqueados
+      'configure terminal': Comando peligroso: entra a modo de configuración
+   Se valida TODO antes de conectar: no se abre el equipo para nada.      [E] 05
+
+   Cambio del número de serie de la muestra -> "EQUIPO FÍSICO DISTINTO"   [E] 06
+   Modo consola con COM3 sin cable -> mensaje en español                  [E] 07
+ > python manage.py device-sessions SIM-DIST-SW01                         [E] 08
+   Auditoría: device.session y device.command con el usuario real         [E] 09
+   Auditor: consulta el historial, sin botón Conectar                     [E] 10
+
+
+--------------------------------------------------------------------------------
+ 3.2 Paso 9.2 - Configuración base desde cero
+--------------------------------------------------------------------------------
+
+
+ > python -m pytest -q
+   => 343 passed                                                          [E] 11
+
+   Web -> Configuraciones -> Configuración base de laboratorio:
+     - Router en modo préstamo: bloques 0 a 4, sin credenciales           [E] 12
+     - Switch: bloque 3 (verificación)                                    [E] 13
+     - Datos inválidos: todos los errores juntos                          [E] 14
+     - Modo fijo: bloque 2b de SSH con marcadores <USUARIO>/<CONTRASEÑA>  [E] 15
+     - Puerto COM inexistente: "Puertos disponibles: ..." en español      [E] 16
+     - Direccionamiento manual y botón "Usar sugerido"                    [E] 17, 18
+
+
+--------------------------------------------------------------------------------
+ 3.3 Paso 9.3 - Interfaces reales
+--------------------------------------------------------------------------------
+
+
+   Inventario con LAB-RTR01 y LAB-SW01 (reales, sin SIM, COM5)            [E] 19
+ > python -m pytest -q
+   => 363 passed                                                          [E] 20
+
+   Web -> Interfaces -> "Leer del equipo" (SIM-CORE-RTR01):
+     => nuevas / cambiaron / sin cambios / ausentes                       [E] 21
+     - "Eliminar ausentes" solo si se marca expresamente                  [E] 22
+     - Switch: las 27 interfaces del 2960 con IP y origen "equipo"        [E] 23
+ > python manage.py device-interfaces SIM-DIST-SW01                       [E] 24
+
+ Firewall (preparación de la sesión, verificado el 2026-10-20):
+ PS> netsh advfirewall firewall add rule name="NOC lab Syslog UDP 5514" dir=in action=allow protocol=UDP localport=5514 remoteip=192.168.100.0/24
+ PS> netsh advfirewall firewall delete rule name="NOC lab Syslog UDP 5514"
+   => Aceptar / Se eliminaron 1 reglas. Anaconda Prompt no abre como
+      administrador en este PC: se usa PowerShell (Administrador).
+
+
+--------------------------------------------------------------------------------
+ 3.4 Paso 9.4 - Diagnóstico desde el equipo
+--------------------------------------------------------------------------------
+
+
+ > python -m pytest -q
+   => 390 passed                                                          [E] 25
+
+   Web -> Conexión -> Diagnóstico:
+     - ping 192.168.100.10 desde SIM-CORE-RTR01 -> 100 % (5/5)            [E] 26
+     - traceroute con saltos                                              [E] 27
+     - ping 8.8.8.8 -> "Destino fuera de las redes permitidas" (400) y
+       NO se abre ninguna sesión                                          [E] 28
+ > python manage.py device-diag SIM-CORE-RTR01 ping 192.168.100.10        [E] 29
+
+
+--------------------------------------------------------------------------------
+ 3.5 Sesión 1 de laboratorio (miércoles 21-oct, 6:00 a 7:28 p. m.)
+--------------------------------------------------------------------------------
+
+
+ Topología:  PC .10 --Fa0/2-- LAB-SW01 (Vlan1 .2) --Fa0/1--Gi0/0/0-- LAB-RTR01 (.1)
+             Red 192.168.100.0/24 aislada. Consola: COM5, 9600 8N1, sin control de flujo.
+
+ 1) El router llegó con contraseña de otro estudiante y hostname "MiSwitch"
+                                                                         [E] LAB-01
+    Recuperación oficial de Cisco (acceso físico):
+      Break al arrancar -> rommon 1 > confreg 0x2142 -> rommon 2 > reset
+      Router> enable                       (ya no pide contraseña)
+      Router# configure terminal
+      Router(config)# config-register 0x2102
+      Router(config)# end
+      Router# write erase
+      Router# reload                       (no guardar)
+
+ 2) Router desde cero con la configuración base:
+    R# clock set 18:55:00 21 Oct 2026      <- ANTES de la zona (error)
+    R(config)# clock timezone COT -5 0
+    => show clock: 13:55 COT, 5 HORAS ATRÁS                               [E] LAB-02
+    R# clock set 19:00:00 21 Oct 2026      (corrección a mano)            [E] LAB-03
+    Pegar el bloque 2 completo perdió líneas (solo quedó el hostname): se
+    aplicó en trozos de 3 a 5 líneas. 'no ip domain-lookup' no existe en
+    IOS XE 17: es 'no ip domain lookup' dentro de configure terminal.
+
+ 3) Switch desde cero (reloj en 1993, sin batería):
+    S# ping 192.168.100.1   => !!!!! 5/5                                  [E] LAB-04
+
+ 4) PC del NOC (IP fija 192.168.100.10/24, sin puerta de enlace):
+    PS> netsh advfirewall firewall add rule name="NOC lab Syslog UDP 5514" ... remoteip=192.168.100.0/24
+    PS> netsh advfirewall firewall add rule name="NOC lab ping" ... protocol=icmpv4:8,any ...
+    > ping 192.168.100.1   => 4/4
+    > ping 192.168.100.2   => 3/4 (el primero se pierde mientras se resuelve ARP)
+                                                                         [E] LAB-05
+    > python serve.py                      (ventana 1)
+    > set SYSLOG_HOST=192.168.100.10       (ventana 2, solo para esta ventana)
+    > python manage.py receiver
+      Error del momento: se escribió 'SYSLOG_HOST=...' sin 'set'; Windows lo
+      toma como un comando. Con 'set' quedó escuchando en la red del lab.
+
+ 5) PRIMER EVENTO REAL:
+    S# send log 6 "Prueba NOC desde LAB-SW01"
+    => Evento #178 · 21/10/26 7:25:27 p. m. · LAB-SW01 · Cisco · local7 ·
+       SYS-6-USERLOG_INFO · origen udp · SIN marca SIM y SIN marcas de
+       seguridad                                                         [E] LAB-06
+
+ 6) S# show ntp status => "Clock is unsynchronized" a las 19:05          [E] LAB-07
+ 7) Reglas del firewall creadas y borradas al terminar                    [E] LAB-08
+ 8) 7:28 p. m.: se devolvieron los equipos (demoras de otra área).
+
+
+--------------------------------------------------------------------------------
+ 3.6 Paso 9.5 - Correcciones del laboratorio y consistencia
+--------------------------------------------------------------------------------
+
+
+ > python -m pytest -q
+   => 423 passed                                                          [E] 30
+
+ > python manage.py check-consistency
+   Con la base REAL del estudiante (incluye los eventos del laboratorio):
+   => LAB-SW01   crítico  Reloj atrasado 1 min 24 s (3 eventos)
+      SIM-CORE-RTR01  ok  Sincronizado (desfase 1 s)
+      SIM-GEN-LOCAL   crítico  Reloj adelantado 13 h
+      IP 192.168.100.1 duplicada (LAB-RTR01, SIM-CORE-RTR01)
+      IP 192.168.100.2 duplicada (LAB-SW01, SIM-DIST-SW01)
+      SIM-DIST-SW01: IP del inventario 192.0.2.10 no está en sus interfaces
+      LAB-RTR01: "Nunca ha enviado eventos" (info)
+      Cadena de auditoría íntegra (219 registros)                         [E] 31
+   Lectura: el switch SÍ sincronizó con el router, pero el router tenía la
+   hora puesta a mano con atraso. Las IP duplicadas vienen de que las
+   muestras SIM usan las IP del plan del laboratorio: el chequeo funciona.
+
+   Web -> Dashboard -> "Consistencia de la red" y "Reloj de los equipos"  [E] 32
+   Web -> Configuraciones -> configuración base en trozos con Copiar      [E] 33
+
+ > git mv "docs/evidencias/C3-F9-LAB-01_router_contrasena_residual.png.png" "docs/evidencias/C3-F9-LAB-01_router_contrasena_residual.png"
+   (y las otras 6 con .png.png) -> renombre al 100 %, commit ea4f750.
+
+ > git status          (antes de CADA commit)
+
+
+
+================================================================================
+ 4. CÓDIGO NUEVO COMENTADO
+================================================================================
+
+
+--------------------------------------------------------------------------------
+ 4.1 Tablas de sesiones y comandos (app/schema.sql)
+--------------------------------------------------------------------------------
+
+
+ device_name se copia en la sesión: si se borra el equipo del inventario,
+ el historial sigue diciendo con quién se habló. La salida se recorta a
+ 64 KB, pero la huella es de la salida COMPLETA.
+
+  +--- app/schema.sql  (tablas nuevas) ---------------------------------------
+  |  82 | -- 2c. Sesiones con los equipos (Fase 9.1): TRAZABILIDAD de cada conexión
+  |  83 | --    Una fila por cada vez que el NOC se conecta a un equipo (consola o SSH).
+  |  84 | --    serial_number = el equipo FÍSICO que respondió en esa sesión.
+  |  85 | -- ---------------------------------------------------------------------
+  |  86 | CREATE TABLE IF NOT EXISTS device_sessions (
+  |  87 |     id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  |  88 |     device_id     INTEGER REFERENCES devices(id) ON DELETE SET NULL,
+  |  89 |     device_name   TEXT NOT NULL,            -- se conserva aunque se borre el equipo
+  |  90 |     transport     TEXT NOT NULL CHECK (transport IN ('simulado', 'consola', 'ssh')),
+  |  91 |     target        TEXT NOT NULL,            -- COM3, 192.0.2.1:22 o "simulado"
+  |  92 |     started_by    TEXT NOT NULL,            -- usuario del NOC
+  |  93 |     started_at    TEXT NOT NULL,
+  |  94 |     ended_at      TEXT,
+  |  95 |     status        TEXT NOT NULL DEFAULT 'abierta'
+  |  96 |                   CHECK (status IN ('abierta', 'cerrada', 'fallida')),
+  |  97 |     error         TEXT,
+  |  98 |     serial_number TEXT,
+  |  99 |     model         TEXT,
+  | 100 |     os_version    TEXT,
+  | 101 |     host_key_fp   TEXT,
+  | 102 |     warnings      TEXT,                     -- avisos separados por " | "
+  | 103 |     commands_count INTEGER NOT NULL DEFAULT 0,
+  | 104 |     is_simulated  INTEGER NOT NULL DEFAULT 0 CHECK (is_simulated IN (0, 1))
+  | 105 | );
+  | 106 |
+  | 107 | -- Cada comando enviado en una sesión, con su salida y la huella de la salida
+  | 108 | CREATE TABLE IF NOT EXISTS device_commands (
+  | 109 |     id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  | 110 |     session_id    INTEGER NOT NULL REFERENCES device_sessions(id) ON DELETE CASCADE,
+  | 111 |     command       TEXT NOT NULL,
+  | 112 |     requested_by  TEXT NOT NULL,
+  | 113 |     started_at    TEXT NOT NULL,
+  | 114 |     duration_ms   INTEGER,
+  | 115 |     status        TEXT NOT NULL CHECK (status IN ('ok', 'error')),
+  | 116 |     output        TEXT,                     -- recortada a 64 KB
+  | 117 |     output_sha256 TEXT                      -- huella de la salida COMPLETA
+  | 118 | );
+  | 119 | CREATE INDEX IF NOT EXISTS idx_sessions_device ON device_sessions(device_id, started_at);
+  | 120 | CREATE INDEX IF NOT EXISTS idx_commands_session ON device_commands(session_id);
+  +----------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+ 4.2 Transporte real: consola y SSH con Netmiko (app/connector.py)
+--------------------------------------------------------------------------------
+
+
+ Por consola NO hay usuario ni contraseña (equipos prestados). Por SSH la
+ credencial sale del .env. Los errores se traducen a un mensaje que dice
+ QUÉ revisar, sin incluir nunca la contraseña.
+
+  +--- app/connector.py ------------------------------------------------------
+  | 117 | class NetmikoTransport:
+  | 118 |     """Conexión REAL con Netmiko: por consola (cable, puerto COM) o por SSH."""
+  | 119 |
+  | 120 |     def __init__(self, device):
+  | 121 |         self.device = device
+  | 122 |         self.transport = device["connection_mode"]
+  | 123 |         self.host_key_fp = None
+  | 124 |         self._conn = None
+  | 125 |         if self.transport == "consola":
+  | 126 |             self.target = device["console_port"]
+  | 127 |         else:
+  | 128 |             self.target = f"{device['ip']}:{Config.SSH_PORT}"
+  | 129 |
+  | 130 |     def _params(self) -> dict:
+  | 131 |         common = {"timeout": Config.COMMAND_TIMEOUT, "conn_timeout": Config.CONNECT_TIMEOUT,
+  | 132 |                   "fast_cli": False}
+  | 133 |         if self.transport == "consola":
+  | 134 |             # Equipo prestado: SIN usuario ni contraseña. Netmiko solo trae
+  | 135 |             # consola para Cisco (cisco_ios_serial; sirve también para IOS XE).
+  | 136 |             return {**common, "device_type": "cisco_ios_serial", "username": "", "password": "",
+  | 137 |                     "serial_settings": {"port": self.device["console_port"],
+  | 138 |                                         "baudrate": Config.CONSOLE_BAUDRATE}}
+  | 139 |         return {**common, "device_type": self.device["platform"], "host": self.device["ip"],
+  | 140 |                 "port": Config.SSH_PORT, "username": Config.SSH_USERNAME,
+  | 141 |                 "password": Config.SSH_PASSWORD}
+  | 142 |
+  | 143 |     def open(self):
+  | 144 |         from netmiko import ConnectHandler     # se importa aquí: las pruebas no lo necesitan
+  | 145 |         try:
+  | 146 |             self._conn = ConnectHandler(**self._params())
+  | 147 |             if self.transport == "ssh":
+  | 148 |                 key = self._conn.remote_conn_pre.get_transport().get_remote_server_key()
+  | 149 |                 self.host_key_fp = ssh_fingerprint(key.asbytes())
+  | 150 |             try:
+  | 151 |                 self._conn.enable()            # sin enable secret entra directo (modo #)
+  | 152 |             except Exception:
+  | 153 |                 pass                           # en modo usuario los "show" básicos funcionan
+  | 154 |         except Exception as e:                 # sin contraseñas en el mensaje
+  | 155 |             raise ConnectionError_(self._friendly_error(e))
+  | 156 |
+  | 157 |     def _friendly_error(self, e: Exception) -> str:
+  | 158 |         """Mensaje en español que dice QUÉ revisar (Fase 9.2: antes salía el texto de Netmiko)."""
+  | 159 |         text = str(e)
+  | 160 |         where = f"({self.transport} {self.target})"
+  | 161 |         if self.transport == "consola":
+  | 162 |             if "not found" in text:
+  | 163 |                 ports = text.split("available devices are:")[-1].strip(" ,.") if "available" in text else ""
+  | 164 |                 return (f"No se pudo conectar {where}: el puerto {self.target} no existe en este PC. "
+  | 165 |                         f"Puertos disponibles: {ports or 'ninguno'} (¿está conectado el cable de consola?)")
+  | 166 |             if "denied" in text.lower() or "PermissionError" in text or "busy" in text.lower():
+  | 167 |                 return (f"No se pudo conectar {where}: el puerto {self.target} está en uso "
+  | 168 |                         "(¿PuTTY sigue abierto? Ciérrelo y vuelva a intentar)")
+  | 169 |         if "Authentication" in type(e).__name__:
+  | 170 |             return f"No se pudo conectar {where}: usuario o contraseña SSH rechazados (revise el .env)"
+  | 171 |         if "Timeout" in type(e).__name__:
+  | 172 |             return f"No se pudo conectar {where}: el equipo no respondió a tiempo (¿IP, cable o SSH activo?)"
+  | 173 |         first = text.splitlines()[0][:160] if text else ""
+  | 174 |         return f"No se pudo conectar {where}: {type(e).__name__}: {first}"
+  | 175 |
+  | 176 |     def send(self, command: str) -> str:
+  | 177 |         # Fase 9.4: un traceroute con saltos que no responden tarda más que un "show"
+  | 178 |         slow = command.startswith(("traceroute", "tracert", "execute traceroute"))
+  | 179 |         try:
+  | 180 |             return self._conn.send_command(command, read_timeout=Config.DIAG_TIMEOUT if slow
+  | 181 |                                            else Config.COMMAND_TIMEOUT)
+  | 182 |         except Exception as e:
+  | 183 |             raise ConnectionError_(f"Error ejecutando '{command}': {type(e).__name__}")
+  | 184 |
+  | 185 |     def close(self):
+  | 186 |         if self._conn is not None:
+  | 187 |             try:
+  | 188 |                 self._conn.disconnect()
+  | 189 |             except Exception:
+  | 190 |                 pass
+  | 191 |
+  | 192 |
+  | 193 | def make_transport(device, conn):
+  | 194 |     """Elige el transporte según el modo. Las pruebas lo reemplazan por uno falso."""
+  | 195 |     if device["connection_mode"] == "simulado":
+  | 196 |         return SimulatedTransport(device, conn)
+  | 197 |     return NetmikoTransport(device)
+  | 198 |
+  | 199 |
+  | 200 | def ssh_fingerprint(key_bytes: bytes) -> str:
+  | 201 |     """Huella como la muestra OpenSSH: SHA256:base64 sin '='."""
+  | 202 |     return "SHA256:" + base64.b64encode(hashlib.sha256(key_bytes).digest()).decode().rstrip("=")
+  +----------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+ 4.3 Identidad del equipo físico (app/connector.py)
+--------------------------------------------------------------------------------
+
+  +--- app/connector.py ------------------------------------------------------
+  | 208 | def parse_identity(platform: str, text: str) -> dict:
+  | 209 |     """Devuelve {serial, model, version, warnings}. Lo que no encuentre queda en None."""
+  | 210 |     def find(pattern, flags=re.M):
+  | 211 |         m = re.search(pattern, text or "", flags)
+  | 212 |         return m.group(1).strip() if m else None
+  | 213 |
+  | 214 |     out = {"serial": None, "model": None, "version": None, "warnings": []}
+  | 215 |     if platform in ("cisco_ios", "cisco_xe"):
+  | 216 |         # 2960: "System serial number : FOC..."; IOS XE: "Processor board ID FGL..."
+  | 217 |         out["serial"] = find(r"^System [Ss]erial [Nn]umber\s*:\s*(\S+)") or find(r"Processor board ID (\S+)")
+  | 218 |         out["model"] = find(r"^Model [Nn]umber\s*:\s*(\S+)") or find(r"^cisco (\S+) .*processor")
+  | 219 |         out["version"] = find(r"Version ([\w.()]+)")
+  | 220 |         image = (find(r'System image file is "([^"]+)"') or "") + " " + (find(r"\(([\w-]+)\), Version") or "")
+  | 221 |         if platform == "cisco_ios" and "k9" not in image.lower():
+  | 222 |             out["warnings"].append("La imagen no tiene criptografía (k9): el equipo no soporta SSH; use el modo consola")
+  | 223 |         mode = find(r"Router operating mode:\s*(.+)$")
+  | 224 |         if platform == "cisco_xe" and mode and "autonomous" not in mode.lower():
+  | 225 |             out["warnings"].append(f"Router en modo '{mode}' (SD-WAN): la consola es distinta; "
+  | 226 |                                    "cámbielo a modo autónomo antes de las pruebas")
+  | 227 |     elif platform == "fortinet":
+  | 228 |         out["serial"] = find(r"^Serial-Number:\s*(\S+)")
+  | 229 |         out["model"] = find(r"^Version:\s*(\S+)")
+  | 230 |         out["version"] = find(r"^Version:\s*\S+\s+(v[\w.]+)")
+  | 231 |     elif platform == "huawei":
+  | 232 |         out["serial"] = find(r"ESN[^:]*:\s*(\S+)")
+  | 233 |         out["model"] = find(r"^(?:HUAWEI|Huawei)\s+(\S+)\s.*uptime") or find(r"\((\S+)\s+V\d")
+  | 234 |         out["version"] = find(r"Version\s+([\w.]+)")
+  | 235 |     if not out["serial"]:
+  | 236 |         out["warnings"].append("No se pudo leer el número de serie: no se puede confirmar qué equipo físico es")
+  | 237 |     return out
+  +----------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+ 4.4 La sesión: validar, reservar, identificar, registrar (app/connector.py)
+--------------------------------------------------------------------------------
+
+
+ Orden: (1) validar el equipo y TODOS los comandos antes de conectar;
+ (2) reservar el equipo o el puerto COM (un cable, una sesión); (3) llave
+ SSH; (4) número de serie; (5) comandos, cada uno con su huella y su
+ registro en la auditoría.
+
+  +--- app/connector.py ------------------------------------------------------
+  | 247 | def _lock_for(device) -> threading.Lock:
+  | 248 |     # Un puerto COM es UNO solo aunque se use para varios equipos (se cambia el cable)
+  | 249 |     key = (f"port:{device['console_port']}" if device["connection_mode"] == "consola"
+  | 250 |            else f"dev:{device['id']}")
+  | 251 |     with _LOCKS_GUARD:
+  | 252 |         return _LOCKS.setdefault(key, threading.Lock())
+  | 253 |
+  | 254 |
+  | 255 | def readiness_errors(device) -> list[str]:
+  | 256 |     """¿Está el equipo listo para conectarse? Lista de problemas (vacía = listo)."""
+  | 257 |     mode, errors = device["connection_mode"], []
+  | 258 |     if mode == "ninguno":
+  | 259 |         return ["El equipo no tiene modo de conexión (solo recibe Syslog). Edítelo en el inventario"]
+  | 260 |     if device["platform"] not in PLATFORMS.get(device["vendor"], ()):
+  | 261 |         errors.append(f"Plataforma '{device['platform']}' no válida para {device['vendor']}")
+  | 262 |     if mode == "consola":
+  | 263 |         if device["vendor"] != "Cisco":
+  | 264 |             errors.append("La conexión por consola solo está disponible para Cisco")
+  | 265 |         if not RE_CONSOLE_PORT.match(device["console_port"] or ""):
+  | 266 |             errors.append("Falta el puerto de consola (ej. COM3)")
+  | 267 |     if mode == "ssh" and not (Config.SSH_USERNAME and Config.SSH_PASSWORD):
+  | 268 |         errors.append("Faltan SSH_USERNAME y SSH_PASSWORD en el archivo .env")
+  | 269 |     return errors
+  | 270 |
+  | 271 |
+  | 272 | # ---------------------------------------------------------------------------
+  | 273 | # 4. LA SESIÓN
+  | 274 | # ---------------------------------------------------------------------------
+  | 275 | def run_session(conn, device, commands: list[str], user: str, diagnostic: bool = False) -> tuple[dict, int]:
+  | 276 |     """Ejecuta una sesión completa. Devuelve (resultado, código HTTP)."""
+  | 277 |     # --- 1. Validar todo ANTES de conectar ----------------------------------
+  | 278 |     problems = readiness_errors(device)
+  | 279 |     if problems:
+  | 280 |         return {"errors": problems}, 400
+  | 281 |     if len(commands) > MAX_COMMANDS:
+  | 282 |         return {"errors": [f"Máximo {MAX_COMMANDS} comandos por sesión"]}, 400
+  | 283 |     blocked = []
+  | 284 |     for cmd in commands:
+  | 285 |         ok, reason = check_command(device["vendor"], cmd, user, diagnostic=diagnostic)
+  | 286 |         if not ok:
+  | 287 |             blocked.append(f"'{cmd[:60]}': {reason}")
+  | 288 |             audit(conn, user, "device.command_blocked", "devices", device["id"],
+  | 289 |                   f"{device['name']}: {cmd[:120]!r} -> {reason}", "bloqueado")
+  | 290 |     if blocked:
+  | 291 |         return {"errors": ["No se abrió la conexión: hay comandos bloqueados"] + blocked}, 403
+  | 292 |
+  | 293 |     # --- 2. Reservar ----------------------------------------------------------
+  | 294 |     lock = _lock_for(device)
+  | 295 |     if not lock.acquire(blocking=False):
+  | 296 |         return {"errors": ["El equipo (o el puerto de consola) está ocupado con otra sesión"]}, 409
+  | 297 |     try:
+  | 298 |         return _session(conn, device, commands, user)
+  | 299 |     finally:
+  | 300 |         lock.release()
+  | 301 |
+  | 302 |
+  | 303 | def _session(conn, device, commands, user):
+  | 304 |     transport = make_transport(device, conn)
+  | 305 |     cur = conn.execute(
+  | 306 |         "INSERT INTO device_sessions (device_id, device_name, transport, target, started_by, started_at, "
+  | 307 |         "is_simulated) VALUES (?, ?, ?, ?, ?, ?, ?)",
+  | 308 |         (device["id"], device["name"], transport.transport, transport.target, user, now_iso(),
+  | 309 |          int(transport.transport == "simulado" or bool(device["is_simulated"]))))
+  | 310 |     conn.commit()
+  | 311 |     sid = cur.lastrowid
+  | 312 |     warnings = []
+  | 313 |
+  | 314 |     def finish(status, error=None, http=200):
+  | 315 |         n = conn.execute("SELECT COUNT(*) FROM device_commands WHERE session_id = ?", (sid,)).fetchone()[0]
+  | 316 |         conn.execute("UPDATE device_sessions SET status = ?, error = ?, ended_at = ?, warnings = ?, "
+  | 317 |                      "commands_count = ? WHERE id = ?",
+  | 318 |                      (status, error, now_iso(), " | ".join(warnings) or None, n, sid))
+  | 319 |         conn.commit()
+  | 320 |         where = transport.transport + ("" if transport.target == transport.transport else f" {transport.target}")
+  | 321 |         audit(conn, user, "device.session", "device_sessions", sid,
+  | 322 |               f"{device['name']} {where} estado={status} comandos={n}"
+  | 323 |               + (f" error={error}" if error else ""), "ok" if status == "cerrada" else "alerta")
+  | 324 |         result = get_session(conn, sid)
+  | 325 |         if error:
+  | 326 |             result["errors"] = [error]
+  | 327 |         return result, http
+  | 328 |
+  | 329 |     try:
+  | 330 |         transport.open()
+  | 331 |         # --- Llave SSH (solo equipos fijos): fijada la primera vez -------------
+  | 332 |         if transport.transport == "ssh" and transport.host_key_fp:
+  | 333 |             conn.execute("UPDATE device_sessions SET host_key_fp = ? WHERE id = ?", (transport.host_key_fp, sid))
+  | 334 |             if device["host_key_fp"] and device["host_key_fp"] != transport.host_key_fp:
+  | 335 |                 audit(conn, user, "device.hostkey_cambio", "devices", device["id"],
+  | 336 |                       f"{device['name']}: esperada {device['host_key_fp']} recibida {transport.host_key_fp}",
+  | 337 |                       "alerta")
+  | 338 |                 return finish("fallida", "La llave SSH del equipo CAMBIÓ: posible suplantación. "
+  | 339 |                                          "Sesión abortada sin enviar comandos", 409)
+  | 340 |             if not device["host_key_fp"]:
+  | 341 |                 conn.execute("UPDATE devices SET host_key_fp = ? WHERE id = ?", (transport.host_key_fp, device["id"]))
+  | 342 |                 audit(conn, user, "device.hostkey_registrada", "devices", device["id"],
+  | 343 |                       f"{device['name']}: {transport.host_key_fp}")
+  | 344 |
+  | 345 |         # --- Identificación del equipo físico ----------------------------------
+  | 346 |         id_cmd = IDENTITY_COMMAND[device["platform"]]
+  | 347 |         identity = parse_identity(device["platform"], _run(conn, transport, sid, id_cmd, user))
+  | 348 |         warnings += identity["warnings"]
+  | 349 |         if device["serial_number"] and identity["serial"] and identity["serial"] != device["serial_number"]:
+  | 350 |             warnings.append(f"EQUIPO FÍSICO DISTINTO: antes {device['serial_number']}, ahora {identity['serial']}")
+  | 351 |             audit(conn, user, "device.serial_cambio", "devices", device["id"],
+  | 352 |                   f"{device['name']}: serie anterior {device['serial_number']} -> {identity['serial']}", "alerta")
+  | 353 |         conn.execute("UPDATE device_sessions SET serial_number = ?, model = ?, os_version = ? WHERE id = ?",
+  | 354 |                      (identity["serial"], identity["model"], identity["version"], sid))
+  | 355 |         conn.execute("UPDATE devices SET serial_number = COALESCE(?, serial_number), detected_model = ?, "
+  | 356 |                      "detected_version = ?, last_identified_at = ? WHERE id = ?",
+  | 357 |                      (identity["serial"], identity["model"], identity["version"], now_iso(), device["id"]))
+  | 358 |         conn.commit()
+  | 359 |
+  | 360 |         # --- Comandos pedidos ------------------------------------------------------
+  | 361 |         for cmd in commands:
+  | 362 |             if cmd.strip().lower() != id_cmd:          # show version ya se ejecutó
+  | 363 |                 _run(conn, transport, sid, cmd, user)
+  | 364 |         return finish("cerrada")
+  | 365 |     except ConnectionError_ as e:
+  | 366 |         return finish("fallida", str(e), 502)
+  | 367 |     finally:
+  | 368 |         transport.close()
+  | 369 |
+  | 370 |
+  | 371 | def _run(conn, transport, sid, command, user) -> str:
+  | 372 |     """Envía un comando y lo registra con su salida y la huella SHA-256 de la salida."""
+  | 373 |     started, t0 = now_iso(), time.monotonic()
+  | 374 |     try:
+  | 375 |         output, status = transport.send(command), "ok"
+  | 376 |     except ConnectionError_ as e:
+  | 377 |         output, status = str(e), "error"
+  | 378 |     ms = int((time.monotonic() - t0) * 1000)
+  | 379 |     conn.execute("INSERT INTO device_commands (session_id, command, requested_by, started_at, duration_ms, "
+  | 380 |                  "status, output, output_sha256) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+  | 381 |                  (sid, command, user, started, ms, status, output[:MAX_OUTPUT],
+  | 382 |                   hashlib.sha256(output.encode("utf-8", "replace")).hexdigest()))
+  | 383 |     conn.commit()
+  | 384 |     audit(conn, user, "device.command", "device_sessions", sid, f"{command} ({ms} ms) {status}",
+  | 385 |           "ok" if status == "ok" else "alerta")
+  | 386 |     if status == "error":
+  | 387 |         raise ConnectionError_(output)
+  | 388 |     return output
+  +----------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+ 4.5 Configuración base en trozos (app/configgen.py)
+--------------------------------------------------------------------------------
+
+
+ Los tres hallazgos del laboratorio están en el código con su comentario:
+ zona antes de la hora, 'no ip domain lookup' y trozos de 5 líneas o menos
+ con su propio 'configure terminal ... end'.
+
+  +--- app/configgen.py ------------------------------------------------------
+  | 389 |     # --- 1. Zona y hora (solo el router: es el servidor NTP del laboratorio) ---
+  | 390 |     # Hallazgo de la sesión 1 (21-oct): con "clock set" ANTES de "clock timezone"
+  | 391 |     # el router tomó la hora escrita como UTC y quedó 5 h atrás. Primero la zona.
+  | 392 |     if is_router:
+  | 393 |         blocks.append({"title": "1. Zona horaria y hora (a mano, antes de pegar)", "kind": "manual",
+  | 394 |                        "text": "\n".join([
+  | 395 |             "! El laboratorio no tiene Internet: el router será el servidor NTP.",
+  | 396 |             "! PRIMERO la zona horaria y DESPUÉS la hora (si no, queda 5 h atrás).",
+  | 397 |             "enable",
+  | 398 |             "configure terminal",
+  | 399 |             "clock timezone COT -5 0",
+  | 400 |             "end",
+  | 401 |             "! Escriba la hora REAL de Colombia en este momento:",
+  | 402 |             f"clock set {now:%H:%M:%S} {now.day} {months[now.month - 1]} {now.year}",
+  | 403 |             "show clock",
+  | 404 |         ])})
+  | 405 |
+  | 406 |     # --- 2. Bloque para pegar, EN TROZOS -----------------------------------------
+  | 407 |     # Hallazgo de la sesión 1: pegar todo el bloque por consola (9600 baudios)
+  | 408 |     # pierde líneas. Cada trozo es independiente (configure terminal ... end) y
+  | 409 |     # tiene 5 líneas o menos: se pega uno, se espera el prompt y se pega el otro.
+  | 410 |     chunks = [("Nombre del equipo", [f"hostname {v['hostname']}",
+  | 411 |                                      "no ip domain lookup"])]   # IOS XE 17: con espacio
+  | 412 |     if not is_router:
+  | 413 |         vlan = int(mgmt_if[4:])
+  | 414 |         if vlan != 1:          # la VLAN de gestión debe existir ANTES de su interfaz
+  | 415 |             chunks.append(("VLAN de gestión", [f"vlan {vlan}", " name GESTION-NOC", " exit"]))
+  | 416 |     chunks.append(("IP de gestión", [f"interface {mgmt_if}",
+  | 417 |                                      f" description Gestion NOC lab ({v['network']})",
+  | 418 |                                      f" ip address {v['mgmt_ip']} {v['netmask']}",
+  | 419 |                                      " no shutdown"]))
+  | 420 |     if not is_router:
+  | 421 |         ports = ["interface range FastEthernet0/1 - 2",
+  | 422 |                  " description Router / PC del NOC",
+  | 423 |                  " switchport mode access"]
+  | 424 |         if vlan != 1:
+  | 425 |             ports.append(f" switchport access vlan {vlan}")
+  | 426 |         ports.append(" no shutdown")
+  | 427 |         chunks.append(("Puerta de enlace", [f"ip default-gateway {v['gateway']}"]))
+  | 428 |         chunks.append(("Puertos hacia el router y el PC", ports))
+  | 429 |     chunks.append(("Hora: zona y NTP", ["clock timezone COT -5 0",
+  | 430 |                                         "ntp master 3" if is_router else f"ntp server {v['gateway']}"]))
+  | 431 |     chunks.append(("Marcas de tiempo precisas", [
+  | 432 |         "service timestamps log datetime msec localtime show-timezone year",
+  | 433 |         "service timestamps debug datetime msec localtime show-timezone year",
+  | 434 |         "service sequence-numbers"]))
+  | 435 |     chunks.append(("Syslog hacia el NOC", [f"logging host {v['noc_ip']} transport udp port {v['port']}",
+  | 436 |                                            f"logging trap {lvl}",
+  | 437 |                                            "logging facility local7"]))
+  | 438 |     chunks.append(("Origen y búfer del Syslog", [f"logging source-interface {src_if}",
+  | 439 |                                                  f"logging buffered 16384 {lvl}"]))
+  | 440 |     chunks.append(("Registro de cambios de configuración", [
+  | 441 |         "archive", " log config", "  logging enable", "  notify syslog contenttype plaintext"]))
+  | 442 |     chunks.append(("Registro de accesos", ["login on-failure log", "login on-success log"]))
+  | 443 |     chunks.append(("Consola", ["line console 0", " logging synchronous", " exec-timeout 30 0"]))
+  | 444 |     parts = [{"title": f"Trozo {i}: {title}",
+  | 445 |               "text": "\n".join(["configure terminal", *body, "end"])}
+  | 446 |              for i, (title, body) in enumerate(chunks, 1)]
+  | 447 |
+  | 448 |     header = [
+  | 449 |         "! ======================================================================",
+  | 450 |         f"! NOC Syslog Inteligente - Configuración base {v['role'].upper()} ({v['mode'].upper()})",
+  | 451 |         f"! Equipo de referencia: {ref}",
+  | 452 |         f"! Generada: {now:%Y-%m-%d %H:%M} (hora de Colombia)",
+  | 453 |         f"! Gestión: {mgmt_if} {v['mgmt_ip']}/{v['prefix']} -> NOC {v['noc_ip']} UDP {v['port']}",
+  | 454 |     ]
+  | 455 |     if v["mode"] == "prestamo":
+  | 456 |         header += ["! EQUIPO PRESTADO: sin usuarios, sin contraseñas y sin guardar.",
+  | 457 |                    "! Al reiniciarlo no queda nada de esta configuración."]
+  | 458 |     header += [
+  | 459 |         "! Pegue UN trozo a la vez y espere el prompt antes del siguiente:",
+  | 460 |         "! pegar todo junto por consola pierde líneas (hallazgo del laboratorio).",
+  | 461 |         "! Si una línea responde '% Invalid input', anótela y siga con el próximo.",
+  | 462 |         "! ======================================================================",
+  | 463 |     ]
+  | 464 |     footer = ["write memory"] if v["mode"] == "fijo" else \
+  | 465 |         ["! (préstamo: la configuración NO se guarda en la memoria del equipo)"]
+  | 466 |     if v["mode"] == "fijo":
+  | 467 |         parts.append({"title": f"Trozo {len(parts) + 1}: Guardar", "text": "write memory"})
+  | 468 |     text = "\n".join(header + [f"! --- {p['title']} ---\n{p['text']}" for p in parts] + footer)
+  | 469 |     blocks.append({"title": "2. Configuración base (pegar en PuTTY, un trozo a la vez)", "kind": "pegar",
+  | 470 |                    "text": text, "chunks": parts})
+  +----------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+ 4.6 Interfaces reales (app/interfaces.py)
+--------------------------------------------------------------------------------
+
+  +--- app/interfaces.py -----------------------------------------------------
+  | 238 | SYNC_COMMAND = {"cisco_ios": "show ip interface brief", "cisco_xe": "show ip interface brief",
+  | 239 |                 "huawei": "display ip interface brief", "fortinet": "get system interface physical"}
+  | 240 |
+  | 241 | # Cisco:  GigabitEthernet0/0/1   unassigned   YES unset  administratively down down
+  | 242 | RE_CISCO_ROW = re.compile(
+  | 243 |     r"^(?P<name>\S+)\s+(?P<ip>\S+)\s+(?:YES|NO)\s+\S+\s+"
+  | 244 |     r"(?P<status>administratively down|up|down|deleted)\s+(?P<proto>up|down)\s*$")
+  | 245 | # Huawei: GigabitEthernet0/0/1   192.0.2.1/24   up   up(s)   /   *down   down
+  | 246 | RE_HUAWEI_ROW = re.compile(
+  | 247 |     r"^(?P<name>[A-Za-z][\w/.\-]*)\s+(?P<ip>\S+)\s+(?P<status>\*?down|up|\^down)\S*\s+(?P<proto>up|down)\S*\s*$")
+  | 248 | # Fortinet:     ==[port1]   ...   ip: 192.0.2.1 255.255.255.0   status: up
+  | 249 | RE_FORTI_NAME = re.compile(r"==\[(?P<name>[^\]]+)\]")
+  | 250 | RE_FORTI_IP = re.compile(r"\bip:\s*(?P<ip>\d{1,3}(?:\.\d{1,3}){3})")
+  | 251 | RE_FORTI_STATUS = re.compile(r"\bstatus:\s*(?P<status>up|down)")
+  | 252 |
+  | 253 |
+  | 254 | def parse_interfaces(platform: str, text: str) -> list[dict]:
+  | 255 |     """Salida del comando -> [{name, ip, status}] (status: up | down | admin_down)."""
+  | 256 |     rows = []
+  | 257 |     for line in (text or "").splitlines():
+  | 258 |         line = line.rstrip()
+  | 259 |         if platform in ("cisco_ios", "cisco_xe"):
+  | 260 |             m = RE_CISCO_ROW.match(line)
+  | 261 |             if not m or m["status"] == "deleted":
+  | 262 |                 continue
+  | 263 |             status = ("admin_down" if m["status"].startswith("administratively")
+  | 264 |                       else "up" if m["status"] == "up" and m["proto"] == "up" else "down")
+  | 265 |             ip = m["ip"]
+  | 266 |         elif platform == "huawei":
+  | 267 |             m = RE_HUAWEI_ROW.match(line)
+  | 268 |             if not m or m["name"] in ("Interface",):
+  | 269 |                 continue
+  | 270 |             raw = m["status"]
+  | 271 |             status = "admin_down" if raw.startswith("*") else "up" if raw == "up" and m["proto"] == "up" else "down"
+  | 272 |             ip = m["ip"].split("/")[0]
+  | 273 |         elif platform == "fortinet":
+  | 274 |             m = RE_FORTI_NAME.search(line)
+  | 275 |             if not m:
+  | 276 |                 continue
+  | 277 |             ipm, stm = RE_FORTI_IP.search(line), RE_FORTI_STATUS.search(line)
+  | 278 |             status = stm["status"] if stm else "desconocido"
+  | 279 |             ip = ipm["ip"] if ipm else None
+  | 280 |             rows.append({"name": m["name"], "ip": ip if ip and ip != "0.0.0.0" else None, "status": status})
+  | 281 |             continue
+  | 282 |         else:
+  | 283 |             return []
+  | 284 |         rows.append({"name": m["name"], "ip": None if ip.lower() in ("unassigned", "unnumbered") else ip,
+  | 285 |                      "status": status})
+  | 286 |     return rows
+  | 287 |
+  | 288 |
+  | 289 | def apply_sync(conn, device, rows: list[dict], user: str, remove_missing: bool = False) -> dict:
+  | 290 |     """Compara lo que reportó el equipo con la tabla y la actualiza. Devuelve el resumen."""
+  | 291 |     vendor, ts = device["vendor"], now_iso()
+  | 292 |     summary = {"nuevas": [], "actualizadas": [], "sin_cambios": [], "desaparecidas": [],
+  | 293 |                "eliminadas": [], "invalidas": []}
+  | 294 |     current = {r["name"].lower(): r for r in conn.execute(
+  | 295 |         "SELECT * FROM interfaces WHERE device_id = ?", (device["id"],))}
+  | 296 |     seen = set()
+  | 297 |     for row in rows:
+  | 298 |         name = normalize_for_vendor(vendor, row["name"])
+  | 299 |         if validate_interface_name(vendor, name):           # dato no confiable: se valida
+  | 300 |             summary["invalidas"].append(row["name"][:48])
+  | 301 |             continue
+  | 302 |         if name.lower() in seen:
+  | 303 |             continue
+  | 304 |         seen.add(name.lower())
+  | 305 |         old = current.get(name.lower())
+  | 306 |         if old is None:
+  | 307 |             if len(current) + len(summary["nuevas"]) >= MAX_PER_DEVICE:
+  | 308 |                 summary["invalidas"].append(f"{name} (límite de {MAX_PER_DEVICE})")
+  | 309 |                 continue
+  | 310 |             conn.execute("INSERT INTO interfaces (device_id, name, description, status, created_at, updated_at, "
+  | 311 |                          "ip_address, source, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'equipo', ?)",
+  | 312 |                          (device["id"], name, "Leída del equipo", row["status"], ts, ts, row["ip"], ts))
+  | 313 |             summary["nuevas"].append(name)
+  | 314 |         elif old["status"] != row["status"] or (old["ip_address"] or None) != row["ip"]:
+  | 315 |             conn.execute("UPDATE interfaces SET status = ?, ip_address = ?, updated_at = ?, last_seen_at = ? "
+  | 316 |                          "WHERE id = ?", (row["status"], row["ip"], ts, ts, old["id"]))
+  | 317 |             summary["actualizadas"].append(f"{name}: {old['status']} -> {row['status']}"
+  | 318 |                                            + (f", IP {old['ip_address'] or '-'} -> {row['ip'] or '-'}"
+  | 319 |                                               if (old["ip_address"] or None) != row["ip"] else ""))
+  | 320 |         else:
+  | 321 |             conn.execute("UPDATE interfaces SET last_seen_at = ? WHERE id = ?", (ts, old["id"]))
+  | 322 |             summary["sin_cambios"].append(name)
+  | 323 |     for key, old in current.items():
+  | 324 |         if key not in seen:
+  | 325 |             summary["desaparecidas"].append(old["name"])
+  | 326 |             if remove_missing:
+  | 327 |                 conn.execute("DELETE FROM interfaces WHERE id = ?", (old["id"],))
+  | 328 |                 summary["eliminadas"].append(old["name"])
+  | 329 |     conn.commit()
+  | 330 |     counts = {k: len(v) for k, v in summary.items()}
+  | 331 |     audit(conn, user, "interface.sync", "devices", device["id"],
+  | 332 |           f"{device['name']}: " + " ".join(f"{k}={v}" for k, v in counts.items()),
+  | 333 |           "alerta" if summary["desaparecidas"] or summary["invalidas"] else "ok")
+  | 334 |     return summary
+  | 335 |
+  | 336 |
+  | 337 | @bp.post("/<int:device_id>/interfaces/sync")
+  +----------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+ 4.7 Diagnóstico desde el equipo (app/diagnostics.py, app/console.py)
+--------------------------------------------------------------------------------
+
+
+ ping y traceroute NO están en la lista general de la consola: solo los
+ acepta check(..., diagnostic=True), que se llama DESPUÉS de validar el
+ destino. Así nadie puede pedir "ping 8.8.8.8" por la sesión normal.
+
+  +--- app/console.py --------------------------------------------------------
+  |  67 | # Fase 9.4: diagnóstico (ping/traceroute). NO están en la lista general: solo los
+  |  68 | # acepta check(..., diagnostic=True), que usa app/diagnostics.py DESPUÉS de
+  |  69 | # validar el destino. Así nadie puede pedir "ping 8.8.8.8" por la sesión normal.
+  |  70 | _IP = r"\d{1,3}(?:\.\d{1,3}){3}"
+  |  71 | DIAGNOSTIC_PATTERNS = {
+  |  72 |     "Cisco": [rf"ping {_IP}", rf"traceroute {_IP}"],
+  |  73 |     "Huawei": [rf"ping -c 5 {_IP}", rf"tracert -m 15 -w 2000 {_IP}"],
+  |  74 |     "Fortinet": [rf"execute ping {_IP}", rf"execute traceroute {_IP}"],
+  |  75 |     "Otro": [],
+  +----------------------------------------------------------------------------
+  +--- app/diagnostics.py ----------------------------------------------------
+  |  48 | def validate_target(target: str) -> tuple[str | None, list[str]]:
+  |  49 |     """Devuelve (ip_normalizada, errores)."""
+  |  50 |     try:
+  |  51 |         ip = ipaddress.IPv4Address(str(target or "").strip())
+  |  52 |     except ValueError:
+  |  53 |         return None, ["Destino inválido: escriba una dirección IPv4 (ej. 192.168.100.10)"]
+  |  54 |     if ip.is_multicast or ip.is_unspecified or ip == ipaddress.IPv4Address("255.255.255.255"):
+  |  55 |         return None, [f"Destino no permitido: {ip} no es una dirección de un solo equipo"]
+  |  56 |     if not any(ip in net for net in _allowed_networks()):
+  |  57 |         return None, [f"Destino fuera de las redes permitidas ({Config.DIAG_ALLOWED_NETS}): "
+  |  58 |                       "no se usan los equipos para sondear Internet"]
+  |  59 |     return str(ip), []
+  +----------------------------------------------------------------------------
+  +--- app/diagnostics.py ----------------------------------------------------
+  | 118 | def run_diagnostic(conn, device, kind: str, target: str, user: str) -> tuple[dict, int]:
+  | 119 |     from .connector import run_session          # import tardío: evita importaciones circulares
+  | 120 |     errors = []
+  | 121 |     if kind not in TYPES:
+  | 122 |         errors.append(f"Tipo inválido. Opciones: {', '.join(TYPES)}")
+  | 123 |     ip, target_errors = validate_target(target)
+  | 124 |     errors += target_errors
+  | 125 |     command = COMMANDS.get(kind, {}).get(device["platform"])
+  | 126 |     if kind in TYPES and command is None:
+  | 127 |         errors.append("Elija la plataforma del equipo en el inventario")
+  | 128 |     if errors:
+  | 129 |         return {"errors": errors}, 400
+  | 130 |     allowed, first = LIMITER.hit(f"{user}:{device['id']}", Config.DIAG_MAX_PER_MINUTE)
+  | 131 |     if not allowed:
+  | 132 |         if first:
+  | 133 |             audit(conn, user, "device.diagnostic_limit", "devices", device["id"],
+  | 134 |                   f"{device['name']}: más de {Config.DIAG_MAX_PER_MINUTE} diagnósticos por minuto", "bloqueado")
+  | 135 |         return {"errors": [f"Límite de {Config.DIAG_MAX_PER_MINUTE} diagnósticos por minuto en este equipo. "
+  | 136 |                            "Espere un momento"]}, 429
+  | 137 |     command = command.format(ip=ip)
+  | 138 |     session, status = run_session(conn, device, [command], user, diagnostic=True)
+  | 139 |     if status != 200:
+  | 140 |         return session, status
+  | 141 |     output = next((c["output"] for c in session["commands"] if c["command"] == command), "")
+  | 142 |     result = parse_ping(output) if kind == "ping" else parse_traceroute(output, ip)
+  | 143 |     text = summary_text(kind, ip, result)
+  | 144 |     ok = result.get("reachable") if kind == "ping" else result.get("reached")
+  | 145 |     audit(conn, user, "device.diagnostic", "device_sessions", session["id"], f"{device['name']}: {text}",
+  | 146 |           "ok" if ok else "alerta")
+  | 147 |     return {"session": session["id"], "type": kind, "target": ip, "command": command,
+  | 148 |             "result": result, "summary": text, "output": output,
+  | 149 |             "serial_number": session["serial_number"], "warnings": session["warnings"]}, 200
+  +----------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+ 4.8 Consistencia y reloj (app/consistency.py, archivo nuevo)
+--------------------------------------------------------------------------------
+
+  +--- app/consistency.py ----------------------------------------------------
+  |   1 | """
+  |   2 | Fase 9.5: chequeo de CONSISTENCIA de la red y del propio NOC.
+  |   3 |
+  |   4 |     GET  /api/consistency        Hallazgos y reloj de cada equipo (solo lectura)
+  |   5 |     POST /api/consistency/run    Revisa, audita y abre incidentes si hace falta
+  |   6 |
+  |   7 | Qué revisa (cada hallazgo trae gravedad y una sugerencia):
+  |   8 |   1. Reloj desfasado (NTP): compara la hora que trae cada evento con la hora en
+  |   9 |      que el NOC lo recibió. Mediana de los últimos eventos del equipo.
+  |  10 |          aviso   > NTP_WARN_SECONDS (2 s)      crítico > NTP_CRIT_SECONDS (60 s)
+  |  11 |      Caso real del laboratorio (21-oct): el router quedó 5 h atrás por poner
+  |  12 |      la hora antes que la zona, y el switch arrancó en 1993.
+  |  13 |   2. Equipo sin eventos: silencioso más de CONSISTENCY_SILENT_HOURS, o un equipo
+  |  14 |      REAL que nunca ha enviado eventos (revise "logging host").
+  |  15 |   3. Interfaz desconocida y marca inconsistente en las últimas 24 h.
+  |  16 |   4. IP del inventario que no está en ninguna interfaz que reporta el equipo
+  |  17 |      (Fase 9.3): su Syslog llegaría con otra IP de origen y se rechazaría.
+  |  18 |   5. IP duplicada entre equipos (interfaces leídas del equipo o inventario).
+  |  19 |   6. Cadena de la auditoría (Fase 8.2). Si se rompe, POST /run y el receptor
+  |  20 |      (cada CONSISTENCY_INTERVAL_MINUTES) abren un incidente de SEVERIDAD 1.
+  |  21 | """
+  |  22 | import statistics
+  |  23 | from datetime import datetime, timedelta, timezone
+  |  24 |
+  |  25 | from flask import Blueprint, jsonify
+  |  26 |
+  |  27 | from .auth import actor
+  |  28 | from .config import Config
+  |  29 | from .db import audit, get_db, verify_audit_chain
+  |  30 | from .incidents import create_incident
+  |  31 |
+  |  32 | bp = Blueprint("consistency", __name__, url_prefix="/api/consistency")
+  |  33 |
+  |  34 | ORDER = {"critico": 0, "aviso": 1, "info": 2}
+  |  35 | CHAIN_KEY = "consistencia|auditoria_cadena"
+  |  36 | CLOCK_SAMPLES = 20
+  |  37 |
+  |  38 |
+  |  39 | def _parse(iso: str) -> datetime:
+  |  40 |     return datetime.strptime(iso, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+  |  41 |
+  |  42 |
+  |  43 | def _iso(dt: datetime) -> str:
+  |  44 |     return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+  |  45 |
+  |  46 |
+  |  47 | def human(seconds: float) -> str:
+  |  48 |     """3.2 -> '3 s' · 18000 -> '5 h 0 min' · 1.06e9 -> '34 años' (switch con reloj de 1993)."""
+  |  49 |     s = abs(seconds)
+  |  50 |     if s < 60:
+  |  51 |         return f"{s:.0f} s"
+  |  52 |     if s < 3600:
+  |  53 |         return f"{s // 60:.0f} min {s % 60:.0f} s"
+  |  54 |     if s < 86400 * 2:
+  |  55 |         return f"{s // 3600:.0f} h {s % 3600 // 60:.0f} min"
+  |  56 |     if s < 86400 * 365:
+  |  57 |         return f"{s // 86400:.0f} días"
+  |  58 |     return f"{s / (86400 * 365.25):.0f} años"
+  |  59 |
+  |  60 |
+  |  61 | # ---------------------------------------------------------------------------
+  |  62 | # 1. Reloj de cada equipo
+  |  63 | # ---------------------------------------------------------------------------
+  |  64 | def clock_status(conn, device_id: int) -> dict:
+  |  65 |     """
+  |  66 |     offset = recibido - hora del evento (segundos), mediana de los últimos eventos.
+  |  67 |     Positivo: el reloj del equipo está ATRASADO. Negativo: ADELANTADO.
+  |  68 |     La mediana evita que un evento aislado (o con latencia) cambie el resultado.
+  |  69 |     """
+  |  70 |     rows = conn.execute(
+  |  71 |         "SELECT received_at, event_time_utc FROM syslog_events WHERE device_id = ? "
+  |  72 |         "AND event_time_utc IS NOT NULL ORDER BY id DESC LIMIT ?", (device_id, CLOCK_SAMPLES)).fetchall()
+  |  73 |     if not rows:
+  |  74 |         return {"samples": 0, "offset_s": None, "status": "sin_datos",
+  |  75 |                 "text": "Sin eventos con fecha: no se puede medir"}
+  |  76 |     offsets = [(_parse(r["received_at"]) - _parse(r["event_time_utc"])).total_seconds() for r in rows]
+  |  77 |     off = statistics.median(offsets)
+  |  78 |     status = ("critico" if abs(off) > Config.NTP_CRIT_SECONDS
+  |  79 |               else "aviso" if abs(off) > Config.NTP_WARN_SECONDS else "ok")
+  |  80 |     if status == "ok":
+  |  81 |         text = f"Sincronizado (desfase {human(off)})"
+  |  82 |     else:
+  |  83 |         text = f"Reloj {'atrasado' if off > 0 else 'adelantado'} {human(off)}"
+  |  84 |     return {"samples": len(rows), "offset_s": round(off, 1), "status": status, "text": text}
+  |  85 |
+  |  86 |
+  |  87 | # ---------------------------------------------------------------------------
+  |  88 | # 2. Los chequeos
+  |  89 | # ---------------------------------------------------------------------------
+  |  90 | def _finding(severity, check, device, detail, suggestion):
+  |  91 |     return {"severity": severity, "check": check,
+  |  92 |             "device_id": device["id"] if device else None, "device": device["name"] if device else "NOC",
+  |  93 |             "detail": detail, "suggestion": suggestion}
+  |  94 |
+  |  95 |
+  |  96 | def run_checks(conn, now: datetime | None = None) -> dict:
+  |  97 |     """Calcula los hallazgos SIN efectos (no audita ni crea incidentes)."""
+  |  98 |     now = now or datetime.now(timezone.utc)
+  |  99 |     since24 = _iso(now - timedelta(hours=24))
+  | 100 |     silent_since = _iso(now - timedelta(hours=Config.CONSISTENCY_SILENT_HOURS))
+  | 101 |     devices = conn.execute("SELECT * FROM devices ORDER BY name").fetchall()
+  | 102 |     findings, clocks = [], []
+  | 103 |
+  | 104 |     for d in devices:
+  | 105 |         # --- 1. Reloj ---------------------------------------------------------
+  | 106 |         c = clock_status(conn, d["id"])
+  | 107 |         clocks.append({"device_id": d["id"], "device": d["name"], "is_simulated": d["is_simulated"], **c})
+  | 108 |         if c["status"] in ("aviso", "critico"):
+  | 109 |             if abs(c["offset_s"]) > 86400 * 365:      # el equipo arrancó sin hora (ej. 2960 en 1993)
+  | 110 |                 tip = ("El equipo no tiene la hora (arrancó con el reloj de fábrica): espere la "
+  | 111 |                        "sincronización NTP ('show ntp status') o revise 'ntp server'")
+  | 112 |             else:
+  | 113 |                 tip = ("Configure 'clock timezone' ANTES de 'clock set' y un servidor NTP; "
+  | 114 |                        "verifique con 'show ntp status'")
+  | 115 |             findings.append(_finding(c["status"], "reloj_desfasado", d,
+  | 116 |                                      c["text"] + f" ({c['samples']} eventos)", tip))
+  | 117 |         # --- 2. Silencio ------------------------------------------------------
+  | 118 |         if d["authorized"] and d["status"] != "mantenimiento":
+  | 119 |             last = conn.execute("SELECT MAX(received_at) FROM syslog_events WHERE device_id = ?",
+  | 120 |                                 (d["id"],)).fetchone()[0]
+  | 121 |             if last is None and not d["is_simulated"]:
+  | 122 |                 findings.append(_finding("info", "sin_eventos", d, "Nunca ha enviado eventos al NOC",
+  | 123 |                                          "Verifique 'logging host' y 'logging source-interface' en el equipo "
+  | 124 |                                          "y la regla del firewall del PC"))
+  | 125 |             elif last is not None and last < silent_since:
+  | 126 |                 findings.append(_finding("aviso", "sin_eventos", d,
+  | 127 |                                          f"Sin eventos desde {last} (más de {Config.CONSISTENCY_SILENT_HOURS} h)",
+  | 128 |                                          "Revise si el equipo está encendido y su configuración de Syslog"))
+  | 129 |         # --- 3. Marcas de las últimas 24 h ----------------------------------------
+  | 130 |         for flag, sev, text, tip in (
+  | 131 |                 ("interfaz_desconocida", "aviso", "eventos de interfaces no registradas",
+  | 132 |                  "Lea las interfaces del equipo (Leer del equipo) o revise si el mensaje es fabricado"),
+  | 133 |                 ("marca_inconsistente", "aviso", "eventos con formato de otra marca",
+  | 134 |                  "Verifique la marca en el inventario y descarte una suplantación de la IP")):
+  | 135 |             n = conn.execute("SELECT COUNT(*) FROM syslog_events WHERE device_id = ? AND received_at >= ? "
+  | 136 |                              "AND (',' || flags || ',') LIKE ?", (d["id"], since24, f"%,{flag},%")).fetchone()[0]
+  | 137 |             if n:
+  | 138 |                 findings.append(_finding(sev, flag, d, f"{n} {text} en 24 h", tip))
+  | 139 |         # --- 4. IP del inventario vs. interfaces reales ------------------------
+  | 140 |         real_ips = [r["ip_address"] for r in conn.execute(
+  | 141 |             "SELECT ip_address FROM interfaces WHERE device_id = ? AND source = 'equipo' "
+  | 142 |             "AND ip_address IS NOT NULL", (d["id"],))]
+  | 143 |         if real_ips and d["ip"] not in real_ips:
+  | 144 |             findings.append(_finding("aviso", "ip_inventario", d,
+  | 145 |                                      f"La IP del inventario ({d['ip']}) no está en ninguna interfaz del equipo "
+  | 146 |                                      f"({', '.join(real_ips)})",
+  | 147 |                                      "Corrija el inventario o la configuración: el Syslog llegaría con otra IP "
+  | 148 |                                      "de origen y el NOC lo trataría como fuente desconocida"))
+  | 149 |
+  | 150 |     # --- 5. IP duplicada entre equipos ----------------------------------------
+  | 151 |     owners = {}
+  | 152 |     for r in conn.execute("SELECT d.id, d.name, d.ip FROM devices d"):
+  | 153 |         owners.setdefault(r["ip"], set()).add((r["id"], r["name"]))
+  | 154 |     for r in conn.execute("SELECT i.ip_address, d.id, d.name FROM interfaces i JOIN devices d ON d.id = i.device_id "
+  | 155 |                           "WHERE i.ip_address IS NOT NULL"):
+  | 156 |         owners.setdefault(r["ip_address"], set()).add((r["id"], r["name"]))
+  | 157 |     for ip, devs in sorted(owners.items()):
+  | 158 |         if len(devs) > 1:
+  | 159 |             names = sorted(n for _, n in devs)
+  | 160 |             findings.append({"severity": "critico", "check": "ip_duplicada", "device_id": None,
+  | 161 |                              "device": ", ".join(names), "detail": f"La IP {ip} aparece en {len(devs)} equipos",
+  | 162 |                              "suggestion": "Un conflicto de IP corta la gestión y puede ser una suplantación: "
+  | 163 |                                            "revise la configuración de ambos equipos"})
+  | 164 |
+  | 165 |     # --- 6. Cadena de la auditoría ---------------------------------------------
+  | 166 |     chain = verify_audit_chain(conn)
+  | 167 |     if not chain["ok"]:
+  | 168 |         findings.append({"severity": "critico", "check": "auditoria_cadena", "device_id": None, "device": "NOC",
+  | 169 |                          "detail": f"Cadena de auditoría ROTA en el registro {chain['broken_at']}: {chain['reason']}",
+  | 170 |                          "suggestion": "No modifique la base. Compare con el hash ancla de la bitácora y escale "
+  | 171 |                                        "al administrador de seguridad"})
+  | 172 |
+  | 173 |     findings.sort(key=lambda f: (ORDER[f["severity"]], f["device"], f["check"]))
+  | 174 |     counts = {k: sum(1 for f in findings if f["severity"] == k) for k in ORDER}
+  | 175 |     return {"checked_at": _iso(now), "findings": findings, "counts": counts, "clocks": clocks,
+  | 176 |             "chain": {"ok": chain["ok"], "total": chain["total"], "broken_at": chain["broken_at"]}}
+  | 177 |
+  | 178 |
+  | 179 | def run_consistency(conn, user: str, now: datetime | None = None) -> dict:
+  | 180 |     """Revisión CON efectos: audita y, si la cadena está rota, abre un incidente de severidad 1."""
+  | 181 |     result = run_checks(conn, now)
+  | 182 |     incident = None
+  | 183 |     if not result["chain"]["ok"]:
+  | 184 |         open_inc = conn.execute("SELECT id FROM incidents WHERE correlation_key = ? AND status != 'cerrado'",
+  | 185 |                                 (CHAIN_KEY,)).fetchone()
+  | 186 |         if open_inc is None:                  # uno solo mientras siga abierto
+  | 187 |             incident = create_incident(
+  | 188 |                 conn, title="Integridad de la auditoría: cadena rota", severity=1, created_by="sistema",
+  | 189 |                 description=(f"La verificación automática encontró la cadena rota en el registro "
+  | 190 |                              f"{result['chain']['broken_at']}. Posible alteración o borrado de registros."),
+  | 191 |                 correlation_key=CHAIN_KEY)
+  | 192 |         else:
+  | 193 |             incident = open_inc["id"]
+  | 194 |     c = result["counts"]
+  | 195 |     audit(conn, user, "consistency.run", None, None,
+  | 196 |           f"criticos={c['critico']} avisos={c['aviso']} info={c['info']} cadena={'ok' if result['chain']['ok'] else 'ROTA'}"
+  | 197 |           + (f" incidente={incident}" if incident else ""),
+  | 198 |           "alerta" if c["critico"] else "ok")
+  | 199 |     result["incident"] = incident
+  | 200 |     return result
+  | 201 |
+  | 202 |
+  | 203 | @bp.get("")
+  | 204 | def consistency():
+  | 205 |     return jsonify(run_checks(get_db()))
+  | 206 |
+  | 207 |
+  | 208 | @bp.post("/run")
+  | 209 | def consistency_run():
+  | 210 |     return jsonify(run_consistency(get_db(), actor()))
+  +----------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+ 4.9 Revisión periódica en el receptor (app/receiver.py)
+--------------------------------------------------------------------------------
+
+
+ El receptor es el proceso que está siempre encendido: él hace la revisión.
+ Un fallo de la revisión nunca detiene la recepción de eventos.
+
+  +--- app/receiver.py -------------------------------------------------------
+  |  27 | def _periodic_check(conn):
+  |  28 |     """Consistencia + cadena de auditoría; un fallo aquí nunca detiene la recepción."""
+  |  29 |     from .consistency import run_consistency
+  |  30 |     try:
+  |  31 |         r = run_consistency(conn, "sistema")
+  |  32 |         c = r["counts"]
+  |  33 |         chain = "íntegra" if r["chain"]["ok"] else f"ROTA -> incidente #{r['incident']}"
+  |  34 |         print(f"[CONSISTENCIA] críticos: {c['critico']} · avisos: {c['aviso']} · info: {c['info']} · "
+  |  35 |               f"cadena de auditoría {chain}")
+  |  36 |     except Exception as e:      # noqa: BLE001 - el receptor debe seguir recibiendo
+  |  37 |         print(f"[CONSISTENCIA] no se pudo revisar: {type(e).__name__}")
+  |  38 |
+  |  39 |
+  |  40 | def run_receiver(host: str = Config.SYSLOG_HOST, port: int = Config.SYSLOG_PORT):
+  |  41 |     conn = connect(Config.DATABASE_PATH)
+  |  42 |     init_db(conn)
+  |  43 |
+  |  44 |     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+  |  45 |     sock.bind((host, port))
+  |  46 |     # Timeout de 1 s: en Windows, Ctrl+C no interrumpe recvfrom() mientras
+  |  47 |     # espera; con el timeout el bucle "despierta" cada segundo y puede salir.
+  |  48 |     sock.settimeout(1.0)
+  |  49 |
+  |  50 |     audit(conn, "sistema", "receiver.start", detail=f"udp://{host}:{port}")
+  |  51 |     print(f"[NOC] Receptor Syslog escuchando en udp://{host}:{port}  (Ctrl+C para detener)")
+  |  52 |     received = 0
+  |  53 |     dropped = 0
+  |  54 |     # Fase 9.5: revisión periódica de consistencia y de la cadena de auditoría.
+  |  55 |     # El receptor es el proceso que está siempre encendido, por eso la hace él.
+  |  56 |     interval = Config.CONSISTENCY_INTERVAL_MINUTES * 60
+  |  57 |     next_check = time.monotonic() + 5 if interval else None
+  |  58 |     try:
+  |  59 |         while True:
+  |  60 |             if next_check is not None and time.monotonic() >= next_check:
+  |  61 |                 next_check = time.monotonic() + interval
+  |  62 |                 _periodic_check(conn)
+  +----------------------------------------------------------------------------
+
+
+================================================================================
+ 5. PRUEBAS AUTOMÁTICAS (276 -> 423)
+================================================================================
+
+
+ > python -m pytest -q
+   => 423 passed
+
+   | Archivo                          | Pruebas | Qué verifica                                   |
+   |----------------------------------|---------|------------------------------------------------|
+   | tests/test_conexiones.py         |   30    | Modos, validación previa, número de serie,     |
+   |                                  |         | llave SSH, bloqueo del puerto, migración, API  |
+   | tests/test_configuracion_base.py |   37    | Préstamo sin credenciales, fijo con SSH,       |
+   |                                  |         | máscaras, coherencia de la red, VLAN, errores  |
+   | tests/test_interfaces_reales.py  |   20    | Lectura Cisco/Huawei/Fortinet, sincronización, |
+   |                                  |         | ausentes, mayúsculas y minúsculas              |
+   | tests/test_diagnostico.py        |   27    | Destinos permitidos y rechazados, lectura de   |
+   |                                  |         | ping/traceroute, límite por minuto, roles      |
+   | tests/test_consistencia.py       |   33    | Reloj (atrasado, adelantado, 1993), chequeos,  |
+   |                                  |         | cadena rota -> incidente, trozos del generador |
+   | (ajustes en pruebas anteriores)  |    -    | ping 8.8.8.8 -> "Diagnóstico"; 11 tablas       |
+
+   Las pruebas no necesitan equipos: un transporte FALSO reemplaza a Netmiko
+   y el modo simulado lee salidas reales guardadas en samples/cli/.
+   Cada uno de los 26 commits de la fase se ejecutó por separado: todos en
+   verde (ver sección 8).
+
+
+
+================================================================================
+ 6. SEGURIDAD APLICADA EN LA FASE 9
+================================================================================
+
+
+   - Equipos prestados SIN contraseñas de ningún tipo (regla del préstamo) y
+     devueltos de fábrica (write erase + reload sin guardar).
+   - Credenciales SSH solo en .env; nunca en GitHub, en capturas ni en la
+     auditoría. El generador usa marcadores <USUARIO>/<CONTRASEÑA>.
+   - Llave SSH fijada: si cambia, se aborta sin enviar comandos.
+   - Identidad por número de serie: un equipo con otro nombre (o el mismo
+     nombre en otro equipo) se detecta.
+   - Solo comandos de lectura de la lista permitida; todos se validan ANTES
+     de conectar. Los de configuración se bloquean y se auditan.
+   - La salida del equipo es un dato NO confiable: se guarda como texto y
+     solo se extraen campos con patrones fijos.
+   - Diagnóstico acotado: redes privadas o de documentación, 5 por minuto,
+     y solo por su ruta.
+   - Un puerto COM y un equipo atienden una sesión a la vez.
+   - Trazabilidad completa con huella SHA-256 de cada salida.
+   - Laboratorio: receptor escuchando solo en la IP del laboratorio (nunca
+     0.0.0.0); firewall solo para 192.168.100.0/24 y borrado al terminar.
+   - Cadena de auditoría verificada sola cada 10 minutos; si se rompe,
+     incidente de severidad 1.
+
+ LÍMITES DECLARADOS
+   - La consola solo está disponible para Cisco (Netmiko); Huawei y Fortinet
+     se probaron con salidas de ejemplo.
+   - El desfase se mide contra la hora del PC del NOC, que debe estar en
+     hora. Un equipo sin eventos no se puede medir.
+   - La conexión real es solo de lectura y diagnóstico: los cambios con
+     aprobación por etapas y rollback llegan en la Fase 10.
+
+
+
+================================================================================
+ 7. PROBLEMAS Y OBSERVACIONES
+================================================================================
+
+
+ 1. Router prestado con contraseña ajena y nombre "MiSwitch"
+    Recuperación por ROMMON. Confirma: préstamo sin contraseñas e identidad
+    por número de serie. Costó buena parte de la sesión.
+
+ 2. 'no ip domain-lookup' inválido en IOS XE 17
+    Es 'no ip domain lookup' (con espacio) dentro de configure terminal.
+    Corregido en el generador (75fcf25).
+
+ 3. Pegar el bloque completo por consola perdió líneas
+    A 9600 baudios el equipo no alcanza a procesar todo lo pegado. Ahora la
+    configuración va en trozos de 5 líneas o menos con su botón Copiar.
+
+ 4. Router 5 horas atrás
+    'clock set' antes de 'clock timezone'. Ahora primero la zona.
+
+ 5. Switch en 1993 y luego 1 min 24 s atrasado
+    Sin batería arranca en 1993; sincronizó por NTP con el router, que tenía
+    la hora puesta a mano con atraso. Sincronizado no es lo mismo que en hora.
+
+ 6. 'SYSLOG_HOST=...' escrito sin 'set' y comandos fuera de configure terminal
+    Errores del momento. El plan ahora indica 'set' en la ventana del
+    receptor y cada trozo trae su configure terminal.
+
+ 7. Instrucciones del 9.1 con 'python run.py'
+    Desde la Fase 7 se usa 'python serve.py' (waitress) para las pruebas en
+    vivo. Corregido en d61dc60.
+
+ 8. Mensaje de dabdd1d: "26 pruebas (332)"
+    En realidad agrega 37 (343). No se reescribió el historial publicado.
+
+ 9. Anaconda Prompt no abre como administrador
+    Las reglas netsh se crean y borran en PowerShell (Administrador).
+
+10. 7 capturas con '.png.png'
+    Windows oculta las extensiones. Corregido con git mv (ea4f750) y se
+    activó "Extensiones de nombre de archivo" en el Explorador.
+
+11. IP duplicadas en check-consistency
+    Las muestras SIM usan las IP del plan del laboratorio. Hallazgo correcto.
+
+12. Tiempo de las pruebas variable en el PC (37 a 100 s)
+    Depende de la carga del equipo; en el entorno de preparación ~17 s.
+
+13. Sesión 2 pendiente (viernes 23-oct)
+    v0.4.0 se publica con lo probado. La sesión 2 (conexión desde el NOC,
+    Leer del equipo, Diagnóstico, enlace caído, NTP) se registra en la marcha
+    blanca de la Fase 10; si hay correcciones, v0.4.1.
+
+
+
+================================================================================
+ 8. CONTROL DE VERSIONES: HISTORIAL DE LA FASE
+================================================================================
+
+
+   acfb9ee feat(conexiones): netmiko, configuracion y tablas de sesiones y comandos       276
+   52d0748 feat(conexiones): gestor por consola, ssh y simulado con trazabilidad ...      276
+   5859675 feat(interfaz): ventana de conexion e historial de sesiones en el inventario   276
+   414b53a test: 30 pruebas del gestor de conexiones (306 en total)                       306
+   83786ef docs: evidencias del paso 9.1 (gestor de conexiones)                           306
+   bfbd89b feat(configuraciones): configuracion base desde cero para router y switch ...  306
+   f18b510 feat(interfaz): seccion de configuracion base con bloques para copiar          306
+   3a75b82 fix(conexiones): mensajes en espanol del puerto de consola y detalle ...       306
+   d61dc60 docs: plan de la sesion de laboratorio y motivo correcto de waitress           306
+   dabdd1d test: 26 pruebas de la configuracion base (332 en total)   (son 37: 343)       343
+   017e3fa docs: evidencias del paso 9.2 (configuracion base)                             343
+   7591888 feat(interfaces): lectura de interfaces reales del equipo y sincronizacion ... 343
+   e0366c3 feat(interfaz): boton leer del equipo con resumen de cambios ...               343
+   2a9f594 test: 20 pruebas de interfaces reales (363 en total)                           363
+   f1254ee docs: evidencias del paso 9.3 (interfaces reales)                              363
+   d8215ab feat(diagnostico): ping y traceroute desde el equipo con destino validado ...  363
+   058f8c5 feat(interfaz): seccion de diagnostico en la ventana de conexion               363
+   9994660 docs: plan de laboratorio con firewall en powershell y horario de la sesion    363
+   64636fe test: 27 pruebas del diagnostico desde el equipo (390 en total)                390
+   babcbcf docs: evidencias del paso 9.4 (diagnostico)                                    390
+   75fcf25 fix(configuraciones): configuracion base en trozos, zona antes de la hora ...  390
+   94e5b74 feat(consistencia): reloj ntp, chequeos de consistencia y verificacion ...      390
+   63d744b feat(interfaz): panel de consistencia y reloj de los equipos en el dashboard   390
+   11f0294 test: 33 pruebas de reloj, consistencia y generador en trozos (423 en total)   423
+   98cf8eb docs: evidencias del paso 9.5 y de la primera sesion de laboratorio            423
+   ea4f750 docs: corrige la extension duplicada de las capturas del laboratorio           423
+   (cierre) chore(release): version 0.4.0, changelog, readme, bitacora y proceso de la fase 9
+
+ PUBLICACIÓN
+ > git add app/__init__.py CHANGELOG.md README.md docs/bitacora.md docs/FASE9_proceso_completo.txt docs/laboratorio/plan_sesion_laboratorio.md
+ > git status
+ > git commit -m "chore(release): version 0.4.0, changelog, readme, bitacora y proceso de la fase 9"
+ > git push
+ GitHub -> Pull request: base develop <- compare feature/fase9-laboratorio (Merge commit)
+ GitHub -> Pull request: base main <- compare develop (Merge commit)
+ > git switch main
+ > git pull
+ > git tag -a v0.4.0 -m "v0.4.0 equipos del laboratorio, diagnostico y consistencia"
+ > git push origin v0.4.0
+ > git log --oneline -1 v0.4.0     (debe ser el merge del PR a main)
+ GitHub -> Releases -> Draft a new release -> tag v0.4.0 -> notas del CHANGELOG
+ > git switch develop
+ > git merge --ff-only main
+ > git push
+
+
+
+================================================================================
+ 9. EVIDENCIAS DE LA FASE 9
+================================================================================
+
+
+   [E] C3-F9-01_pruebas_306_passed.png
+   [E] C3-F9-02_web_modo_conexion.png
+   [E] C3-F9-03_web_sesion_identificacion.png
+   [E] C3-F9-04_consola_device_session.png
+   [E] C3-F9-05_consola_comando_bloqueado.png
+   [E] C3-F9-06_web_equipo_fisico_distinto.png
+   [E] C3-F9-07_web_consola_sin_cable.png
+   [E] C3-F9-08_consola_historial_sesiones.png
+   [E] C3-F9-09_web_auditoria_sesiones.png
+   [E] C3-F9-10_web_auditor_historial.png
+   [E] C3-F9-11_pruebas_343_passed.png
+   [E] C3-F9-12_web_base_router_prestamo.png
+   [E] C3-F9-13_web_base_switch_verificacion.png
+   [E] C3-F9-14_web_base_errores.png
+   [E] C3-F9-15_web_base_fijo_ssh.png
+   [E] C3-F9-16_consola_puerto_espanol.png
+   [E] C3-F9-17_web_base_direccionamiento_manual.png
+   [E] C3-F9-18_web_base_usar_sugerido.png
+   [E] C3-F9-19_web_inventario_equipos_lab.png
+   [E] C3-F9-20_pruebas_363_passed.png
+   [E] C3-F9-21_web_leer_interfaces_router.png
+   [E] C3-F9-22_web_eliminar_ausentes.png
+   [E] C3-F9-23_web_interfaces_switch_27.png
+   [E] C3-F9-24_consola_device_interfaces.png
+   [E] C3-F9-25_pruebas_390_passed.png
+   [E] C3-F9-26_web_ping_ok.png
+   [E] C3-F9-27_web_traceroute_saltos.png
+   [E] C3-F9-28_web_destino_internet_bloqueado.png
+   [E] C3-F9-29_consola_device_diag.png
+   [E] C3-F9-30_pruebas_423_passed.png
+   [E] C3-F9-31_consola_check_consistency_datos_reales.png
+   [E] C3-F9-32_web_dashboard_consistencia.png
+   [E] C3-F9-33_web_configuracion_en_trozos.png
+   [E] C3-F9-LAB-01_router_contrasena_residual.png
+   [E] C3-F9-LAB-02_router_config_reloj_desfasado.png
+   [E] C3-F9-LAB-03_router_hora_corregida.png
+   [E] C3-F9-LAB-04_switch_config_ping_router.png
+   [E] C3-F9-LAB-05_pc_ping_router_switch.png
+   [E] C3-F9-LAB-06_primer_evento_real.png
+   [E] C3-F9-LAB-07_switch_ntp_sin_sincronizar.png
+   [E] C3-F9-LAB-08_pc_firewall_creado_y_borrado.png
+
+
+
+================================================================================
+ 10. PREGUNTAS PROBABLES DE SUSTENTACIÓN (CON RESPUESTA)
+================================================================================
+
+
+ P: ¿Por qué por consola y no por SSH en el laboratorio?
+ R: Los equipos llegan de fábrica, sin IP ni llaves: solo la consola
+    funciona. Y la regla del préstamo es no dejar contraseñas; SSH las
+    necesita. SSH queda para equipos fijos, con la credencial en el .env.
+
+ P: ¿Cómo sabes que te conectaste al equipo correcto?
+ R: Por el número de serie que lee 'show version' en cada sesión. El
+    nombre no sirve: el router prestado se llamaba "MiSwitch".
+
+ P: ¿Qué guarda el NOC de cada conexión?
+ R: Quién, cuándo, por qué medio, qué equipo físico (serie, modelo,
+    versión), cada comando con su duración, la salida y su SHA-256. También
+    queda en la auditoría encadenada.
+
+ P: ¿Puede el NOC cambiar la configuración del equipo?
+ R: No en esta versión: solo comandos de lectura de la lista permitida,
+    validados antes de conectar. Los cambios con aprobación y rollback son
+    la Fase 10.
+
+ P: ¿Por qué no se permite hacer ping a 8.8.8.8 desde el router?
+ R: Un equipo de red no debe usarse para sondear Internet o a terceros. El
+    diagnóstico solo va a redes privadas o de documentación, 5 por minuto, y
+    el ping no existe en la sesión normal: solo por Diagnóstico.
+
+ P: ¿Por qué el router quedó 5 horas atrás?
+ R: Se puso la hora antes que la zona: 'clock set' tomó la hora como UTC.
+    El generador ahora pone primero 'clock timezone COT -5 0'.
+
+ P: El switch dice 'synchronized'. ¿Por qué el NOC dice que está atrasado?
+ R: NTP copia la hora del router, y el router tenía la hora puesta a mano
+    con atraso. El NOC compara contra la hora del PC, que sí está en hora.
+    En una red real el servidor NTP se sincroniza con una fuente confiable.
+
+ P: ¿Cómo mides el desfase sin entrar al equipo?
+ R: Cada evento trae su hora; el NOC anota cuándo lo recibió. La diferencia
+    es el desfase; se toma la mediana de los últimos 20 eventos.
+
+ P: ¿Por qué se perdían líneas al pegar la configuración?
+ R: Por consola a 9600 baudios el equipo procesa más lento de lo que llega
+    el texto pegado. Se divide en trozos de 5 líneas o menos.
+
+ P: ¿Qué pasa si alguien altera la auditoría mientras nadie mira?
+ R: El receptor verifica la cadena cada 10 minutos; si está rota abre un
+    incidente de severidad 1 (uno solo mientras siga abierto).
+
+ P: ¿Por qué el receptor escucha en 192.168.100.10 y no en 0.0.0.0?
+ R: 0.0.0.0 abriría el puerto en todas las tarjetas, incluido el Wi-Fi de
+    la universidad. Solo se abre en la red del laboratorio y el firewall
+    solo acepta esa red.
+
+
+
+================================================================================
+ 11. PREGUNTA DE VALIDACIÓN DEL ESTUDIANTE
+================================================================================
+
+
+ Pregunta:
+   El viernes, al conectar por consola el equipo registrado como LAB-RTR01,
+   el NOC muestra "EQUIPO FÍSICO DISTINTO". Luego, el dashboard marca los
+   dos equipos "Reloj atrasado 1 min 24 s" aunque 'show ntp status' del
+   switch dice "synchronized". Por último, un compañero pide hacer
+   'ping 8.8.8.8' desde el router "para ver si hay Internet".
+   1. ¿Qué significa la alerta del número de serie y qué se hace antes de
+      seguir?
+   2. ¿Por qué el NOC marca desfase si el NTP está sincronizado y cómo se
+      corrige?
+   3. ¿Qué pasa con el ping y por qué?
+
+ Respuesta del estudiante (con sus propias palabras, revisada el 2026-10-22):
+   1. La alerta se debe a una discrepancia de hardware: el equipo que
+      respondió no es el registrado (reemplazo no registrado).
+   2. El desfase se encuentra ya en la cadena de configuración: al poner la
+      hora en el router se realiza de forma manual y siempre va a quedar un
+      desfase con la hora del NOC del PC.
+   3. El ping solo se realiza hacia los equipos y demás enlaces autorizados;
+      cuando se realiza hacia páginas de Internet, el sistema del NOC no deja
+      hacer ping.
+
+ Nota de revisión (para la sustentación):
+   1. Antes de seguir: 'show version' para confirmar modelo y número de
+      serie, revisar si trae configuración o contraseña ajena (caso
+      "MiSwitch") y solo entonces actualizar el inventario. La alerta queda
+      en la auditoría como device.serial_cambio.
+   2. El switch está sincronizado con el router (NTP copia la referencia);
+      el error está en la referencia. Corrección: en el router primero
+      'clock timezone COT -5 0' y después 'clock set' con la hora exacta del
+      PC; en una red real, el servidor NTP se sincroniza con una fuente
+      confiable (GPS o NTP público).
+   3. No es una alerta sino un RECHAZO: "Destino fuera de las redes
+      permitidas" (400) y no se abre ninguna conexión con el router. Por la
+      sesión normal también se bloquea (ping no está en la lista permitida)
+      y queda auditado. Un equipo de red no se usa para sondear Internet.
+
+
+
+================================================================================
+ 12. LISTA DE VERIFICACIÓN DE CIERRE DE LA FASE 9
+================================================================================
+
+
+ [x] Gestor de conexiones: simulado, consola y SSH (9.1)
+ [x] Identidad por número de serie y trazabilidad con SHA-256 (9.1)
+ [x] Configuración base desde cero, préstamo y fijo (9.2)
+ [x] Interfaces reales leídas del equipo (9.3)
+ [x] Diagnóstico con destino validado y límite (9.4)
+ [x] Sesión 1 de laboratorio y primer evento real (21-oct)
+ [x] Correcciones del laboratorio en el generador (9.5)
+ [x] Consistencia, reloj y verificación automática de la cadena (9.5)
+ [x] 423 pruebas en verde; los 26 commits verificados uno por uno
+ [x] Capturas con doble extensión corregidas (ea4f750)
+ [x] APP_VERSION = 0.4.0, CHANGELOG, README, bitácora y plan de laboratorio
+ [x] Nuevo hash ancla de la auditoría en la bitácora
+ [x] Respuesta a la pregunta de validación de la Fase 9
+ [ ] Pull Request feature/fase9-laboratorio -> develop, y develop -> main
+ [ ] Etiqueta anotada v0.4.0 y release publicada
+ [ ] develop sincronizada con main
+ [ ] Sesión 2 de laboratorio (viernes 23-oct) -> marcha blanca, Fase 10
+
+################################################################################
+#                           FIN DEL DOCUMENTO - FASE 9                         #
+################################################################################

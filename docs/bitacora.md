@@ -591,16 +591,162 @@ Documento detallado: [`docs/FASE8_proceso_completo.txt`](FASE8_proceso_completo.
 
 ---
 
+## Fase 9 — Equipos del laboratorio, diagnóstico y consistencia (v0.4.0)
+
+**Fechas:** 2026-10-20 a 2026-10-22 · **Rama:** `feature/fase9-laboratorio` · **Estado:** ✅ Cerrada (release v0.4.0)
+
+Objetivo: que el NOC trabaje con equipos **reales y autorizados**: conectarse por consola (equipos
+prestados, sin contraseñas) o SSH (equipos fijos), saber qué equipo físico respondió, leer sus
+interfaces, diagnosticar desde el equipo y revisar la consistencia de la red y de la propia auditoría.
+Empieza la **marcha blanca** con el router y el switch del laboratorio.
+
+### Qué se realizó
+
+| Paso | Actividad | Archivo(s) | Pruebas |
+|---|---|---|---|
+| 9.1 | Gestor de conexiones: modos ninguno / simulado / consola / ssh (Netmiko); identificación por número de serie (`device.serial_cambio`); llave SSH fijada; un solo uso del equipo o del puerto COM a la vez; tablas `device_sessions` y `device_commands` (salida + SHA-256); ventana Conexión e historial; `device-session`, `device-sessions` | `connector.py` (nuevo), `schema.sql`, `db.py`, `devices.py`, `console.py`, `config.py`, `manage.py`, `inventario.*`, `samples/cli/` | 276 → 306 |
+| 9.2 | Configuración base desde cero (préstamo / fijo), direccionamiento manual o sugerido, máscara decimal o prefijo, interfaz de gestión editable, bloque de limpieza; mensajes en español del puerto COM; plan de la sesión de laboratorio | `configgen.py`, `configuraciones.*`, `connector.py`, `docs/laboratorio/` | 306 → 343 |
+| 9.3 | Interfaces reales leídas del equipo (Cisco, Huawei, Fortinet) con resumen de cambios; columnas IP y origen; `device-interfaces [--eliminar-ausentes]` | `interfaces.py`, `schema.sql`, `inventario.*`, `manage.py` | 343 → 363 |
+| 9.4 | Diagnóstico desde el equipo: ping y traceroute, destino solo en redes privadas o de documentación, 5 por minuto, auditado; `device-diag` | `diagnostics.py` (nuevo), `console.py`, `connector.py`, `inventario.*`, `manage.py` | 363 → 390 |
+| Lab 1 | **Primera sesión de laboratorio** (21-oct): router y switch desde cero por consola, red 192.168.100.0/24, primer evento Syslog real | `docs/evidencias/C3-F9-LAB-*` | — |
+| 9.5 | Correcciones del laboratorio (configuración en trozos, zona antes de la hora, `no ip domain lookup`); chequeo de consistencia (reloj NTP, equipos callados, interfaces, marca, IP del inventario, IP duplicadas); verificación automática de la cadena con incidente de severidad 1; panel en el dashboard; `check-consistency` | `configgen.py`, `consistency.py` (nuevo), `receiver.py`, `dashboard.*`, `configuraciones.*`, `manage.py` | 390 → 423 |
+| Cierre | Versión 0.4.0, CHANGELOG, README, bitácora, `FASE9_proceso_completo.txt`, PR y release | `app/__init__.py`, `CHANGELOG.md`, `README.md`, `docs/` | 423 |
+
+### Marcha blanca — sesión 1 (miércoles 2026-10-21, 6:00 a 7:28 p. m.)
+
+| Elemento | Detalle |
+|---|---|
+| Equipos | Router Cisco Catalyst 8200L-1N-4T (IOS XE 17, modo autónomo) y switch Cisco Catalyst 2960-24TT-L, **prestados** por el laboratorio |
+| Acceso | Cable de consola USB en **COM5**, PuTTY a 9600 8N1 sin control de flujo. **Sin contraseñas** (regla del préstamo) |
+| Red | 192.168.100.0/24 aislada: LAB-RTR01 Gi0/0/0 `.1` (`ntp master 3`), LAB-SW01 Vlan1 `.2` (puerta `.1`), PC del NOC `.10` en Fa0/2 |
+| PC | Reglas `netsh` solo para la red del laboratorio, creadas y borradas en PowerShell (Administrador). Receptor con `set SYSLOG_HOST=192.168.100.10` solo en su ventana (sin tocar `.env`) |
+| Conectividad | PC→router 4/4 · PC→switch 3/4 (el primero se pierde por ARP) · switch→router 5/5 |
+| **Primer evento real** | **#178**, 21/10/26 7:25:27 p. m., LAB-SW01, Cisco, local7, `SYS-6-USERLOG_INFO` («Prueba NOC desde LAB-SW01»), origen UDP, **sin SIM y sin marcas** |
+| Interrupción | 7:28 p. m.: se devolvieron los equipos por demoras de otra área. Quedan para la sesión 2 la conexión desde el NOC, Leer del equipo, Diagnóstico y el incidente por enlace caído |
+
+**Hallazgos de la sesión 1 y qué se hizo con cada uno**
+
+| # | Hallazgo | Acción |
+|---|---|---|
+| 1 | El router llegó con **contraseña de otro estudiante** y con el nombre engañoso **«MiSwitch»** | Recuperación oficial de Cisco (Break → ROMMON `confreg 0x2142`, `config-register 0x2102`, `write erase`, `reload`). Confirma dos decisiones: equipos prestados **sin contraseñas** y el equipo se identifica por **número de serie**, nunca por el nombre |
+| 2 | `no ip domain-lookup` no existe en IOS XE 17 | Corregido en 9.5: `no ip domain lookup`, dentro de `configure terminal` |
+| 3 | Pegar el bloque completo a 9600 baudios **perdió líneas** (solo quedó el hostname) | Corregido en 9.5: trozos `configure terminal … end` de 5 líneas o menos, cada uno con su botón Copiar |
+| 4 | `clock set` **antes** de `clock timezone`: el router tomó la hora como UTC y quedó **5 h atrás** | Corregido en 9.5 (primero la zona). Se volvió a poner la hora a mano (`clock set 19:00:00`) |
+| 5 | El switch arrancó con el reloj de **1993** (sin batería) y a las 19:05 el NTP no estaba sincronizado | Sincronizó con el router antes de enviar eventos. Caso real que motivó el monitor de reloj del 9.5 |
+| 6 | El 9.5 midió el LAB-SW01 **1 min 24 s atrasado** aunque el NTP estaba sincronizado | El NTP copia la hora de la referencia: el router tenía la hora puesta a mano con ese atraso. **Sincronizado no es lo mismo que en hora** (ver C3-F9-31) |
+| 7 | Una sesión de 2 h no alcanzó (recuperación de contraseña y demoras externas) | Las siguientes sesiones se planean con margen y con el paso a paso ya generado |
+| 8 | Se escribió `SYSLOG_HOST=…` directamente en la consola y comandos de configuración fuera de `configure terminal` | `set SYSLOG_HOST=…` en la ventana del receptor; el generador marca cada trozo con su `configure terminal` |
+
+### Historial de commits de la Fase 9
+
+| Commit | Mensaje | Pruebas |
+|---|---|---|
+| acfb9ee | feat(conexiones): netmiko, configuracion y tablas de sesiones y comandos | 276 |
+| 52d0748 | feat(conexiones): gestor por consola, ssh y simulado con trazabilidad por numero de serie | 276 |
+| 5859675 | feat(interfaz): ventana de conexion e historial de sesiones en el inventario | 276 |
+| 414b53a | test: 30 pruebas del gestor de conexiones (306 en total) | 306 |
+| 83786ef | docs: evidencias del paso 9.1 (gestor de conexiones) | 306 |
+| bfbd89b | feat(configuraciones): configuracion base desde cero para router y switch del laboratorio | 306 |
+| f18b510 | feat(interfaz): seccion de configuracion base con bloques para copiar | 306 |
+| 3a75b82 | fix(conexiones): mensajes en espanol del puerto de consola y detalle de sesion simulada | 306 |
+| d61dc60 | docs: plan de la sesion de laboratorio y motivo correcto de waitress | 306 |
+| dabdd1d | test: 26 pruebas de la configuracion base (332 en total) *(en realidad agrega 37: 343)* | 343 |
+| 017e3fa | docs: evidencias del paso 9.2 (configuracion base) | 343 |
+| 7591888 | feat(interfaces): lectura de interfaces reales del equipo y sincronizacion con el inventario | 343 |
+| e0366c3 | feat(interfaz): boton leer del equipo con resumen de cambios en la ventana de interfaces | 343 |
+| 2a9f594 | test: 20 pruebas de interfaces reales (363 en total) | 363 |
+| f1254ee | docs: evidencias del paso 9.3 (interfaces reales) | 363 |
+| d8215ab | feat(diagnostico): ping y traceroute desde el equipo con destino validado y limite por minuto | 363 |
+| 058f8c5 | feat(interfaz): seccion de diagnostico en la ventana de conexion | 363 |
+| 9994660 | docs: plan de laboratorio con firewall en powershell y horario de la sesion | 363 |
+| 64636fe | test: 27 pruebas del diagnostico desde el equipo (390 en total) | 390 |
+| babcbcf | docs: evidencias del paso 9.4 (diagnostico) | 390 |
+| 75fcf25 | fix(configuraciones): configuracion base en trozos, zona antes de la hora y domain lookup segun el laboratorio | 390 |
+| 94e5b74 | feat(consistencia): reloj ntp, chequeos de consistencia y verificacion automatica de la cadena | 390 |
+| 63d744b | feat(interfaz): panel de consistencia y reloj de los equipos en el dashboard | 390 |
+| 11f0294 | test: 33 pruebas de reloj, consistencia y generador en trozos (423 en total) | 423 |
+| 98cf8eb | docs: evidencias del paso 9.5 y de la primera sesion de laboratorio | 423 |
+| ea4f750 | docs: corrige la extension duplicada de las capturas del laboratorio | 423 |
+| (siguiente) | chore(release): version 0.4.0, changelog, readme, bitacora y proceso de la fase 9 | 423 |
+
+**Los 26 commits se verificaron uno por uno: todos pasan sus pruebas** (a diferencia de la Fase 8,
+ningún commit quedó en rojo gracias a `git status` antes de cada commit).
+
+### Ancla de la auditoría
+
+Último registro verificado el 2026-10-22 al cerrar la fase (`python manage.py verify-audit`), con los
+eventos y sesiones de la marcha blanca. Se anota **fuera** de la base para detectar un recorte del final:
+
+- Registro **225** · hash `3a2d5b596a9ef1b68343873a26e00f35292f1f0bb067aa9fc1e8a31b0d1c6564`
+- Ancla anterior (Fase 8): registro 71 · `54ea22b8…a59493c`. La cadena sigue íntegra desde entonces.
+
+### Evidencias de la Fase 9 (`docs/evidencias/`)
+
+| Archivo | Qué muestra |
+|---|---|
+| C3-F9-01_pruebas_306_passed | 306 pruebas en verde (paso 9.1) |
+| C3-F9-02_web_modo_conexion | Campos de conexión en el inventario (modo, plataforma, puerto) |
+| C3-F9-03_web_sesion_identificacion | Sesión simulada: número de serie, modelo y versión identificados |
+| C3-F9-04 / 05 | `device-session` por consola y un comando de configuración bloqueado sin conectarse |
+| C3-F9-06_web_equipo_fisico_distinto | Alerta «EQUIPO FÍSICO DISTINTO» al cambiar el número de serie |
+| C3-F9-07_web_consola_sin_cable | Puerto COM inexistente: mensaje claro en español |
+| C3-F9-08 / 09 / 10 | Historial de sesiones (consola), auditoría de sesiones y el auditor consultando el historial |
+| C3-F9-11_pruebas_343_passed | 343 pruebas en verde (paso 9.2) |
+| C3-F9-12 a 18 | Configuración base: router en préstamo, verificación del switch, errores juntos, modo fijo con SSH, puerto en español, direccionamiento manual y «Usar sugerido» |
+| C3-F9-19_web_inventario_equipos_lab | LAB-RTR01 y LAB-SW01 en el inventario (no simulados) |
+| C3-F9-20_pruebas_363_passed | 363 pruebas en verde (paso 9.3) |
+| C3-F9-21 a 24 | Leer del equipo (router), eliminar ausentes, las 27 interfaces del switch y `device-interfaces` |
+| C3-F9-25_pruebas_390_passed | 390 pruebas en verde (paso 9.4) |
+| C3-F9-26 a 29 | Ping correcto, traceroute con saltos, Internet bloqueado y `device-diag` |
+| C3-F9-30_pruebas_423_passed | 423 pruebas en verde (paso 9.5) |
+| C3-F9-31_consola_check_consistency_datos_reales | `check-consistency` con datos reales: LAB-SW01 1 min 24 s atrasado, IP duplicadas, cadena íntegra |
+| C3-F9-32_web_dashboard_consistencia | Panel de consistencia y reloj de los equipos |
+| C3-F9-33_web_configuracion_en_trozos | Configuración base en trozos con botón Copiar por trozo |
+| C3-F9-LAB-01_router_contrasena_residual | El router prestado con contraseña ajena |
+| C3-F9-LAB-02 / 03 | Router configurado con el reloj 5 h atrás y la hora corregida |
+| C3-F9-LAB-04 / 05 | Switch configurado con ping al router; pings del PC al router y al switch |
+| C3-F9-LAB-06_primer_evento_real | Evento #178: el primer Syslog real recibido por el NOC |
+| C3-F9-LAB-07_switch_ntp_sin_sincronizar | El switch con el NTP aún sin sincronizar |
+| C3-F9-LAB-08_pc_firewall_creado_y_borrado | Reglas del firewall creadas y borradas en PowerShell |
+
+### Observaciones de la Fase 9
+
+| Situación | Explicación / acción |
+|---|---|
+| Las instrucciones del 9.1 decían `python run.py` | Desde la Fase 7 las pruebas en vivo usan `python serve.py` (waitress, sin depuración). Se corrigió en `d61dc60` con el motivo correcto |
+| El mensaje de `dabdd1d` dice «26 pruebas (332)» | El commit agrega 37 pruebas (343). No se reescribió el historial publicado |
+| Anaconda Prompt no abre como administrador en este PC | Las reglas del firewall se crean y borran en PowerShell (Administrador); el plan de laboratorio lo indica |
+| 7 capturas del laboratorio con `.png.png` | Windows oculta las extensiones y se escribió `.png` en el nombre. Corregido con `git mv` en `ea4f750` (renombre al 100 %). Se activó *Vista → Mostrar → Extensiones de nombre de archivo* |
+| IP duplicadas en `check-consistency` (192.168.100.1 y .2) | Los equipos simulados SIM-CORE-RTR01 y SIM-DIST-SW01 usan las IP del plan del laboratorio en sus salidas de ejemplo. Es un hallazgo correcto del chequeo: en la operación real son dos equipos con la misma IP |
+| LAB-RTR01 «Nunca ha enviado eventos» | Esperado: la sesión 1 terminó antes de probar el Syslog del router. Se revisa en la sesión 2 |
+| El tiempo de las pruebas varía (37 s a 100 s) en el PC | Depende de la carga del equipo (antivirus, otras aplicaciones); en GitHub Actions y en el entorno de preparación tardan ~17 s |
+| La sesión 2 de laboratorio queda para el viernes 23 | La versión 0.4.0 se publica con lo probado; lo que se encuentre en la sesión 2 se registra en la marcha blanca (Fase 10) y, si hay que corregir, en v0.4.1 |
+
+### Pregunta de validación de la Fase 9
+
+> El viernes, al conectar por consola el equipo registrado como LAB-RTR01, el NOC muestra
+> «EQUIPO FÍSICO DISTINTO». Luego, el dashboard marca los dos equipos «Reloj atrasado 1 min 24 s»
+> aunque `show ntp status` del switch dice *synchronized*. Por último, un compañero pide hacer
+> `ping 8.8.8.8` desde el router «para ver si hay Internet». ¿Qué significa la alerta del número de
+> serie y qué se hace antes de seguir? ¿Por qué el NOC marca desfase si el NTP está sincronizado y
+> cómo se corrige? ¿Qué pasa con el ping y por qué?
+
+Respuesta del estudiante: ver la sección 11 de [`docs/FASE9_proceso_completo.txt`](FASE9_proceso_completo.txt).
+
+Documento detallado: [`docs/FASE9_proceso_completo.txt`](FASE9_proceso_completo.txt)
+
+---
+
 ## Próximos pasos — Corte 3 (v1.0.0)
+
+Replanificado el 2026-10-22 (la Fase 9 tomó un día más por la sesión de laboratorio interrumpida).
 
 | Fase | Fechas | Pendiente |
 |---|---|---|
-| 8 | Sáb 18 - Lun 19 | ✅ Cerrada (v0.3.0): sesión y roles, ventana de seguridad, auditoría encadenada, interfaces por equipo |
-| 9 | Mar 20 - Mié 21 | Equipos autorizados del laboratorio: gestor SSH por backend (Netmiko), interfaces reales (comparadas con la tabla `interfaces`), verificación automática de la cadena de auditoría, troubleshooting (ping, traceroute/tracert, show/display), NTP, chequeo de consistencia, políticas Syslog aplicadas y verificadas. Inicio de la marcha blanca |
-| 10 | Jue 22 | Gestión de cambios: matriz de riesgo, versiones de configuración con diff, aprobación por etapas, rollback; tablero MTTA/MTTR |
-| 11 | Vie 23 | Alertas por Telegram (token en `.env`) y defensa IA mejorada |
-| 12 | Sáb 24 - Dom 25 | Pruebas funcionales, de seguridad, carga, respaldo, recuperación y rollback; cierre de la marcha blanca |
+| 8 | Sáb 18 - Lun 19 | ✅ Cerrada (v0.3.0) |
+| 9 | Mar 20 - Jue 22 | ✅ Cerrada (v0.4.0): conexiones, configuración base, interfaces reales, diagnóstico, consistencia. Marcha blanca iniciada (sesión 1) |
+| 10 | Jue 22 - Vie 23 | Gestión de cambios: matriz de riesgo, versiones de configuración con diff, aprobación, rollback; tablero MTTA/MTTR. **Sesión 2 de laboratorio el viernes 23** (conexión desde el NOC, interfaces, diagnóstico, incidente por enlace caído, NTP) |
+| 11 | Sáb 24 | Alertas por Telegram (token en `.env`) y defensa IA mejorada |
+| 12 | Dom 25 | Pruebas funcionales, de seguridad, carga, respaldo, recuperación y rollback; cierre de la marcha blanca |
 | 13 | Lun 26 | Despliegue y rollback documentados, manual técnico y de usuario, release v1.0.0 |
 | 14 | Mar 27 | Informe `Corte3_NOC_Syslog_Castro_Erick.pdf` y sustentación |
-
-Completados en la Fase 7: servidor WSGI sin depuración (waitress) y actualización de las acciones de GitHub.

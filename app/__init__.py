@@ -15,13 +15,16 @@ datos y registra los módulos (blueprints):
     auth      -> /login, /logout, /api/auth/me  (Fase 8: sesión, roles y CSRF)
     admin_api -> /api/admin    usuarios y resumen de seguridad (Fase 8.3, solo admin)
     interfaces -> /api/devices/<id>/interfaces  interfaces de cada equipo (Fase 8.4)
+    connector -> /api/devices/<id>/session   conexión con los equipos y trazabilidad (Fase 9.1)
+    diagnostics -> /api/devices/<id>/diagnostic  ping y traceroute desde el equipo (Fase 9.4)
+    consistency -> /api/consistency   reloj (NTP), consistencia y cadena de auditoría (Fase 9.5)
 """
 from flask import Flask, jsonify
 
 from .config import Config
 from . import db
 
-APP_VERSION = "0.3.0"
+APP_VERSION = "0.4.0"
 
 
 def create_app(config_class=Config):
@@ -38,10 +41,10 @@ def create_app(config_class=Config):
     app.teardown_appcontext(db.close_db)
 
     # Registrar módulos
-    from . import (admin_api, audit_api, auth, configgen, console, dashboard, devices, events,
-                   incidents, interfaces, proposals, views)
-    for module in (auth, devices, interfaces, events, incidents, dashboard, configgen, console,
-                   proposals, audit_api, admin_api, views):
+    from . import (admin_api, audit_api, auth, configgen, connector, consistency, console, dashboard,
+                   devices, diagnostics, events, incidents, interfaces, proposals, views)
+    for module in (auth, devices, interfaces, connector, diagnostics, consistency, events, incidents,
+                   dashboard, configgen, console, proposals, audit_api, admin_api, views):
         app.register_blueprint(module.bp)
 
     # Fase 8: cada petición pasa por el control de sesión, CSRF y roles

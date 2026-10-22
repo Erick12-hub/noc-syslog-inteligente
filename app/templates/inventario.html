@@ -16,7 +16,7 @@
       <thead>
         <tr>
           <th>Nombre</th><th>IP</th><th>Marca</th><th>Modelo</th><th>Versión</th>
-          <th>Ubicación</th><th>Estado</th><th>Fuente</th><th>Interfaces</th><th>Actualizado</th><th></th>
+          <th>Ubicación</th><th>Estado</th><th>Fuente</th><th>Interfaces</th><th>Conexión</th><th>Actualizado</th><th></th>
         </tr>
       </thead>
       <tbody></tbody>
@@ -48,6 +48,26 @@
       <label>Modelo<input name="model" maxlength="100"></label>
       <label>Versión<input name="version" maxlength="100"></label>
       <label class="span2">Ubicación<input name="location" maxlength="100"></label>
+      <!-- Fase 9.1: cómo se conecta el NOC con el equipo -->
+      <label>Modo de conexión
+        <select name="connection_mode">
+          <option value="ninguno">ninguno (solo recibe Syslog)</option>
+          <option value="simulado">simulado (respuestas de ejemplo)</option>
+          <option value="consola">consola (cable, equipo prestado, sin contraseñas)</option>
+          <option value="ssh">ssh (equipo fijo, credencial en .env)</option>
+        </select>
+      </label>
+      <label>Plataforma
+        <select name="platform">
+          <option value="">—</option>
+          <option value="cisco_ios">cisco_ios (IOS: Catalyst 2960...)</option>
+          <option value="cisco_xe">cisco_xe (IOS XE: Catalyst 8200, ISR 4000...)</option>
+          <option value="fortinet">fortinet (FortiOS)</option>
+          <option value="huawei">huawei (VRP)</option>
+        </select>
+      </label>
+      <label>Puerto de consola<input name="console_port" maxlength="20" placeholder="COM3"></label>
+      <span></span>
       <label class="check"><input type="checkbox" name="authorized" checked> Fuente Syslog autorizada</label>
       <label class="check"><input type="checkbox" name="is_simulated" checked> Equipo simulado</label>
     </div>
@@ -57,6 +77,43 @@
       <button type="submit" class="btn primary">Guardar</button>
     </div>
   </form>
+</dialog>
+
+<!-- Fase 9.1: conexión con el equipo y trazabilidad -->
+<dialog id="dlg-conn" class="wide">
+  <div class="dlg-head">
+    <div>
+      <h2 id="cn-title">Conexión</h2>
+      <p class="muted small" id="cn-mode"></p>
+    </div>
+    <button type="button" class="btn" id="btn-cn-close">Cerrar</button>
+  </div>
+  <div class="identity" id="cn-identity"></div>
+  <form id="frm-conn" class="inline-form" novalidate>
+    <label>Comando (solo lectura, lista permitida)
+      <select name="command"><option value="">— solo identificar el equipo —</option></select>
+    </label>
+    <button type="submit" class="btn primary" id="btn-cn-run">Conectar</button>
+  </form>
+  <!-- Fase 9.4: diagnóstico ejecutado POR el equipo -->
+  <form id="frm-diag" class="inline-form diag-row" novalidate>
+    <label class="diag-type">Diagnóstico
+      <select name="type"><option value="ping">ping</option><option value="traceroute">traceroute</option></select>
+    </label>
+    <label>Destino (IPv4)<input name="target" maxlength="15" placeholder="192.168.100.10"></label>
+    <button type="submit" class="btn" id="btn-diag">Ejecutar desde el equipo</button>
+  </form>
+  <ul class="errors" id="cn-errors"></ul>
+  <ul class="warn-list" id="cn-warnings"></ul>
+  <div id="cn-diag"></div>
+  <div id="cn-output"></div>
+  <h3 class="small-title">Historial de sesiones</h3>
+  <div class="table-wrap">
+    <table id="tbl-sessions">
+      <thead><tr><th>#</th><th>Inicio</th><th>Modo</th><th>Usuario</th><th>Estado</th><th>N.º de serie</th><th>Cmds</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
 </dialog>
 
 <!-- Fase 8.4: interfaces del equipo -->
@@ -71,11 +128,18 @@
   </div>
   <div class="table-wrap">
     <table id="tbl-ifaces">
-      <thead><tr><th>Interfaz</th><th>Descripción</th><th>Estado</th><th>Actualizado</th><th></th></tr></thead>
+      <thead><tr><th>Interfaz</th><th>IP</th><th>Descripción</th><th>Estado</th><th>Origen</th><th>Actualizado</th><th></th></tr></thead>
       <tbody></tbody>
     </table>
   </div>
   <p class="muted small" id="if-count"></p>
+
+  <!-- Fase 9.3: leer las interfaces reales del equipo -->
+  <div class="inline-form sync-row" id="if-sync">
+    <button type="button" class="btn primary" id="btn-if-sync">Leer del equipo</button>
+    <label class="check"><input type="checkbox" id="if-remove"> Eliminar las que el equipo ya no reporta</label>
+  </div>
+  <ul class="warn-list" id="if-sync-summary"></ul>
 
   <form id="frm-iface" class="action-grid" novalidate>
     <input type="hidden" name="iface_id">

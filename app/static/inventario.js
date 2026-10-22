@@ -33,7 +33,13 @@ async function loadDevices() {
     const bIf = el("button", `Ver (${d.interface_count ?? 0})`, "btn sm");
     bIf.onclick = () => openInterfaces(d);
     ifc.append(bIf);
-    tr.append(src, ifc, el("td", fmtDate(d.updated_at), "small"));
+    // Fase 9.1: conexión con el equipo (sesiones y trazabilidad)
+    const cnc = el("td");
+    const bCn = el("button", d.connection_mode === "ninguno" ? "—" : d.connection_mode, "btn sm");
+    bCn.title = "Conexión, identificación del equipo físico e historial de sesiones";
+    bCn.onclick = () => openConnection(d);
+    cnc.append(bCn);
+    tr.append(src, ifc, cnc, el("td", fmtDate(d.updated_at), "small"));
 
     const actions = el("td", "", "row-actions");
     if (CAN_EDIT) {
@@ -56,7 +62,8 @@ function openForm(device = null) {
   document.getElementById("dlg-title").textContent = device ? `Editar ${device.name}` : "Nuevo equipo";
   frm.elements.id.value = device ? device.id : "";
   if (device) {
-    for (const f of ["name", "ip", "vendor", "status", "model", "version", "location"]) {
+    for (const f of ["name", "ip", "vendor", "status", "model", "version", "location",
+                     "connection_mode", "platform", "console_port"]) {
       frm.elements[f].value = device[f] ?? "";
     }
     frm.elements.authorized.checked = !!device.authorized;
@@ -69,7 +76,8 @@ frm.addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const id = frm.elements.id.value;
   const data = {};
-  for (const f of ["name", "ip", "vendor", "status", "model", "version", "location"]) {
+  for (const f of ["name", "ip", "vendor", "status", "model", "version", "location",
+                   "connection_mode", "platform", "console_port"]) {
     data[f] = frm.elements[f].value.trim();
   }
   data.authorized = frm.elements.authorized.checked;
@@ -100,6 +108,155 @@ async function removeDevice(d) {
 }
 
 /* ---------------------------------------------------------------------------
+ * Fase 9.1: conexión con el equipo  (/api/devices/<id>/session)
+ * Las salidas del equipo se muestran con textContent: son DATOS, nunca HTML.
+ * ------------------------------------------------------------------------- */
+const dlgCn = document.getElementById("dlg-conn");
+const frmCn = document.getElementById("frm-conn");
+const MODE_TEXT = {
+  ninguno: "Sin conexión: el NOC solo recibe Syslog de este equipo.",
+  simulado: "Modo simulado: respuestas de ejemplo con formato real (samples/cli). No hay red.",
+  consola: "Modo consola (equipo prestado): cable de consola, sin contraseñas. Cierre PuTTY antes de conectar.",
+  ssh: "Modo SSH (equipo fijo): credencial en .env; la llave SSH del equipo queda fijada.",
+};
+let cnDevice = null;
+
+async function openConnection(d) {
+  cnDevice = d;
+  document.getElementById("cn-title").textContent = `Conexión con ${d.name}`;
+  document.getElementById("cn-mode").textContent =
+    MODE_TEXT[d.connection_mode] + (d.console_port ? ` Puerto: ${d.console_port}.` : "");
+  for (const id of ["cn-errors", "cn-warnings", "cn-output"]) document.getElementById(id).replaceChildren();
+  const sel = frmCn.elements.command;
+  sel.replaceChildren(new Option("— solo identificar el equipo —", ""));
+  frmCn.hidden = !CAN_EDIT || d.connection_mode === "ninguno";
+  document.getElementById("frm-diag").hidden = frmCn.hidden;          // Fase 9.4
+  document.getElementById("cn-diag").replaceChildren();
+  if (!frmCn.hidden) {
+    try {
+      const a = await api(`/api/console/allowed?vendor=${encodeURIComponent(d.vendor)}`);
+      for (const c of a.allowed) sel.append(new Option(`${c.command} — ${c.description}`, c.command));
+    } catch (_) { /* sin lista: solo identificar */ }
+  }
+  showIdentity(d);
+  await loadSessions();
+  dlgCn.showModal();
+}
+
+function showIdentity(d) {
+  const box = document.getElementById("cn-identity");
+  box.replaceChildren();
+  const items = [["N.º de serie", d.serial_number], ["Modelo detectado", d.detected_model],
+                 ["Versión detectada", d.detected_version], ["Última identificación", fmtDate(d.last_identified_at)]];
+  for (const [k, v] of items) {
+    const div = el("div");
+    div.append(el("span", k, "muted small"), el("strong", v || "—", "mono"));
+    box.append(div);
+  }
+}
+
+async function loadSessions() {
+  const rows = await api(`/api/devices/${cnDevice.id}/sessions`);
+  const tb = document.querySelector("#tbl-sessions tbody");
+  tb.replaceChildren();
+  for (const r of rows) {
+    const tr = document.createElement("tr");
+    tr.className = "clickable";
+    const st = el("td"); st.append(el("span", r.status, `tag ${r.status === "cerrada" ? "ok" : "bad"}`));
+    tr.append(el("td", r.id), el("td", fmtDate(r.started_at), "small"), el("td", r.transport),
+              el("td", r.started_by), st, el("td", r.serial_number || "—", "mono"), el("td", r.commands_count));
+    tr.onclick = () => showSession(r.id);
+    tb.append(tr);
+  }
+  if (!rows.length) {
+    const tr = document.createElement("tr");
+    const td = el("td", "Sin sesiones todavía.", "muted"); td.colSpan = 7; tr.append(td); tb.append(tr);
+  }
+}
+
+function renderSession(s) {
+  document.getElementById("cn-warnings").replaceChildren(...(s.warnings || []).map(w => el("li", w)));
+  const out = document.getElementById("cn-output");
+  const where = s.target !== s.transport ? `${s.transport} ${s.target}` : s.transport;
+  out.replaceChildren(el("p", `Sesión ${s.id} · ${where} · ${s.status} · por ${s.started_by}` +
+                               (s.error ? ` · ${s.error}` : ""), "small muted"));
+  for (const c of s.commands) {
+    out.append(el("div", `${c.command}  ·  ${c.duration_ms} ms  ·  SHA-256 ${c.output_sha256.slice(0, 16)}…`, "cmd-head mono"));
+    out.append(el("pre", c.output, "cmd-out"));
+  }
+}
+
+async function showSession(id) {
+  try { renderSession(await api(`/api/sessions/${id}`)); } catch (err) { toast(err.message, "err"); }
+}
+
+frmCn.addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const btn = document.getElementById("btn-cn-run");
+  const cmd = frmCn.elements.command.value;
+  document.getElementById("cn-errors").replaceChildren();
+  btn.disabled = true; btn.textContent = "Conectando…";
+  try {
+    const res = await fetch(`/api/devices/${cnDevice.id}/session`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ commands: cmd ? [cmd] : [] }),
+    });
+    const body = await res.json();
+    if (body.errors) document.getElementById("cn-errors").replaceChildren(...body.errors.map(m => el("li", m)));
+    if (body.id) renderSession(body);
+    await loadDevices();
+    cnDevice = devices.find(x => x.id === cnDevice.id) || cnDevice;
+    showIdentity(cnDevice);
+    await loadSessions();
+  } catch (err) { toast(err.message, "err"); }
+  finally { btn.disabled = false; btn.textContent = "Conectar"; }
+});
+document.getElementById("btn-cn-close").onclick = () => dlgCn.close();
+
+/* Fase 9.4: ping / traceroute ejecutado por el equipo (destino validado en el servidor) */
+const frmDiag = document.getElementById("frm-diag");
+frmDiag.addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const btn = document.getElementById("btn-diag");
+  const box = document.getElementById("cn-diag");
+  const errs = document.getElementById("cn-errors");
+  errs.replaceChildren(); box.replaceChildren();
+  btn.disabled = true; btn.textContent = "Ejecutando… (un traceroute puede tardar)";
+  try {
+    const res = await fetch(`/api/devices/${cnDevice.id}/diagnostic`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: frmDiag.elements.type.value, target: frmDiag.elements.target.value.trim() }),
+    });
+    const body = await res.json();
+    if (!res.ok) {
+      errs.replaceChildren(...(body.errors || [body.error]).map(m => el("li", m)));
+    } else {
+      const ok = body.type === "ping" ? body.result.reachable : body.result.reached;
+      const head = el("p", "", "diag-summary");
+      head.append(el("span", ok ? "OK" : "SIN RESPUESTA", `tag ${ok ? "ok" : "bad"}`), " ",
+                  el("strong", body.summary), el("span", ` · sesión ${body.session}`, "muted small"));
+      box.append(head);
+      if (body.type === "traceroute" && body.result.hops.length) {
+        const t = el("table", "", "hops");
+        const hr = document.createElement("tr");
+        for (const h of ["Salto", "IP", "Promedio"]) hr.append(el("th", h));
+        t.append(hr);
+        for (const h of body.result.hops) {
+          const tr = document.createElement("tr");
+          tr.append(el("td", h.hop), el("td", h.ip || "* (sin respuesta)", "mono"),
+                    el("td", h.avg_ms !== null ? `${h.avg_ms} ms` : "—"));
+          t.append(tr);
+        }
+        box.append(t);
+      }
+      box.append(el("div", body.command, "cmd-head mono"), el("pre", body.output, "cmd-out"));
+    }
+    await loadSessions();
+  } catch (err) { toast(err.message, "err"); }
+  finally { btn.disabled = false; btn.textContent = "Ejecutar desde el equipo"; }
+});
+
+/* ---------------------------------------------------------------------------
  * Fase 8.4: interfaces del equipo  (/api/devices/<id>/interfaces)
  * ------------------------------------------------------------------------- */
 const dlgIf = document.getElementById("dlg-ifaces");
@@ -113,6 +270,9 @@ async function openInterfaces(d) {
   currentDevice = d;
   document.getElementById("if-title").textContent = `Interfaces de ${d.name} (${d.vendor})`;
   frmIf.hidden = !CAN_EDIT;
+  // Fase 9.3: leer del equipo solo si el rol puede y el equipo tiene modo de conexión
+  document.getElementById("if-sync").hidden = !CAN_EDIT || d.connection_mode === "ninguno";
+  document.getElementById("if-sync-summary").replaceChildren();
   resetIfaceForm();
   await loadInterfaces();
   dlgIf.showModal();
@@ -125,8 +285,10 @@ async function loadInterfaces() {
   for (const i of data.rows) {
     const tr = document.createElement("tr");
     const st = el("td"); st.append(el("span", i.status, `tag ${IF_STATUS_CLASS[i.status] || ""}`));
-    tr.append(el("td", i.name, "mono"), el("td", i.description || "—"), st,
-              el("td", fmtDate(i.updated_at), "small"));
+    const src = el("td"); src.append(el("span", i.source === "equipo" ? "equipo" : "manual",
+                                        `tag ${i.source === "equipo" ? "dup" : ""}`));
+    tr.append(el("td", i.name, "mono"), el("td", i.ip_address || "—", "mono"),
+              el("td", i.description || "—"), st, src, el("td", fmtDate(i.updated_at), "small"));
     const act = el("td", "", "row-actions");
     if (CAN_EDIT) {
       const bE = el("button", "Editar", "btn sm");
@@ -141,7 +303,7 @@ async function loadInterfaces() {
   if (!data.rows.length) {
     const tr = document.createElement("tr");
     const td = el("td", "Sin interfaces registradas: los eventos de este equipo no se comparan.", "muted");
-    td.colSpan = 5; tr.append(td); ifBody.append(tr);
+    td.colSpan = 7; tr.append(td); ifBody.append(tr);
   }
   document.getElementById("if-count").textContent = `${data.rows.length} interfaces registradas`;
 }
@@ -194,6 +356,38 @@ async function removeIface(i) {
     loadDevices();
   } catch (err) { toast(err.message, "err"); }
 }
+
+/* Fase 9.3: leer las interfaces reales (conecta, ejecuta y compara) */
+const SYNC_LABELS = [["nuevas", "Nuevas"], ["actualizadas", "Cambiaron"], ["desaparecidas", "Ya no están en el equipo"],
+                     ["eliminadas", "Eliminadas del inventario"], ["invalidas", "Rechazadas (nombre inválido)"]];
+document.getElementById("btn-if-sync").onclick = async () => {
+  const btn = document.getElementById("btn-if-sync");
+  const box = document.getElementById("if-sync-summary");
+  btn.disabled = true; btn.textContent = "Leyendo…";
+  try {
+    const res = await fetch(`/api/devices/${currentDevice.id}/interfaces/sync`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ remove_missing: document.getElementById("if-remove").checked }),
+    });
+    const body = await res.json();
+    if (!res.ok) {
+      box.replaceChildren(...(body.errors || [body.error]).map(m => el("li", m)));
+    } else {
+      const s = body.summary;
+      const items = [el("li", `Sesión ${body.session} · equipo físico ${body.serial_number || "?"} · ` +
+                              `${s.sin_cambios.length} sin cambios`)];
+      for (const [k, label] of SYNC_LABELS) {
+        if (s[k].length) items.push(el("li", `${label} (${s[k].length}): ${s[k].join(", ")}`));
+      }
+      for (const w of body.warnings || []) items.push(el("li", w));
+      box.replaceChildren(...items);
+      toast("Interfaces leídas del equipo");
+    }
+    await loadInterfaces();
+    loadDevices();
+  } catch (err) { toast(err.message, "err"); }
+  finally { btn.disabled = false; btn.textContent = "Leer del equipo"; }
+};
 
 document.getElementById("btn-if-reset").onclick = resetIfaceForm;
 document.getElementById("btn-if-close").onclick = () => dlgIf.close();
