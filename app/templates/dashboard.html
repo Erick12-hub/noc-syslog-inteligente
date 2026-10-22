@@ -80,5 +80,32 @@
     </div>
   </div>
 </section>
+
+<!-- Fase 9.5: consistencia de la red y del NOC -->
+<section class="dash-grid">
+  <div class="card span-2" id="consistency" data-can-run="{{ 1 if can('consistency.consistency_run', 'POST') else 0 }}">
+    <div class="chart-head">
+      <h2>Consistencia de la red</h2>
+      <div class="inline-form">
+        <span class="small muted" id="cs-when"></span>
+        <button class="btn sm" id="btn-cs-run" hidden>Revisar ahora</button>
+      </div>
+    </div>
+    <p class="small" id="cs-summary"></p>
+    <div class="table-wrap">
+      <table class="compact">
+        <thead><tr><th>Gravedad</th><th>Equipo</th><th>Hallazgo</th><th>Sugerencia</th></tr></thead>
+        <tbody id="tbl-findings"></tbody>
+      </table>
+    </div>
+    <h3 class="small-title">Reloj de los equipos (desfase = hora de recepción − hora del evento)</h3>
+    <div class="table-wrap">
+      <table class="compact">
+        <thead><tr><th>Equipo</th><th>Estado</th><th>Desfase</th><th>Eventos medidos</th></tr></thead>
+        <tbody id="tbl-clocks"></tbody>
+      </table>
+    </div>
+  </div>
+</section>
 {% endblock %}
 {% block scripts %}<script src="{{ url_for('static', filename='dashboard.js') }}"></script>{% endblock %}

@@ -123,6 +123,59 @@ async function refresh() {
   }
 }
 
+/* ---------------------------------------------------------------------------
+ * Fase 9.5: consistencia. Se carga al abrir la página y con "Revisar ahora"
+ * (no cada 15 s: verificar la cadena de auditoría recorre todos los registros).
+ * ------------------------------------------------------------------------- */
+const SEV_TAG = { critico: ["crítico", "bad"], aviso: ["aviso", "warn"], info: ["info", "dup"] };
+const CLOCK_TAG = { ok: ["sincronizado", "ok"], aviso: ["aviso", "warn"], critico: ["crítico", "bad"],
+                    sin_datos: ["sin datos", ""] };
+
+function renderConsistency(r) {
+  const c = r.counts;
+  setText("cs-summary", `Críticos: ${c.critico} · avisos: ${c.aviso} · informativos: ${c.info} · ` +
+          `cadena de auditoría ${r.chain.ok ? "íntegra" : "ROTA"} (${r.chain.total} registros)` +
+          (r.incident ? ` · incidente #${r.incident}` : ""));
+  setText("cs-when", `revisado ${new Date().toLocaleTimeString("es-CO")}`);
+  const tb = document.getElementById("tbl-findings");
+  tb.replaceChildren();
+  for (const f of r.findings) {
+    const tr = el("tr");
+    const sev = el("td"); const [t, cls] = SEV_TAG[f.severity]; sev.append(el("span", t, `tag ${cls}`));
+    tr.append(sev, el("td", f.device), el("td", f.detail), el("td", f.suggestion, "small muted"));
+    tb.append(tr);
+  }
+  if (!r.findings.length) {
+    const tr = el("tr"); const td = el("td", "Sin hallazgos: todo consistente", "muted");
+    td.colSpan = 4; tr.append(td); tb.append(tr);
+  }
+  const tc = document.getElementById("tbl-clocks");
+  tc.replaceChildren();
+  for (const k of r.clocks.filter(x => x.samples)) {
+    const tr = el("tr");
+    const st = el("td"); const [t, cls] = CLOCK_TAG[k.status]; st.append(el("span", t, `tag ${cls}`));
+    const name = el("td", k.device);
+    if (k.is_simulated) name.append(" ", el("span", "SIM", "tag sim"));
+    tr.append(name, st, el("td", k.text), el("td", k.samples));
+    tc.append(tr);
+  }
+  if (!tc.children.length) {
+    const tr = el("tr"); const td = el("td", "Ningún equipo ha enviado eventos con fecha", "muted");
+    td.colSpan = 4; tr.append(td); tc.append(tr);
+  }
+}
+
+async function loadConsistency(run = false) {
+  try {
+    renderConsistency(await api("/api/consistency" + (run ? "/run" : ""), run ? { method: "POST" } : {}));
+    if (run) toast("Consistencia revisada y registrada en la auditoría");
+  } catch (err) { toast(err.message, "err"); }
+}
+const btnCs = document.getElementById("btn-cs-run");
+btnCs.hidden = document.getElementById("consistency").dataset.canRun !== "1";
+btnCs.onclick = () => loadConsistency(true);
+
 document.getElementById("btn-refresh").onclick = refresh;
 refresh();
+loadConsistency();
 setInterval(refresh, REFRESH_MS);
