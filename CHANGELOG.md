@@ -3,6 +3,52 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y
 [versionado semántico](https://semver.org/lang/es/). Todos los datos son **SIMULADOS**.
 
+## [0.4.0] - 2026-10-22 — Equipos del laboratorio, diagnóstico y consistencia (Fase 9)
+
+Tercera versión del Corte 3. El NOC se conecta a equipos reales por cable de consola (o por SSH en
+equipos fijos), los identifica por su número de serie, lee sus interfaces, ejecuta ping y traceroute
+desde el propio equipo y revisa la consistencia de la red y de su auditoría. Probado con un router
+Catalyst 8200L y un switch Catalyst 2960 del laboratorio (primera sesión de la marcha blanca,
+2026-10-21). 423 pruebas automáticas (276 en v0.3.0).
+
+### Agregado
+- Gestor de conexiones (`app/connector.py`) con modos `ninguno`, `simulado`, `consola` y `ssh` (Netmiko).
+  Por consola no se usan contraseñas (equipos prestados); por SSH la credencial solo vive en `.env` y la
+  llave del equipo se fija la primera vez (si cambia, la sesión se aborta sin enviar comandos).
+- Identificación del equipo físico por número de serie en cada sesión; alerta `device.serial_cambio` si
+  responde otro equipo con el mismo nombre.
+- Tablas `device_sessions` y `device_commands`: quién se conectó, a qué equipo físico, qué comandos envió,
+  cuánto tardaron y la huella SHA-256 de cada salida. Historial por equipo en el Inventario.
+- Comandos `device-session`, `device-sessions`, `device-interfaces`, `device-diag` y `check-consistency`.
+- Configuración base desde cero para el router y el switch del laboratorio (`/api/config/baseline`):
+  modo préstamo (sin credenciales ni guardado) o fijo (SSH con marcadores), direccionamiento manual o
+  sugerido, máscara decimal o prefijo, interfaz de gestión editable y bloque de limpieza.
+- Lectura de las interfaces reales del equipo (`show ip interface brief` / `display ip interface brief` /
+  `get system interface physical`) con resumen de nuevas, cambiadas, sin cambios, ausentes y rechazadas; columnas
+  IP y origen (manual / equipo).
+- Diagnóstico desde el equipo: ping y traceroute con destino limitado a redes privadas y de documentación
+  (`DIAG_ALLOWED_NETS`), máximo 5 por minuto, auditado y con resultado interpretado.
+- Chequeo de consistencia (`app/consistency.py`, `/api/consistency`): reloj de cada equipo (desfase NTP
+  por la mediana de sus últimos eventos), equipos sin eventos, interfaces desconocidas, marca
+  inconsistente, IP del inventario que el equipo no tiene e IP duplicadas.
+- Verificación automática de la cadena de auditoría cada `CONSISTENCY_INTERVAL_MINUTES` en el receptor;
+  si se rompe se abre un incidente de severidad 1 (uno solo mientras siga abierto).
+- Panel «Consistencia de la red» y «Reloj de los equipos» en el dashboard, con botón «Revisar ahora».
+- Salidas de ejemplo de un C8200 y un 2960 (`samples/cli/`) para el modo simulado.
+- Plan de la sesión de laboratorio (`docs/laboratorio/plan_sesion_laboratorio.md`).
+
+### Cambiado
+- La configuración base se entrega en trozos de 5 líneas o menos, cada uno con su botón Copiar.
+- En el router la zona horaria se configura antes de `clock set`.
+- `no ip domain lookup` (con espacio, válido en IOS XE 17) dentro de `configure terminal`.
+- `ping` y `traceroute` no están en la lista general de la consola: solo se aceptan por Diagnóstico,
+  después de validar el destino.
+
+### Corregido
+- Mensajes en español cuando el puerto de consola no existe o está en uso (PuTTY abierto).
+- Al pegar toda la configuración por consola a 9600 baudios se perdían líneas (hallazgo del laboratorio).
+- El router quedaba 5 horas atrás al escribir la hora antes de la zona (hallazgo del laboratorio).
+
 ## [0.3.0] - 2026-10-19 — Seguridad de acceso, auditoría encadenada e interfaces (Fase 8)
 
 Segunda versión del Corte 3. Cada acción queda firmada por un usuario real con un rol, la

@@ -67,12 +67,16 @@ netsh advfirewall firewall add rule name="NOC lab ping" dir=in action=allow prot
 
 Las reglas aceptan **solo** la red del laboratorio. Al terminar se borran (paso 6).
 
-**`.env` del NOC durante la sesión** (el receptor debe escuchar en la tarjeta del laboratorio):
+**Receptor durante la sesión** (debe escuchar en la tarjeta del laboratorio). En la ventana de
+Anaconda del receptor, **sin tocar el `.env`** (así no hay que acordarse de devolverlo):
 
-```ini
-SYSLOG_HOST=192.168.100.10
-SYSLOG_PORT=5514
+```bat
+set SYSLOG_HOST=192.168.100.10
+python manage.py receiver
 ```
+
+`set` solo vale para esa ventana: al cerrarla, el receptor vuelve a `127.0.0.1`. No se escribe
+`SYSLOG_HOST=...` solo (Windows lo toma como un comando y falla), ni en PowerShell.
 
 Se usa la IP del laboratorio y **no** `0.0.0.0`: así el receptor no queda abierto en el Wi-Fi
 de la universidad. La web sigue en `127.0.0.1` (solo este PC).
@@ -87,7 +91,7 @@ de la universidad. La web sigue en `127.0.0.1` (solo este PC).
 | 35–45 | PC: `python serve.py` y `python manage.py receiver`. **Cerrar PuTTY.** Conexión por consola desde el NOC: identificar el router; cambiar el cable y identificar el switch | C3-F9-LAB-05, 06 |
 | — | Ventanas abiertas: PowerShell (Administrador) para el firewall; Anaconda 1 `serve.py`; Anaconda 2 `receiver`; Anaconda 3 comandos (`device-session`, `device-interfaces`, `device-diag`) | |
 | 45–85 | **Leer del equipo** (interfaces reales de los dos). Syslog en vivo (`send log`, `shutdown`/`no shutdown` de un puerto del switch), eventos e incidentes en el NOC. **Diagnóstico**: ping del router al PC y al switch, traceroute al PC. NTP | C3-F9-LAB-07 … |
-| 85–100 | **Limpieza** (bloque 4) en los dos equipos. Borrar reglas del firewall y volver el `.env` a `127.0.0.1` | C3-F9-LAB-final |
+| 85–100 | **Limpieza** (bloque 4) en los dos equipos. Borrar reglas del firewall y cerrar la ventana del receptor | C3-F9-LAB-final |
 | 100–105 | Margen | |
 
 ### 4.1 Al llegar: qué revisar en `show version`
@@ -118,5 +122,28 @@ sesiones del NOC (`python manage.py device-sessions LAB-RTR01`) es la fuente.
    netsh advfirewall firewall delete rule name="NOC lab ping"
    ```
 
-3. `.env`: `SYSLOG_HOST=127.0.0.1`. IP del Ethernet en automático (DHCP).
+3. Cerrar la ventana del receptor (el `set` se pierde). IP del Ethernet en automático (DHCP).
 4. Los datos de la sesión quedan en el NOC (eventos, sesiones, auditoría): el equipo vuelve limpio.
+
+## 7. Sesión 1 (miércoles 21-oct) — resultado
+
+Se configuraron los dos equipos desde cero, hubo conectividad y llegó el **primer evento real**
+(#178 del LAB-SW01). Se cortó a las 7:28 p. m. Hallazgos y correcciones: ver la bitácora, Fase 9
+(«Marcha blanca — sesión 1»). La configuración base ya incluye las correcciones: trozos de 5 líneas,
+zona antes de la hora y `no ip domain lookup`.
+
+## 8. Sesión 2 (viernes 23-oct) — retomar desde la conexión con el NOC
+
+| Orden | Actividad | Evidencia |
+|---|---|---|
+| 1 | Al llegar: `show version` y `show running-config \| include hostname\|username\|enable`. Si hay contraseña o configuración ajena, recuperación (ROMMON) como en la sesión 1 | C3-F10-LAB-01 |
+| 2 | Configurar router y switch con la configuración base **en trozos** (Configuraciones → Usar sugerido). Primero la zona y después la hora en el router | C3-F10-LAB-02 |
+| 3 | PC: IP fija, reglas del firewall (PowerShell Administrador), `python serve.py`, receptor con `set SYSLOG_HOST` | — |
+| 4 | **Cerrar PuTTY.** Inventario: LAB-RTR01 y LAB-SW01 con `COM5`. **Conectar** el router: el NOC debe identificar el C8200L y su número de serie real. Cambiar el cable y conectar el switch | C3-F10-LAB-03, 04 |
+| 5 | **Leer del equipo** en los dos (interfaces reales; luego Revisar ahora en el dashboard: la IP del inventario debe estar en sus interfaces) | C3-F10-LAB-05 |
+| 6 | **Diagnóstico**: ping del switch al router y traceroute del router al PC | C3-F10-LAB-06 |
+| 7 | Syslog en vivo: en el router `send log 6 "Prueba NOC desde LAB-RTR01"`. Desconectar 5 s el cable del **router** en el switch (Fa0/1) → `LINK-3-UPDOWN` → incidente automático. **No** desconectar el cable del PC (Fa0/2) | C3-F10-LAB-07, 08 |
+| 8 | NTP: `show ntp status` y `show clock` en el switch; dashboard → Reloj de los equipos | C3-F10-LAB-09 |
+| 9 | **Limpieza**: bloque 4 en los dos equipos, borrar reglas del firewall, cerrar la ventana del receptor, IP en automático | C3-F10-LAB-10 |
+
+Las capturas de la sesión 2 llevan el prefijo de la fase en curso (`C3-F10-LAB-NN`).
