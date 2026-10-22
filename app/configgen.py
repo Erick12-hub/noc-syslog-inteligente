@@ -386,17 +386,66 @@ def baseline(v: dict, device=None) -> list[dict]:
               "! 'Would you like to terminate autoinstall?' -> yes (si aparece)"]
     blocks.append({"title": "0. Dejar el equipo de fábrica (a mano)", "kind": "manual", "text": "\n".join(clean)})
 
-    # --- 1. Hora (solo el router: es el servidor NTP del laboratorio) ----------
+    # --- 1. Zona y hora (solo el router: es el servidor NTP del laboratorio) ---
+    # Hallazgo de la sesión 1 (21-oct): con "clock set" ANTES de "clock timezone"
+    # el router tomó la hora escrita como UTC y quedó 5 h atrás. Primero la zona.
     if is_router:
-        blocks.append({"title": "1. Poner la hora (a mano, antes de pegar)", "kind": "manual", "text": "\n".join([
+        blocks.append({"title": "1. Zona horaria y hora (a mano, antes de pegar)", "kind": "manual",
+                       "text": "\n".join([
             "! El laboratorio no tiene Internet: el router será el servidor NTP.",
-            "! Hora de Colombia al generar esta configuración; ajústela a la hora real.",
+            "! PRIMERO la zona horaria y DESPUÉS la hora (si no, queda 5 h atrás).",
             "enable",
+            "configure terminal",
+            "clock timezone COT -5 0",
+            "end",
+            "! Escriba la hora REAL de Colombia en este momento:",
             f"clock set {now:%H:%M:%S} {now.day} {months[now.month - 1]} {now.year}",
+            "show clock",
         ])})
 
-    # --- 2. Bloque para pegar --------------------------------------------------
-    lines = [
+    # --- 2. Bloque para pegar, EN TROZOS -----------------------------------------
+    # Hallazgo de la sesión 1: pegar todo el bloque por consola (9600 baudios)
+    # pierde líneas. Cada trozo es independiente (configure terminal ... end) y
+    # tiene 5 líneas o menos: se pega uno, se espera el prompt y se pega el otro.
+    chunks = [("Nombre del equipo", [f"hostname {v['hostname']}",
+                                     "no ip domain lookup"])]   # IOS XE 17: con espacio
+    if not is_router:
+        vlan = int(mgmt_if[4:])
+        if vlan != 1:          # la VLAN de gestión debe existir ANTES de su interfaz
+            chunks.append(("VLAN de gestión", [f"vlan {vlan}", " name GESTION-NOC", " exit"]))
+    chunks.append(("IP de gestión", [f"interface {mgmt_if}",
+                                     f" description Gestion NOC lab ({v['network']})",
+                                     f" ip address {v['mgmt_ip']} {v['netmask']}",
+                                     " no shutdown"]))
+    if not is_router:
+        ports = ["interface range FastEthernet0/1 - 2",
+                 " description Router / PC del NOC",
+                 " switchport mode access"]
+        if vlan != 1:
+            ports.append(f" switchport access vlan {vlan}")
+        ports.append(" no shutdown")
+        chunks.append(("Puerta de enlace", [f"ip default-gateway {v['gateway']}"]))
+        chunks.append(("Puertos hacia el router y el PC", ports))
+    chunks.append(("Hora: zona y NTP", ["clock timezone COT -5 0",
+                                        "ntp master 3" if is_router else f"ntp server {v['gateway']}"]))
+    chunks.append(("Marcas de tiempo precisas", [
+        "service timestamps log datetime msec localtime show-timezone year",
+        "service timestamps debug datetime msec localtime show-timezone year",
+        "service sequence-numbers"]))
+    chunks.append(("Syslog hacia el NOC", [f"logging host {v['noc_ip']} transport udp port {v['port']}",
+                                           f"logging trap {lvl}",
+                                           "logging facility local7"]))
+    chunks.append(("Origen y búfer del Syslog", [f"logging source-interface {src_if}",
+                                                 f"logging buffered 16384 {lvl}"]))
+    chunks.append(("Registro de cambios de configuración", [
+        "archive", " log config", "  logging enable", "  notify syslog contenttype plaintext"]))
+    chunks.append(("Registro de accesos", ["login on-failure log", "login on-success log"]))
+    chunks.append(("Consola", ["line console 0", " logging synchronous", " exec-timeout 30 0"]))
+    parts = [{"title": f"Trozo {i}: {title}",
+              "text": "\n".join(["configure terminal", *body, "end"])}
+             for i, (title, body) in enumerate(chunks, 1)]
+
+    header = [
         "! ======================================================================",
         f"! NOC Syslog Inteligente - Configuración base {v['role'].upper()} ({v['mode'].upper()})",
         f"! Equipo de referencia: {ref}",
@@ -404,79 +453,21 @@ def baseline(v: dict, device=None) -> list[dict]:
         f"! Gestión: {mgmt_if} {v['mgmt_ip']}/{v['prefix']} -> NOC {v['noc_ip']} UDP {v['port']}",
     ]
     if v["mode"] == "prestamo":
-        lines += ["! EQUIPO PRESTADO: sin usuarios, sin contraseñas y sin guardar.",
-                  "! Al reiniciarlo no queda nada de esta configuración."]
-    lines += [
-        "! Si alguna línea responde '% Invalid input', anótela: las demás siguen",
-        "! aplicándose (la sintaxis puede variar según la versión del sistema).",
+        header += ["! EQUIPO PRESTADO: sin usuarios, sin contraseñas y sin guardar.",
+                   "! Al reiniciarlo no queda nada de esta configuración."]
+    header += [
+        "! Pegue UN trozo a la vez y espere el prompt antes del siguiente:",
+        "! pegar todo junto por consola pierde líneas (hallazgo del laboratorio).",
+        "! Si una línea responde '% Invalid input', anótela y siga con el próximo.",
         "! ======================================================================",
-        "configure terminal",
-        f"hostname {v['hostname']}",
-        "no ip domain-lookup",
-        "!",
-        "! --- Gestión: IP del equipo en la red del laboratorio ---------------------",
-        f"interface {mgmt_if}",
-        f" description Gestion NOC lab ({v['network']})",
-        f" ip address {v['mgmt_ip']} {v['netmask']}",
-        " no shutdown",
-        " exit",
     ]
-    if not is_router:
-        vlan = int(mgmt_if[4:])
-        if vlan != 1:          # la VLAN de gestión debe existir y los puertos deben estar en ella
-            lines[-6:-6] = [f"vlan {vlan}", f" name GESTION-NOC", " exit"]
-        lines += [f"ip default-gateway {v['gateway']}",
-                  "interface range FastEthernet0/1 - 2",
-                  " description Router / PC del NOC",
-                  " switchport mode access"]
-        if vlan != 1:
-            lines += [f" switchport access vlan {vlan}"]
-        lines += [" no shutdown",
-                  " exit"]
-    lines += [
-        "!",
-        "! --- Hora: zona de Colombia y NTP ----------------------------------------",
-        "clock timezone COT -5 0",
-    ]
-    lines += (["ntp master 3",
-               "! (el switch se sincroniza con esta IP)"] if is_router
-              else [f"ntp server {v['gateway']}"])
-    lines += [
-        "!",
-        "! --- Marcas de tiempo precisas (base del cálculo del desfase NTP) --------",
-        "service timestamps log datetime msec localtime show-timezone year",
-        "service timestamps debug datetime msec localtime show-timezone year",
-        "service sequence-numbers",
-        "!",
-        "! --- Syslog hacia el NOC ------------------------------------------------",
-        f"logging host {v['noc_ip']} transport udp port {v['port']}",
-        f"logging trap {lvl}",
-        "logging facility local7",
-        f"logging source-interface {src_if}",
-        f"logging buffered 16384 {lvl}",
-        "!",
-        "! --- Registro de cambios de configuración y de accesos ------------------",
-        "archive",
-        " log config",
-        "  logging enable",
-        "  notify syslog contenttype plaintext",
-        "  exit",
-        " exit",
-        "login on-failure log",
-        "login on-success log",
-        "!",
-        "! --- Consola: los mensajes no cortan lo que se escribe ------------------",
-        "line console 0",
-        " logging synchronous",
-        " exec-timeout 30 0",
-        " exit",
-        "end",
-    ]
+    footer = ["write memory"] if v["mode"] == "fijo" else \
+        ["! (préstamo: la configuración NO se guarda en la memoria del equipo)"]
     if v["mode"] == "fijo":
-        lines += ["write memory"]
-    else:
-        lines += ["! (préstamo: la configuración NO se guarda en la memoria del equipo)"]
-    blocks.append({"title": "2. Configuración base (pegar en PuTTY)", "kind": "pegar", "text": "\n".join(lines)})
+        parts.append({"title": f"Trozo {len(parts) + 1}: Guardar", "text": "write memory"})
+    text = "\n".join(header + [f"! --- {p['title']} ---\n{p['text']}" for p in parts] + footer)
+    blocks.append({"title": "2. Configuración base (pegar en PuTTY, un trozo a la vez)", "kind": "pegar",
+                   "text": text, "chunks": parts})
 
     # --- 2b. SSH para equipos FIJOS (editar antes de pegar) --------------------
     if v["mode"] == "fijo":
@@ -510,10 +501,11 @@ def baseline(v: dict, device=None) -> list[dict]:
         f"ping {v['noc_ip']}",
         "!   -> !!!!! (si falla: cable, IP del PC o firewall de Windows)",
         "show clock",
-        "!   -> hora correcta y zona COT",
+        "!   -> hora correcta y zona COT" + ("" if is_router else
+                                           " (el 2960 arranca en 1993 hasta que sincroniza)"),
         "show ntp associations" if is_router else "show ntp status",
         "!   -> " + ("127.127.1.1 como referencia (es el servidor)" if is_router
-                    else f"'Clock is synchronized' con {v['gateway']} (puede tardar 2-5 min)"),
+                    else f"'Clock is synchronized' con {v['gateway']} (puede tardar 5-15 min)"),
         "show logging | include Logging to|Trap",
         f"!   -> 'Logging to {v['noc_ip']} (udp port {v['port']}...)'",
         f'send log 6 "Prueba NOC desde {v["hostname"]}"',

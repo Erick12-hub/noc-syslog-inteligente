@@ -321,3 +321,11 @@ nav { flex-wrap: wrap; }
 .diag-summary { margin: 12px 0 6px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 table.hops { width: auto; margin: 4px 0 8px; }
 table.hops td, table.hops th { padding: 4px 14px 4px 0; }
+
+/* ---------- Fase 9.5: configuración en trozos ---------- */
+.chunk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; }
+.chunk { border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: var(--panel-2); }
+.chunk.copied { border-color: var(--green-fg); }
+.chunk.copied .chunk-head strong::after { content: "  ✓ copiado"; color: var(--green-fg); font-weight: normal; }
+.chunk-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 13px; }
+.chunk .config-out { margin: 0; max-height: 160px; }

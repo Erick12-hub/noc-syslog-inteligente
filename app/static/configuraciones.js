@@ -119,11 +119,29 @@ document.getElementById("frm-base").addEventListener("submit", async (e) => {
       const title = el("h2", b.title);
       const [label, cls] = KIND[b.kind];
       title.append(" ", el("span", label, `tag ${cls}`));
-      const pre = el("pre", b.text, "raw config-out");     // texto plano, nunca HTML
-      const btn = el("button", "Copiar", "btn sm");
-      btn.onclick = () => copyText(b.text, pre);
-      head.append(title, btn);
-      card.append(head, pre);
+      if (b.chunks) {
+        // Fase 9.5 (hallazgo del laboratorio): un botón por trozo; pegar todo junto pierde líneas
+        head.append(title);
+        card.append(head, el("p", "Pegue un trozo, espere el prompt (#) y siga con el siguiente.", "muted small"));
+        const grid = el("div", "", "chunk-grid");
+        for (const c of b.chunks) {
+          const item = el("div", "", "chunk");
+          const pre = el("pre", c.text, "raw config-out");  // texto plano, nunca HTML
+          const btn = el("button", "Copiar", "btn sm");
+          btn.onclick = () => { copyText(c.text, pre); item.classList.add("copied"); };
+          const ch = el("div", "", "chunk-head");
+          ch.append(el("strong", c.title), btn);
+          item.append(ch, pre);
+          grid.append(item);
+        }
+        card.append(grid);
+      } else {
+        const pre = el("pre", b.text, "raw config-out");   // texto plano, nunca HTML
+        const btn = el("button", "Copiar", "btn sm");
+        btn.onclick = () => copyText(b.text, pre);
+        head.append(title, btn);
+        card.append(head, pre);
+      }
       box.append(card);
     }
   } catch (err) {
