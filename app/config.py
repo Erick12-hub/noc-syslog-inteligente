@@ -97,3 +97,10 @@ class Config:
         "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,192.0.2.0/24,198.51.100.0/24,203.0.113.0/24")
     DIAG_MAX_PER_MINUTE = int(os.getenv("DIAG_MAX_PER_MINUTE", "5"))   # por usuario y equipo
     DIAG_TIMEOUT = int(os.getenv("DIAG_TIMEOUT", "120"))               # segundos (traceroute)
+
+    # --- Fase 9.5: consistencia (app/consistency.py) ------------------------
+    NTP_WARN_SECONDS = float(os.getenv("NTP_WARN_SECONDS", "2"))       # desfase de reloj: aviso
+    NTP_CRIT_SECONDS = float(os.getenv("NTP_CRIT_SECONDS", "60"))      # desfase de reloj: crítico
+    CONSISTENCY_SILENT_HOURS = int(os.getenv("CONSISTENCY_SILENT_HOURS", "24"))   # equipo "callado"
+    # El receptor revisa la consistencia (y la cadena de auditoría) cada N minutos. 0 = desactivado
+    CONSISTENCY_INTERVAL_MINUTES = int(os.getenv("CONSISTENCY_INTERVAL_MINUTES", "10"))

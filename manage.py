@@ -15,6 +15,7 @@ Uso:
     python manage.py device-sessions EQUIPO   Historial de sesiones del equipo (Fase 9.1)
     python manage.py device-interfaces EQUIPO [--eliminar-ausentes]   Lee las interfaces reales (Fase 9.3)
     python manage.py device-diag EQUIPO ping|traceroute DESTINO   Diagnóstico desde el equipo (Fase 9.4)
+    python manage.py check-consistency        Reloj, consistencia y cadena de auditoría (Fase 9.5)
 
 La contraseña se escribe en la consola SIN mostrarse (getpass) y nunca queda
 en el historial de comandos ni en el código. Solo quien tiene acceso al
@@ -231,6 +232,26 @@ def cmd_device_diag(name: str, kind: str, target: str):
     conn.close()
 
 
+def cmd_check_consistency():
+    """Fase 9.5: la misma revisión que hace el receptor cada N minutos (con efectos)."""
+    from app.consistency import run_consistency
+    conn = connect(Config.DATABASE_PATH)
+    init_db(conn)
+    r = run_consistency(conn, Config.DEFAULT_OPERATOR)
+    print("Reloj de los equipos (desfase = recibido - hora del evento):")
+    for c in r["clocks"]:
+        if c["samples"]:
+            print(f"  {c['device']:<16} {c['status']:<8} {c['text']}  ({c['samples']} eventos)")
+    c = r["counts"]
+    print(f"\nHallazgos -> críticos: {c['critico']} · avisos: {c['aviso']} · informativos: {c['info']}")
+    for f in r["findings"]:
+        print(f"  [{f['severity'].upper():<7}] {f['device']}: {f['detail']}")
+        print(f"            -> {f['suggestion']}")
+    print(f"\nCadena de auditoría: {'íntegra' if r['chain']['ok'] else 'ROTA'} ({r['chain']['total']} registros)"
+          + (f" · incidente #{r['incident']}" if r["incident"] else ""))
+    conn.close()
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Administración NOC Syslog Inteligente")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -262,6 +283,7 @@ if __name__ == "__main__":
     p_dg.add_argument("equipo")
     p_dg.add_argument("tipo", choices=["ping", "traceroute"])
     p_dg.add_argument("destino", help="IPv4 de destino (redes permitidas: DIAG_ALLOWED_NETS)")
+    sub.add_parser("check-consistency", help="Revisar reloj, consistencia y cadena de auditoría")
     args = parser.parse_args()
 
     if args.command == "init-db":
@@ -289,3 +311,5 @@ if __name__ == "__main__":
         cmd_device_interfaces(args.equipo, args.eliminar_ausentes)
     elif args.command == "device-diag":
         cmd_device_diag(args.equipo, args.tipo, args.destino)
+    elif args.command == "check-consistency":
+        cmd_check_consistency()
