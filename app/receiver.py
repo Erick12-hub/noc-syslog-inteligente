@@ -15,12 +15,26 @@ Notas:
     porque cualquiera puede escribir cualquier nombre (suplantación).
 """
 import socket
+import time
 
 from .config import Config
 from .db import audit, connect, init_db
 from .ingest import ingest
 
 MAX_PACKET = 8192  # bytes; un mensaje Syslog UDP normal ocupa menos de 2 KB
+
+
+def _periodic_check(conn):
+    """Consistencia + cadena de auditoría; un fallo aquí nunca detiene la recepción."""
+    from .consistency import run_consistency
+    try:
+        r = run_consistency(conn, "sistema")
+        c = r["counts"]
+        chain = "íntegra" if r["chain"]["ok"] else f"ROTA -> incidente #{r['incident']}"
+        print(f"[CONSISTENCIA] críticos: {c['critico']} · avisos: {c['aviso']} · info: {c['info']} · "
+              f"cadena de auditoría {chain}")
+    except Exception as e:      # noqa: BLE001 - el receptor debe seguir recibiendo
+        print(f"[CONSISTENCIA] no se pudo revisar: {type(e).__name__}")
 
 
 def run_receiver(host: str = Config.SYSLOG_HOST, port: int = Config.SYSLOG_PORT):
@@ -37,8 +51,15 @@ def run_receiver(host: str = Config.SYSLOG_HOST, port: int = Config.SYSLOG_PORT)
     print(f"[NOC] Receptor Syslog escuchando en udp://{host}:{port}  (Ctrl+C para detener)")
     received = 0
     dropped = 0
+    # Fase 9.5: revisión periódica de consistencia y de la cadena de auditoría.
+    # El receptor es el proceso que está siempre encendido, por eso la hace él.
+    interval = Config.CONSISTENCY_INTERVAL_MINUTES * 60
+    next_check = time.monotonic() + 5 if interval else None
     try:
         while True:
+            if next_check is not None and time.monotonic() >= next_check:
+                next_check = time.monotonic() + interval
+                _periodic_check(conn)
             try:
                 data, addr = sock.recvfrom(MAX_PACKET)
             except socket.timeout:

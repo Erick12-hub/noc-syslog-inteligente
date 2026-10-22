@@ -64,7 +64,8 @@ def test_consola_permite_comando_de_lectura(client):
     ("show running-config", "peligroso"),
     ("show clock ; reload", "encadenamiento"),
     ("show version | include IOS", "encadenamiento"),
-    ("ping 8.8.8.8", "lista permitida"),
+    # Fase 9.4: sigue bloqueado aquí; el motivo indica usar Diagnóstico (que valida el destino)
+    ("ping 8.8.8.8", "Diagnóstico"),
     ("display version", "lista permitida"),     # comando de Huawei en un Cisco
 ])
 def test_consola_bloquea(client, command, reason):

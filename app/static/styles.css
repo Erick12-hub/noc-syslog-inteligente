@@ -289,3 +289,43 @@ nav { flex-wrap: wrap; }
 /* ---------- Fase 8.4: interfaces del equipo ---------- */
 #frm-iface[hidden] { display: none; }        /* el auditor no ve el formulario */
 #tbl-ifaces td.mono { white-space: nowrap; }
+
+/* ---------- Fase 9.1: conexión con el equipo ---------- */
+#frm-conn[hidden] { display: none; }
+.identity { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 8px 0 14px;
+            padding: 12px; background: var(--panel-2); border-radius: 8px; }
+.identity div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.identity strong { overflow-wrap: anywhere; }
+.warn-list { color: var(--yellow-fg); margin: 8px 0 0; padding-left: 18px; }
+.cmd-head { margin-top: 12px; font-size: 12px; color: var(--muted); }
+.cmd-out { background: var(--field-bg); border: 1px solid var(--line); border-radius: 6px; padding: 10px;
+           margin: 4px 0 0; max-height: 280px; overflow: auto; font-size: 12px; white-space: pre; }
+.small-title { font-size: 14px; margin: 18px 0 6px; }
+@media (max-width: 760px) { .identity { grid-template-columns: 1fr 1fr; } }
+
+/* ---------- Fase 9.2: configuración base ---------- */
+.block-pegar { border-left: 3px solid var(--green-fg); }
+.block-manual { border-left: 3px solid var(--yellow-fg); }
+.block-verificar { border-left: 3px solid var(--blue-fg); }
+#bs-blocks h2 .tag { vertical-align: middle; margin-left: 6px; }
+
+/* ---------- Fase 9.3: interfaces reales ---------- */
+#if-sync[hidden] { display: none; }
+.sync-row { margin: 10px 0 4px; align-items: center; }
+.sync-row label.check { flex: 0 1 auto; min-width: 0; }
+
+/* ---------- Fase 9.4: diagnóstico ---------- */
+#frm-diag[hidden] { display: none; }
+.diag-row { margin-top: 10px; }
+.diag-row .diag-type { flex: 0 0 140px; min-width: 120px; }
+.diag-summary { margin: 12px 0 6px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+table.hops { width: auto; margin: 4px 0 8px; }
+table.hops td, table.hops th { padding: 4px 14px 4px 0; }
+
+/* ---------- Fase 9.5: configuración en trozos ---------- */
+.chunk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; }
+.chunk { border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: var(--panel-2); }
+.chunk.copied { border-color: var(--green-fg); }
+.chunk.copied .chunk-head strong::after { content: "  ✓ copiado"; color: var(--green-fg); font-weight: normal; }
+.chunk-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 13px; }
+.chunk .config-out { margin: 0; max-height: 160px; }

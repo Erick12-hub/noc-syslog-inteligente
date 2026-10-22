@@ -1,0 +1,48 @@
+Cisco IOS Software, C2960 Software (C2960-LANBASEK9-M), Version 15.2(7)E8, RELEASE SOFTWARE (fc2)
+Technical Support: http://www.cisco.com/techsupport
+Copyright (c) 1986-2023 by Cisco Systems, Inc.
+Compiled Wed 15-Mar-23 08:24 by mcpre
+
+ROM: Bootstrap program is C2960 boot loader
+BOOTLDR: C2960 Boot Loader (C2960-HBOOT-M) Version 12.2(53r)SEY3, RELEASE SOFTWARE (fc1)
+
+SIM-DIST-SW01 uptime is 2 hours, 9 minutes
+System returned to ROM by power-on
+System image file is "flash:/c2960-lanbasek9-mz.152-7.E8.bin"
+
+
+This product contains cryptographic features and is subject to United
+States and local country laws governing import, export, transfer and
+use.
+
+cisco WS-C2960-24TT-L (PowerPC405) processor (revision B0) with 65536K bytes of memory.
+Processor board ID FOC1234SIM3
+Last reset from power-on
+1 Virtual Ethernet interface
+24 FastEthernet interfaces
+2 Gigabit Ethernet interfaces
+The password-recovery mechanism is enabled.
+
+64K bytes of flash-simulated non-volatile configuration memory.
+Base ethernet MAC Address       : 00:1A:2B:3C:4D:00
+Motherboard assembly number     : 73-10390-03
+Power supply part number        : 341-0097-02
+Motherboard serial number       : FOC12345SIM
+Power supply serial number      : AZS1234SIM4
+Model revision number           : B0
+Motherboard revision number     : B0
+Model number                    : WS-C2960-24TT-L
+System serial number            : FOC1234SIM3
+Top Assembly Part Number        : 800-27221-02
+Top Assembly Revision Number    : A0
+Version ID                      : V02
+CLEI Code Number                : COM3K00BRA
+Hardware Board Revision Number  : 0x01
+
+
+Switch Ports Model                     SW Version            SW Image
+------ ----- -----                     ----------            ----------
+*    1 26    WS-C2960-24TT-L           15.2(7)E8             C2960-LANBASEK9-M
+
+
+Configuration register is 0xF

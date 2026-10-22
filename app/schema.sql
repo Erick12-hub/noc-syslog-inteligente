@@ -41,7 +41,17 @@ CREATE TABLE IF NOT EXISTS devices (
     authorized   INTEGER NOT NULL DEFAULT 1 CHECK (authorized IN (0, 1)),
     is_simulated INTEGER NOT NULL DEFAULT 0 CHECK (is_simulated IN (0, 1)),
     created_at   TEXT NOT NULL,
-    updated_at   TEXT NOT NULL
+    updated_at   TEXT NOT NULL,
+    -- Fase 9: cómo se conecta el NOC al equipo (ver app/connector.py)
+    connection_mode TEXT NOT NULL DEFAULT 'ninguno',  -- ninguno | simulado | consola | ssh
+    platform        TEXT,             -- cisco_ios | cisco_xe | fortinet | huawei
+    console_port    TEXT,             -- COM3 (Windows) o /dev/ttyUSB0 (Linux), modo consola
+    -- Lo que el NOC LEYÓ del equipo en la última identificación
+    serial_number   TEXT,             -- identifica al equipo FÍSICO (la IP puede cambiar)
+    detected_model  TEXT,
+    detected_version TEXT,
+    host_key_fp     TEXT,             -- huella de la llave SSH (solo modo ssh, equipos fijos)
+    last_identified_at TEXT
 );
 
 -- ---------------------------------------------------------------------
@@ -61,8 +71,53 @@ CREATE TABLE IF NOT EXISTS interfaces (
                 CHECK (status IN ('up', 'down', 'admin_down', 'desconocido')),
     created_at  TEXT NOT NULL,
     updated_at  TEXT NOT NULL,
+    -- Fase 9.3: datos leídos del equipo real (show ip interface brief)
+    ip_address  TEXT,                           -- IP de la interfaz o NULL (unassigned)
+    source      TEXT NOT NULL DEFAULT 'manual', -- manual | equipo
+    last_seen_at TEXT,                          -- última vez que el equipo la reportó
     UNIQUE (device_id, name)                    -- un equipo no repite interfaz
 );
+
+-- ---------------------------------------------------------------------
+-- 2c. Sesiones con los equipos (Fase 9.1): TRAZABILIDAD de cada conexión
+--    Una fila por cada vez que el NOC se conecta a un equipo (consola o SSH).
+--    serial_number = el equipo FÍSICO que respondió en esa sesión.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS device_sessions (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    device_id     INTEGER REFERENCES devices(id) ON DELETE SET NULL,
+    device_name   TEXT NOT NULL,            -- se conserva aunque se borre el equipo
+    transport     TEXT NOT NULL CHECK (transport IN ('simulado', 'consola', 'ssh')),
+    target        TEXT NOT NULL,            -- COM3, 192.0.2.1:22 o "simulado"
+    started_by    TEXT NOT NULL,            -- usuario del NOC
+    started_at    TEXT NOT NULL,
+    ended_at      TEXT,
+    status        TEXT NOT NULL DEFAULT 'abierta'
+                  CHECK (status IN ('abierta', 'cerrada', 'fallida')),
+    error         TEXT,
+    serial_number TEXT,
+    model         TEXT,
+    os_version    TEXT,
+    host_key_fp   TEXT,
+    warnings      TEXT,                     -- avisos separados por " | "
+    commands_count INTEGER NOT NULL DEFAULT 0,
+    is_simulated  INTEGER NOT NULL DEFAULT 0 CHECK (is_simulated IN (0, 1))
+);
+
+-- Cada comando enviado en una sesión, con su salida y la huella de la salida
+CREATE TABLE IF NOT EXISTS device_commands (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id    INTEGER NOT NULL REFERENCES device_sessions(id) ON DELETE CASCADE,
+    command       TEXT NOT NULL,
+    requested_by  TEXT NOT NULL,
+    started_at    TEXT NOT NULL,
+    duration_ms   INTEGER,
+    status        TEXT NOT NULL CHECK (status IN ('ok', 'error')),
+    output        TEXT,                     -- recortada a 64 KB
+    output_sha256 TEXT                      -- huella de la salida COMPLETA
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_device ON device_sessions(device_id, started_at);
+CREATE INDEX IF NOT EXISTS idx_commands_session ON device_commands(session_id);
 
 -- ---------------------------------------------------------------------
 -- 3. Eventos Syslog recibidos o importados

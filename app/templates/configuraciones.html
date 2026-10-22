@@ -38,5 +38,53 @@
   <pre class="raw config-out" id="cfg-out">Elija la marca y presione Generar.</pre>
   <p class="muted small">Plantilla de laboratorio: verifique la sintaxis según la versión del equipo y aplíquela solo en equipos autorizados. La IP de la interfaz de origen debe estar registrada como fuente autorizada en el Inventario.</p>
 </section>
+
+<!-- Fase 9.2: configuración base desde cero para el laboratorio -->
+<section class="page-head">
+  <div>
+    <h1>Configuración base de laboratorio (desde cero)</h1>
+    <p class="muted">Para los equipos Cisco prestados: se borran y se configuran en cada sesión por el cable de consola.
+      En modo <b>préstamo</b> no lleva usuarios, contraseñas ni se guarda.</p>
+  </div>
+</section>
+
+<section class="card filters">
+  <form id="frm-base">
+    <label>Equipo del inventario (opcional)<select name="device_id" id="bs-device"><option value="">(sin equipo)</option></select></label>
+    <label>Rol *
+      <select name="role" id="bs-role">
+        <option value="router">router (Catalyst 8200L-1N-4T)</option>
+        <option value="switch">switch (Catalyst 2960-24TT-L)</option>
+      </select>
+    </label>
+    <label>Modo *
+      <select name="mode" id="bs-mode">
+        <option value="prestamo">préstamo (sin contraseñas)</option>
+        <option value="fijo">fijo (con SSH)</option>
+      </select>
+    </label>
+    <label>Hostname *<input name="hostname" id="bs-hostname" value="LAB-RTR01" maxlength="63"></label>
+    <label>Interfaz de gestión *<input name="mgmt_if" id="bs-if" value="GigabitEthernet0/0/0" maxlength="40"></label>
+    <label>IP de gestión *<input name="mgmt_ip" id="bs-ip" value="192.168.100.1"></label>
+    <label>Máscara o prefijo *<input name="prefix" id="bs-prefix" value="24" size="15" placeholder="24 o 255.255.255.0"></label>
+    <label>Puerta de enlace<input name="gateway" id="bs-gw" value="" placeholder="solo switch"></label>
+    <label>IP del PC del NOC *<input name="noc_ip" id="bs-noc" value="192.168.100.10"></label>
+    <label>Puerto UDP *<input name="port" id="bs-port" value="{{ config.SYSLOG_PORT }}" size="6"></label>
+    <label>Severidad *
+      <select name="severity">
+        <option value="5">5 Notice</option><option value="6" selected>6 Informational</option><option value="7">7 Debug</option>
+      </select>
+    </label>
+    <div class="filter-actions">
+      <button class="btn" type="button" id="btn-bs-suggest" title="Plan de direcciones del laboratorio (192.168.100.0/24)">Usar sugerido</button>
+      <button class="btn primary" type="submit">Generar</button>
+    </div>
+  </form>
+  <p class="muted small">Todas las casillas se pueden escribir a mano: use las direcciones que le asignen o las que
+    ya tenga el equipo. <b>Usar sugerido</b> vuelve al plan de laboratorio. Si el equipo ya está configurado,
+    no necesita esta sección: regístrelo en el Inventario con su IP y use el generador Syslog de arriba.</p>
+  <ul class="errors" id="bs-errors"></ul>
+</section>
+<div id="bs-blocks"></div>
 {% endblock %}
 {% block scripts %}<script src="{{ url_for('static', filename='configuraciones.js') }}"></script>{% endblock %}

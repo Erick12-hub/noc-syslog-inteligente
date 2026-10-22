@@ -218,3 +218,142 @@ def is_known_interface(conn, device_id, name) -> bool | None:
     found = conn.execute(f"SELECT 1 FROM interfaces WHERE device_id = ? AND name IN ({marks}) LIMIT 1",
                          (device_id, *candidates)).fetchone()
     return found is not None
+
+
+# ===========================================================================
+# Fase 9.3: INTERFACES REALES leídas del equipo
+#
+#   POST /api/devices/<id>/interfaces/sync   {"remove_missing": false}
+#
+# El NOC se conecta (app/connector.py), ejecuta el comando de interfaces de
+# la marca y compara la salida con la tabla:
+#   nuevas         -> se registran (source = 'equipo')
+#   actualizadas   -> cambió el estado o la IP
+#   sin cambios    -> solo se actualiza last_seen_at
+#   desaparecidas  -> están en la tabla pero el equipo ya no las reporta
+#                     (se eliminan solo si se pide: remove_missing)
+#   inválidas      -> nombres que no pasan la validación de la marca: la
+#                     salida del equipo también es un DATO NO CONFIABLE
+# ===========================================================================
+SYNC_COMMAND = {"cisco_ios": "show ip interface brief", "cisco_xe": "show ip interface brief",
+                "huawei": "display ip interface brief", "fortinet": "get system interface physical"}
+
+# Cisco:  GigabitEthernet0/0/1   unassigned   YES unset  administratively down down
+RE_CISCO_ROW = re.compile(
+    r"^(?P<name>\S+)\s+(?P<ip>\S+)\s+(?:YES|NO)\s+\S+\s+"
+    r"(?P<status>administratively down|up|down|deleted)\s+(?P<proto>up|down)\s*$")
+# Huawei: GigabitEthernet0/0/1   192.0.2.1/24   up   up(s)   /   *down   down
+RE_HUAWEI_ROW = re.compile(
+    r"^(?P<name>[A-Za-z][\w/.\-]*)\s+(?P<ip>\S+)\s+(?P<status>\*?down|up|\^down)\S*\s+(?P<proto>up|down)\S*\s*$")
+# Fortinet:     ==[port1]   ...   ip: 192.0.2.1 255.255.255.0   status: up
+RE_FORTI_NAME = re.compile(r"==\[(?P<name>[^\]]+)\]")
+RE_FORTI_IP = re.compile(r"\bip:\s*(?P<ip>\d{1,3}(?:\.\d{1,3}){3})")
+RE_FORTI_STATUS = re.compile(r"\bstatus:\s*(?P<status>up|down)")
+
+
+def parse_interfaces(platform: str, text: str) -> list[dict]:
+    """Salida del comando -> [{name, ip, status}] (status: up | down | admin_down)."""
+    rows = []
+    for line in (text or "").splitlines():
+        line = line.rstrip()
+        if platform in ("cisco_ios", "cisco_xe"):
+            m = RE_CISCO_ROW.match(line)
+            if not m or m["status"] == "deleted":
+                continue
+            status = ("admin_down" if m["status"].startswith("administratively")
+                      else "up" if m["status"] == "up" and m["proto"] == "up" else "down")
+            ip = m["ip"]
+        elif platform == "huawei":
+            m = RE_HUAWEI_ROW.match(line)
+            if not m or m["name"] in ("Interface",):
+                continue
+            raw = m["status"]
+            status = "admin_down" if raw.startswith("*") else "up" if raw == "up" and m["proto"] == "up" else "down"
+            ip = m["ip"].split("/")[0]
+        elif platform == "fortinet":
+            m = RE_FORTI_NAME.search(line)
+            if not m:
+                continue
+            ipm, stm = RE_FORTI_IP.search(line), RE_FORTI_STATUS.search(line)
+            status = stm["status"] if stm else "desconocido"
+            ip = ipm["ip"] if ipm else None
+            rows.append({"name": m["name"], "ip": ip if ip and ip != "0.0.0.0" else None, "status": status})
+            continue
+        else:
+            return []
+        rows.append({"name": m["name"], "ip": None if ip.lower() in ("unassigned", "unnumbered") else ip,
+                     "status": status})
+    return rows
+
+
+def apply_sync(conn, device, rows: list[dict], user: str, remove_missing: bool = False) -> dict:
+    """Compara lo que reportó el equipo con la tabla y la actualiza. Devuelve el resumen."""
+    vendor, ts = device["vendor"], now_iso()
+    summary = {"nuevas": [], "actualizadas": [], "sin_cambios": [], "desaparecidas": [],
+               "eliminadas": [], "invalidas": []}
+    current = {r["name"].lower(): r for r in conn.execute(
+        "SELECT * FROM interfaces WHERE device_id = ?", (device["id"],))}
+    seen = set()
+    for row in rows:
+        name = normalize_for_vendor(vendor, row["name"])
+        if validate_interface_name(vendor, name):           # dato no confiable: se valida
+            summary["invalidas"].append(row["name"][:48])
+            continue
+        if name.lower() in seen:
+            continue
+        seen.add(name.lower())
+        old = current.get(name.lower())
+        if old is None:
+            if len(current) + len(summary["nuevas"]) >= MAX_PER_DEVICE:
+                summary["invalidas"].append(f"{name} (límite de {MAX_PER_DEVICE})")
+                continue
+            conn.execute("INSERT INTO interfaces (device_id, name, description, status, created_at, updated_at, "
+                         "ip_address, source, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'equipo', ?)",
+                         (device["id"], name, "Leída del equipo", row["status"], ts, ts, row["ip"], ts))
+            summary["nuevas"].append(name)
+        elif old["status"] != row["status"] or (old["ip_address"] or None) != row["ip"]:
+            conn.execute("UPDATE interfaces SET status = ?, ip_address = ?, updated_at = ?, last_seen_at = ? "
+                         "WHERE id = ?", (row["status"], row["ip"], ts, ts, old["id"]))
+            summary["actualizadas"].append(f"{name}: {old['status']} -> {row['status']}"
+                                           + (f", IP {old['ip_address'] or '-'} -> {row['ip'] or '-'}"
+                                              if (old["ip_address"] or None) != row["ip"] else ""))
+        else:
+            conn.execute("UPDATE interfaces SET last_seen_at = ? WHERE id = ?", (ts, old["id"]))
+            summary["sin_cambios"].append(name)
+    for key, old in current.items():
+        if key not in seen:
+            summary["desaparecidas"].append(old["name"])
+            if remove_missing:
+                conn.execute("DELETE FROM interfaces WHERE id = ?", (old["id"],))
+                summary["eliminadas"].append(old["name"])
+    conn.commit()
+    counts = {k: len(v) for k, v in summary.items()}
+    audit(conn, user, "interface.sync", "devices", device["id"],
+          f"{device['name']}: " + " ".join(f"{k}={v}" for k, v in counts.items()),
+          "alerta" if summary["desaparecidas"] or summary["invalidas"] else "ok")
+    return summary
+
+
+@bp.post("/<int:device_id>/interfaces/sync")
+def sync_interfaces(device_id):
+    from .connector import run_session           # import tardío: evita importaciones circulares
+    conn = get_db()
+    device = conn.execute("SELECT * FROM devices WHERE id = ?", (device_id,)).fetchone()
+    if device is None:
+        return jsonify(error="Equipo no encontrado"), 404
+    command = SYNC_COMMAND.get(device["platform"])
+    if command is None:
+        return jsonify(errors=["Elija la plataforma del equipo en el inventario para leer sus interfaces"]), 400
+    data = request.get_json(silent=True) or {}
+    user = actor()
+    result, status = run_session(conn, device, [command], user)
+    if status != 200:
+        return jsonify(result), status
+    output = next((c["output"] for c in result["commands"] if c["command"] == command), "")
+    rows = parse_interfaces(device["platform"], output)
+    if not rows:
+        return jsonify(errors=["El equipo respondió, pero no se reconoció ninguna interfaz en la salida"],
+                       session=result["id"]), 502
+    summary = apply_sync(conn, device, rows, user, bool(data.get("remove_missing")))
+    return jsonify(session=result["id"], serial_number=result["serial_number"], summary=summary,
+                   warnings=result["warnings"])
