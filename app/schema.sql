@@ -155,6 +155,44 @@ CREATE TRIGGER IF NOT EXISTS config_no_delete BEFORE DELETE ON config_versions
 BEGIN SELECT RAISE(ABORT, 'Las versiones de configuración son evidencia: no se pueden borrar'); END;
 
 -- ---------------------------------------------------------------------
+-- 2e. Solicitudes de cambio (Fase 10.2)
+--    Qué se aplica, por qué, cómo se deshace (rollback), cómo se verifica,
+--    cuándo (ventana) y con qué riesgo (impacto x probabilidad).
+--    Fechas en UTC. Estados: borrador -> pendiente -> aprobado/rechazado ->
+--    en_ejecucion -> ejecutado/fallido/revertido; o cancelado.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS change_requests (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    device_id          INTEGER REFERENCES devices(id) ON DELETE SET NULL,
+    device_name        TEXT NOT NULL,
+    title              TEXT NOT NULL,
+    reason             TEXT NOT NULL,           -- justificación
+    commands           TEXT NOT NULL,           -- se aplican dentro de configure terminal
+    rollback           TEXT NOT NULL,           -- obligatorio: cómo se deshace
+    verify             TEXT,                    -- comandos de solo lectura para verificar
+    impact             INTEGER NOT NULL CHECK (impact BETWEEN 1 AND 3),
+    probability        INTEGER NOT NULL CHECK (probability BETWEEN 1 AND 3),
+    min_impact         INTEGER NOT NULL DEFAULT 1,  -- impuesto por los comandos
+    risk_score         INTEGER NOT NULL,        -- impacto x probabilidad (1-9)
+    risk_level         TEXT NOT NULL CHECK (risk_level IN ('bajo', 'medio', 'alto')),
+    risk_reasons       TEXT,
+    approvals_required INTEGER NOT NULL,
+    window_start       TEXT,
+    window_end         TEXT,
+    status             TEXT NOT NULL DEFAULT 'borrador' CHECK (status IN ('borrador', 'pendiente',
+                       'aprobado', 'rechazado', 'en_ejecucion', 'ejecutado', 'fallido', 'revertido', 'cancelado')),
+    requested_by       TEXT NOT NULL,
+    created_at         TEXT NOT NULL,
+    updated_at         TEXT NOT NULL,
+    submitted_at       TEXT,
+    baseline_version_id INTEGER REFERENCES config_versions(id),   -- versión conocida al enviarlo
+    cancel_reason      TEXT,
+    closed_at          TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_changes_status ON change_requests(status, id);
+CREATE INDEX IF NOT EXISTS idx_changes_device ON change_requests(device_id, window_start);
+
+-- ---------------------------------------------------------------------
 -- 3. Eventos Syslog recibidos o importados
 --    'raw' guarda el mensaje original TAL CUAL llegó. Se trata como DATO
 --    NO CONFIABLE: nunca se interpreta como instrucción ni se ejecuta.

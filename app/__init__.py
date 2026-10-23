@@ -41,9 +41,9 @@ def create_app(config_class=Config):
     app.teardown_appcontext(db.close_db)
 
     # Registrar módulos
-    from . import (admin_api, audit_api, auth, configgen, configversions, connector, consistency, console,
+    from . import (admin_api, audit_api, auth, changes, configgen, configversions, connector, consistency, console,
                    dashboard, devices, diagnostics, events, incidents, interfaces, proposals, views)
-    for module in (auth, devices, interfaces, connector, diagnostics, consistency, configversions, events,
+    for module in (auth, devices, interfaces, connector, diagnostics, consistency, configversions, changes, events,
                    incidents, dashboard, configgen, console, proposals, audit_api, admin_api, views):
         app.register_blueprint(module.bp)
 
