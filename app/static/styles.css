@@ -370,3 +370,16 @@ table.risk-matrix td.selected { border-color: var(--text); font-weight: 700; }
    barra siga en una sola línea a 1366 px */
 nav { gap: 2px; }
 nav a, .nav-soon { padding: 6px 8px; }
+
+/* ---------- Fase 10.3: revisión, ejecución y rollback ---------- */
+#frm-review[hidden], #d-exec-box[hidden], #frm-rollback[hidden], #btn-diff[hidden] { display: none; }
+#frm-review textarea { width: 100%; }
+.exec-box { margin-top: 14px; padding: 12px; border: 1px solid var(--accent-2); border-radius: 8px; background: var(--panel-2); }
+.exec-box p { margin-bottom: 8px; }
+#d-result { margin: 14px 0 6px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+ol.steps { list-style: none; padding: 0; margin: 0 0 10px; }
+ol.steps li { display: flex; gap: 8px; align-items: baseline; padding: 4px 0; border-bottom: 1px solid var(--line); }
+ol.steps .step-mark { font-weight: 700; width: 14px; }
+ol.steps li.ok .step-mark { color: var(--green-fg); }
+ol.steps li.bad .step-mark { color: var(--red-fg); }
+#frm-rollback { margin-top: 12px; }

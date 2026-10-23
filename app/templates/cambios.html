@@ -88,6 +88,36 @@
     <div><div class="cmd-head">Rollback</div><pre class="cmd-out" id="d-rollback"></pre></div>
   </div>
   <div class="cmd-head">Verificación</div><pre class="cmd-out" id="d-verify"></pre>
+
+  <!-- Fase 10.3: revisiones (separación de funciones) -->
+  <h3 class="small-title">Revisiones <span class="muted small" id="d-appr-count"></span></h3>
+  <ol class="timeline" id="d-approvals"></ol>
+  <form id="frm-review" novalidate>
+    <label>Comentario de la revisión (obligatorio)
+      <textarea name="comment" rows="2" maxlength="500" placeholder="Qué se revisó: comandos, rollback, ventana, riesgo"></textarea></label>
+    <div class="actions">
+      <button type="submit" class="btn danger" value="rechazar">Rechazar</button>
+      <button type="submit" class="btn primary" value="aprobar">Aprobar</button>
+    </div>
+  </form>
+
+  <!-- Fase 10.3: ejecución -->
+  <div id="d-exec-box" class="exec-box">
+    <p class="small">Al ejecutar, el NOC: <b>1)</b> lee la configuración (línea base), <b>2)</b> comprueba que sea la
+      aprobada, <b>3)</b> aplica los comandos en el MISMO equipo físico, <b>4)</b> verifica y lee la configuración
+      después. Si algo falla, aplica el <b>rollback</b> solo.</p>
+    <p class="small" id="d-exec-window"></p>
+    <button type="button" class="btn primary" id="btn-execute">Ejecutar cambio ahora</button>
+  </div>
+  <p id="d-result"></p>
+  <ol class="steps" id="d-steps"></ol>
+  <button type="button" class="btn" id="btn-diff">Ver diferencia antes → después</button>
+  <div id="d-diff"></div>
+  <form id="frm-rollback" class="inline-form" novalidate>
+    <label>Motivo para revertir<input name="comment" maxlength="500" placeholder="Qué problema causó el cambio"></label>
+    <button type="submit" class="btn danger">Revertir cambio (rollback)</button>
+  </form>
+
   <div class="actions" id="d-actions">
     <button type="button" class="btn" id="btn-edit">Editar</button>
     <button type="button" class="btn primary" id="btn-submit">Enviar a aprobación</button>

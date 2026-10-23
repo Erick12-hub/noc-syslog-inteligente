@@ -215,8 +215,127 @@ async function openDetail(id, errors = [], extraWarnings = []) {
     !(CAN_EDIT && (mine || IS_ADMIN) && ["borrador", "pendiente", "aprobado"].includes(c.status));
   document.getElementById("frm-cancel").reset();
   document.getElementById("d-errors").replaceChildren(...errors.map(m => el("li", m)));
+  renderExecution(c, mine);
   if (!dlgDetail.open) dlgDetail.showModal();
 }
+
+/* -------------------- Fase 10.3: revisión, ejecución y rollback -------------------- */
+function renderExecution(c, mine) {
+  const approved = c.approvals.filter(a => a.decision === "aprobado").length;
+  document.getElementById("d-appr-count").textContent =
+    `· ${approved} de ${c.approvals_required} aprobación(es)`;
+  const ol = document.getElementById("d-approvals");
+  ol.replaceChildren(...c.approvals.map(a => {
+    const li = el("li");
+    li.append(el("span", `${fmtDate(a.decided_at)} · ${a.reviewer} `, "muted small"),
+              el("span", a.decision, `tag ${a.decision === "aprobado" ? "ok" : "bad"}`), el("div", a.comment));
+    return li;
+  }));
+  if (!c.approvals.length) ol.append(el("li", c.status === "borrador" ? "Aún no se ha enviado a aprobación."
+                                                                    : "Sin revisiones todavía.", "muted small"));
+  // Revisa un administrador de seguridad que no pidió el cambio y que no lo haya revisado ya
+  const reviewed = c.approvals.some(a => a.reviewer === ME);
+  const frmReview = document.getElementById("frm-review");
+  frmReview.hidden = !(IS_ADMIN && !mine && !reviewed && c.status === "pendiente");
+  frmReview.reset();
+
+  const now = Date.now();
+  const inWindow = !c.window_start || (now >= Date.parse(c.window_start) && now <= Date.parse(c.window_end));
+  document.getElementById("d-exec-box").hidden = !(CAN_EDIT && c.status === "aprobado");
+  document.getElementById("d-exec-window").textContent = !c.window_start ? "Sin ventana: se puede ejecutar ya." :
+    inWindow ? `Dentro de la ventana (${windowText(c)}).` : `Fuera de la ventana (${windowText(c)}): el NOC no lo ejecutará.`;
+  document.getElementById("btn-execute").disabled = !inWindow;
+
+  const res = document.getElementById("d-result");
+  res.replaceChildren();
+  if (c.result) {
+    const good = c.status === "ejecutado";
+    res.append(el("span", STATUS[c.status], `tag ${good ? "ok" : "bad"}`), " ", el("strong", c.result));
+    if (c.executed_by) res.append(el("span", ` · ${c.executed_by} · ${fmtDate(c.executed_at)}`, "muted small"));
+  }
+  document.getElementById("d-steps").replaceChildren(...c.execution.map(s => {
+    const li = el("li", "", s.ok ? "ok" : "bad");
+    li.append(el("span", s.ok ? "✓" : "✗", "step-mark"), el("strong", s.step), " ", el("span", s.detail, "small"));
+    return li;
+  }));
+  const btnDiff = document.getElementById("btn-diff");
+  btnDiff.hidden = !(c.pre_version_id && c.post_version_id && c.pre_version_id !== c.post_version_id);
+  document.getElementById("d-diff").replaceChildren();
+  const frmRb = document.getElementById("frm-rollback");
+  frmRb.hidden = !(CAN_EDIT && c.status === "ejecutado");
+  frmRb.reset();
+}
+
+function renderDiff(r) {
+  const box = document.getElementById("d-diff");
+  const head = el("p", "", "diag-summary");
+  head.append(el("strong", `v${r.from.version_no} → v${r.to.version_no}`), " ",
+              el("span", `+${r.added}`, "diff-plus mono"), " ", el("span", `−${r.removed}`, "diff-minus mono"));
+  const pre = el("pre", "", "cmd-out diff");
+  for (const line of r.lines) {
+    let cls = "";
+    if (line.startsWith("+++") || line.startsWith("---")) cls = "d-file";
+    else if (line.startsWith("@@")) cls = "d-hunk";
+    else if (line.startsWith("+")) cls = "d-add";
+    else if (line.startsWith("-")) cls = "d-del";
+    pre.append(el("span", line + "\n", cls));
+  }
+  box.replaceChildren(head, pre);
+}
+
+document.getElementById("btn-diff").onclick = async () => {
+  try {
+    renderDiff(await api(`/api/configs/diff?from=${current.pre_version_id}&to=${current.post_version_id}`));
+  } catch (err) { toast(err.message, "err"); }
+};
+
+document.getElementById("frm-review").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const res = await fetch(`/api/changes/${current.id}/review`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ decision: ev.submitter.value, comment: ev.target.elements.comment.value.trim() }),
+  });
+  const body = await res.json();
+  if (!res.ok) { document.getElementById("d-errors").replaceChildren(...body.errors.map(m => el("li", m))); return; }
+  toast(ev.submitter.value === "aprobar" ? "Revisión registrada: aprobado" : "Cambio rechazado");
+  await loadList();
+  await openDetail(current.id);
+});
+
+document.getElementById("btn-execute").onclick = async () => {
+  const btn = document.getElementById("btn-execute");
+  btn.disabled = true; btn.textContent = "Ejecutando… (línea base, aplicar, verificar)";
+  document.getElementById("d-errors").replaceChildren();
+  try {
+    const res = await fetch(`/api/changes/${current.id}/execute`, { method: "POST" });
+    const body = await res.json();
+    if (body.errors) document.getElementById("d-errors").replaceChildren(...body.errors.map(m => el("li", m)));
+    if (res.ok) toast(body.status === "ejecutado" ? "Cambio ejecutado y verificado" : `Resultado: ${STATUS[body.status]}`,
+                      body.status === "ejecutado" ? "ok" : "err");
+    await loadList();
+    const errs = body.errors || [];
+    await openDetail(current.id, errs);
+  } catch (err) { toast(err.message, "err"); }
+  finally { btn.textContent = "Ejecutar cambio ahora"; }
+};
+
+document.getElementById("frm-rollback").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const btn = ev.target.querySelector("button");
+  btn.disabled = true;
+  try {
+    const res = await fetch(`/api/changes/${current.id}/rollback`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ comment: ev.target.elements.comment.value.trim() }),
+    });
+    const body = await res.json();
+    if (!res.ok) { document.getElementById("d-errors").replaceChildren(...body.errors.map(m => el("li", m))); return; }
+    toast(`Cambio #${current.id}: ${STATUS[body.status]}`, body.status === "revertido" ? "ok" : "err");
+    await loadList();
+    await openDetail(current.id);
+  } catch (err) { toast(err.message, "err"); }
+  finally { btn.disabled = false; }
+});
 
 document.getElementById("btn-detail-close").onclick = () => dlgDetail.close();
 document.getElementById("btn-edit").onclick = () => { dlgDetail.close(); openForm(current); };
