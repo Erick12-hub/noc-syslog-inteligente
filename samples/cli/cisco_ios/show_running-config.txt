@@ -1,0 +1,118 @@
+Building configuration...
+
+Current configuration : 2911 bytes
+!
+! Last configuration change at 19:24:02 COT Wed Oct 21 2026
+!
+version 15.2
+no service pad
+service timestamps debug datetime msec localtime show-timezone year
+service timestamps log datetime msec localtime show-timezone year
+no service password-encryption
+service sequence-numbers
+!
+hostname SIM-DIST-SW01
+!
+boot-start-marker
+boot-end-marker
+!
+logging buffered 16384 informational
+!
+no aaa new-model
+clock timezone COT -5 0
+system mtu routing 1500
+!
+no ip domain lookup
+!
+login on-failure log
+login on-success log
+!
+archive
+ log config
+  logging enable
+  notify syslog contenttype plaintext
+!
+spanning-tree mode pvst
+spanning-tree extend system-id
+!
+vlan internal allocation policy ascending
+!
+interface FastEthernet0/1
+ description Router / PC del NOC
+ switchport mode access
+!
+interface FastEthernet0/2
+ description Router / PC del NOC
+ switchport mode access
+!
+interface FastEthernet0/3
+!
+interface FastEthernet0/4
+!
+interface FastEthernet0/5
+!
+interface FastEthernet0/6
+!
+interface FastEthernet0/7
+!
+interface FastEthernet0/8
+!
+interface FastEthernet0/9
+!
+interface FastEthernet0/10
+!
+interface FastEthernet0/11
+!
+interface FastEthernet0/12
+!
+interface FastEthernet0/13
+!
+interface FastEthernet0/14
+!
+interface FastEthernet0/15
+!
+interface FastEthernet0/16
+!
+interface FastEthernet0/17
+!
+interface FastEthernet0/18
+!
+interface FastEthernet0/19
+!
+interface FastEthernet0/20
+!
+interface FastEthernet0/21
+!
+interface FastEthernet0/22
+!
+interface FastEthernet0/23
+!
+interface FastEthernet0/24
+!
+interface GigabitEthernet0/1
+!
+interface GigabitEthernet0/2
+!
+interface Vlan1
+ description Gestion NOC lab (192.168.100.0/24)
+ ip address 192.168.100.2 255.255.255.0
+!
+ip default-gateway 192.168.100.1
+ip http server
+ip http secure-server
+!
+logging trap informational
+logging facility local7
+logging source-interface Vlan1
+logging host 192.168.100.10 transport udp port 5514
+!
+line con 0
+ exec-timeout 30 0
+ logging synchronous
+line vty 0 4
+ login
+line vty 5 15
+ login
+!
+ntp server 192.168.100.1
+end

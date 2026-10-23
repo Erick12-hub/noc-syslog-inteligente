@@ -120,6 +120,41 @@ CREATE INDEX IF NOT EXISTS idx_sessions_device ON device_sessions(device_id, sta
 CREATE INDEX IF NOT EXISTS idx_commands_session ON device_commands(session_id);
 
 -- ---------------------------------------------------------------------
+-- 2d. Versiones de configuración (Fase 10.1)
+--    Una fila por cada configuración DISTINTA leída de un equipo. El texto se
+--    guarda normalizado y SIN secretos (app/configversions.py). Son evidencia:
+--    los triggers impiden modificar el contenido o borrarlas.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS config_versions (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    device_id     INTEGER REFERENCES devices(id) ON DELETE SET NULL,
+    device_name   TEXT NOT NULL,            -- se conserva aunque se borre el equipo
+    version_no    INTEGER NOT NULL,         -- 1, 2, 3... por equipo
+    session_id    INTEGER REFERENCES device_sessions(id) ON DELETE SET NULL,
+    captured_by   TEXT NOT NULL,
+    captured_at   TEXT NOT NULL,
+    serial_number TEXT,                     -- equipo FÍSICO del que se leyó
+    command       TEXT NOT NULL,            -- show running-config, display current-configuration...
+    sha256        TEXT NOT NULL,            -- huella del texto guardado
+    lines         INTEGER NOT NULL,
+    masked        INTEGER NOT NULL DEFAULT 0,   -- secretos ocultados
+    added         INTEGER,                  -- líneas agregadas respecto a la versión anterior
+    removed       INTEGER,                  -- líneas quitadas respecto a la versión anterior
+    note          TEXT,
+    is_simulated  INTEGER NOT NULL DEFAULT 0 CHECK (is_simulated IN (0, 1)),
+    content       TEXT NOT NULL,
+    UNIQUE (device_id, version_no)
+);
+CREATE INDEX IF NOT EXISTS idx_configs_device ON config_versions(device_id, version_no);
+-- Solo se protege el contenido: borrar el equipo pone device_id en NULL (permitido)
+CREATE TRIGGER IF NOT EXISTS config_no_update
+BEFORE UPDATE OF device_name, version_no, captured_by, captured_at, serial_number, command, sha256,
+                 lines, masked, added, removed, note, content ON config_versions
+BEGIN SELECT RAISE(ABORT, 'Las versiones de configuración son evidencia: no se pueden modificar'); END;
+CREATE TRIGGER IF NOT EXISTS config_no_delete BEFORE DELETE ON config_versions
+BEGIN SELECT RAISE(ABORT, 'Las versiones de configuración son evidencia: no se pueden borrar'); END;
+
+-- ---------------------------------------------------------------------
 -- 3. Eventos Syslog recibidos o importados
 --    'raw' guarda el mensaje original TAL CUAL llegó. Se trata como DATO
 --    NO CONFIABLE: nunca se interpreta como instrucción ni se ejecuta.

@@ -61,6 +61,7 @@ IDENTITY_COMMAND = {"cisco_ios": "show version", "cisco_xe": "show version",
 RE_CONSOLE_PORT = re.compile(r"^(COM\d{1,3}|/dev/tty[A-Za-z0-9]{1,12})$")
 MAX_COMMANDS = 5
 MAX_OUTPUT = 64 * 1024            # se guardan 64 KB por salida (la huella es de TODA la salida)
+MAX_CAPTURE = 512 * 1024          # Fase 10.1: la configuración se guarda completa (hasta 512 KB)
 SAMPLES_DIR = BASE_DIR / "samples" / "cli"
 
 
@@ -88,11 +89,42 @@ class SimulatedTransport:
             return simulated_diagnostic(command)
         sample = SAMPLES_DIR / (self.device["platform"] or "") / (command.replace(" ", "_") + ".txt")
         if sample.is_file():
-            return sample.read_text(encoding="utf-8")
+            text = sample.read_text(encoding="utf-8")
+            if command == "show running-config":
+                return simulated_running_config(text, self.device, self.conn)
+            return text
         return console_simulate(self.conn, self.device, command)   # salida simulada de la Fase 4
 
     def close(self):
         pass
+
+
+def simulated_running_config(text: str, device, conn) -> str:
+    """Fase 10.1: la configuración simulada refleja el INVENTARIO: el hostname es el
+    nombre del equipo y la descripción de cada interfaz es la registrada en el NOC.
+    Así, editar una descripción en Interfaces "cambia" el equipo simulado y la
+    siguiente versión muestra la diferencia (en un equipo real el cambio se hace
+    en el propio equipo)."""
+    descriptions = {r["name"]: r["description"] for r in conn.execute(
+        "SELECT name, description FROM interfaces WHERE device_id = ?", (device["id"],))}
+    out, current = [], None
+    for line in text.splitlines():
+        if line.startswith("hostname "):
+            line = f"hostname {device['name']}"
+        if line.startswith("interface "):
+            current = line.split(" ", 1)[1]
+            out.append(line)
+            if descriptions.get(current):
+                out.append(f" description {descriptions[current]}")
+            continue
+        if current and line.startswith(" description ") and current in descriptions:
+            if not descriptions[current]:
+                out.append(line)          # sin descripción en el NOC: se deja la del equipo
+            continue                      # con descripción en el NOC: ya se escribió arriba
+        if not line.startswith(" "):
+            current = None
+        out.append(line)
+    return "\n".join(out) + "\n"
 
 
 def simulated_diagnostic(command: str) -> str:
@@ -272,8 +304,14 @@ def readiness_errors(device) -> list[str]:
 # ---------------------------------------------------------------------------
 # 4. LA SESIÓN
 # ---------------------------------------------------------------------------
-def run_session(conn, device, commands: list[str], user: str, diagnostic: bool = False) -> tuple[dict, int]:
-    """Ejecuta una sesión completa. Devuelve (resultado, código HTTP)."""
+def run_session(conn, device, commands: list[str], user: str, diagnostic: bool = False,
+                sanitize=None) -> tuple[dict, int]:
+    """Ejecuta una sesión completa. Devuelve (resultado, código HTTP).
+
+    sanitize (Fase 10.1): función que limpia la salida ANTES de guardarla. Solo
+    la usa la captura de configuración (app/configversions.py) para ocultar los
+    secretos; con ella se acepta "show running-config", que la sesión normal
+    sigue bloqueando."""
     # --- 1. Validar todo ANTES de conectar ----------------------------------
     problems = readiness_errors(device)
     if problems:
@@ -282,7 +320,8 @@ def run_session(conn, device, commands: list[str], user: str, diagnostic: bool =
         return {"errors": [f"Máximo {MAX_COMMANDS} comandos por sesión"]}, 400
     blocked = []
     for cmd in commands:
-        ok, reason = check_command(device["vendor"], cmd, user, diagnostic=diagnostic)
+        ok, reason = check_command(device["vendor"], cmd, user, diagnostic=diagnostic,
+                                   capture=sanitize is not None)
         if not ok:
             blocked.append(f"'{cmd[:60]}': {reason}")
             audit(conn, user, "device.command_blocked", "devices", device["id"],
@@ -295,12 +334,12 @@ def run_session(conn, device, commands: list[str], user: str, diagnostic: bool =
     if not lock.acquire(blocking=False):
         return {"errors": ["El equipo (o el puerto de consola) está ocupado con otra sesión"]}, 409
     try:
-        return _session(conn, device, commands, user)
+        return _session(conn, device, commands, user, sanitize)
     finally:
         lock.release()
 
 
-def _session(conn, device, commands, user):
+def _session(conn, device, commands, user, sanitize=None):
     transport = make_transport(device, conn)
     cur = conn.execute(
         "INSERT INTO device_sessions (device_id, device_name, transport, target, started_by, started_at, "
@@ -360,7 +399,7 @@ def _session(conn, device, commands, user):
         # --- Comandos pedidos ------------------------------------------------------
         for cmd in commands:
             if cmd.strip().lower() != id_cmd:          # show version ya se ejecutó
-                _run(conn, transport, sid, cmd, user)
+                _run(conn, transport, sid, cmd, user, sanitize)
         return finish("cerrada")
     except ConnectionError_ as e:
         return finish("fallida", str(e), 502)
@@ -368,17 +407,22 @@ def _session(conn, device, commands, user):
         transport.close()
 
 
-def _run(conn, transport, sid, command, user) -> str:
-    """Envía un comando y lo registra con su salida y la huella SHA-256 de la salida."""
+def _run(conn, transport, sid, command, user, sanitize=None) -> str:
+    """Envía un comando y lo registra con su salida y la huella SHA-256 de la salida.
+    Con sanitize (captura de configuración) se guarda la salida YA LIMPIA (sin
+    secretos) y completa: la huella corresponde a lo guardado."""
     started, t0 = now_iso(), time.monotonic()
+    limit = MAX_OUTPUT
     try:
         output, status = transport.send(command), "ok"
+        if sanitize is not None:
+            output, limit = sanitize(output), MAX_CAPTURE
     except ConnectionError_ as e:
         output, status = str(e), "error"
     ms = int((time.monotonic() - t0) * 1000)
     conn.execute("INSERT INTO device_commands (session_id, command, requested_by, started_at, duration_ms, "
                  "status, output, output_sha256) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                 (sid, command, user, started, ms, status, output[:MAX_OUTPUT],
+                 (sid, command, user, started, ms, status, output[:limit],
                   hashlib.sha256(output.encode("utf-8", "replace")).hexdigest()))
     conn.commit()
     audit(conn, user, "device.command", "device_sessions", sid, f"{command} ({ms} ms) {status}",

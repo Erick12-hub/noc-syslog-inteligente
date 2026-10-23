@@ -41,10 +41,10 @@ def create_app(config_class=Config):
     app.teardown_appcontext(db.close_db)
 
     # Registrar módulos
-    from . import (admin_api, audit_api, auth, configgen, connector, consistency, console, dashboard,
-                   devices, diagnostics, events, incidents, interfaces, proposals, views)
-    for module in (auth, devices, interfaces, connector, diagnostics, consistency, events, incidents,
-                   dashboard, configgen, console, proposals, audit_api, admin_api, views):
+    from . import (admin_api, audit_api, auth, configgen, configversions, connector, consistency, console,
+                   dashboard, devices, diagnostics, events, incidents, interfaces, proposals, views)
+    for module in (auth, devices, interfaces, connector, diagnostics, consistency, configversions, events,
+                   incidents, dashboard, configgen, console, proposals, audit_api, admin_api, views):
         app.register_blueprint(module.bp)
 
     # Fase 8: cada petición pasa por el control de sesión, CSRF y roles
