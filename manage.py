@@ -252,6 +252,62 @@ def cmd_check_consistency():
     conn.close()
 
 
+def cmd_device_config(name: str, note: str):
+    """Fase 10.1: lee la configuración del equipo y guarda una versión (secretos ocultos)."""
+    from app.configversions import capture_config
+    conn = connect(Config.DATABASE_PATH)
+    init_db(conn)
+    device = conn.execute("SELECT * FROM devices WHERE name = ?", (name,)).fetchone()
+    if device is None:
+        print(f"[!] No existe el equipo {name!r} en el inventario")
+        return
+    print(f"[..] Leyendo la configuración de {name} (modo {device['connection_mode']})...")
+    r, status = capture_config(conn, device, Config.DEFAULT_OPERATOR, note)
+    for e in r.get("errors", []):
+        print(f"[!] {e}")
+    if "version" in r:
+        v = r["version"]
+        print(f"[{'!' if r['changed'] and r['previous'] else 'OK'}] {r['message']}")
+        print(f"     v{v['version_no']} · {v['lines']} líneas · {r['masked']} secretos ocultos · "
+              f"equipo físico {v['serial_number']} · SHA-256 {v['sha256'][:16]}...")
+        for w in r["warnings"]:
+            print(f"[!] {w}")
+    conn.close()
+
+
+def cmd_device_configs(name: str):
+    conn = connect(Config.DATABASE_PATH)
+    init_db(conn)
+    rows = conn.execute("SELECT * FROM config_versions WHERE device_name = ? ORDER BY version_no DESC",
+                        (name,)).fetchall()
+    if not rows:
+        print(f"Sin versiones de configuración para {name}")
+    print(f"{'ID':>4}  {'Ver':>4}  {'Fecha (UTC)':20}  {'Líneas':>6}  {'Cambios':>9}  {'Serie':14}  Usuario · nota")
+    for r in rows:
+        ch = f"+{r['added']} -{r['removed']}" if r["added"] is not None else "inicial"
+        print(f"{r['id']:>4}  v{r['version_no']:<3}  {r['captured_at']:20}  {r['lines']:>6}  {ch:>9}  "
+              f"{(r['serial_number'] or '-'):14}  {r['captured_by']}" + (f" · {r['note']}" if r["note"] else ""))
+    conn.close()
+
+
+def cmd_config_diff(id_a: int, id_b: int):
+    from app.configversions import compare
+    conn = connect(Config.DATABASE_PATH)
+    init_db(conn)
+    r, status = compare(conn, id_a, id_b)
+    for e in r.get("errors", []):
+        print(f"[!] {e}")
+    if status == 200:
+        for w in r["warnings"]:
+            print(f"[!] {w}")
+        if r["identical"]:
+            print("[OK] Las dos versiones son idénticas")
+        else:
+            print(f"[..] +{r['added']} líneas agregadas · -{r['removed']} quitadas\n")
+            print("\n".join(r["lines"]))
+    conn.close()
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Administración NOC Syslog Inteligente")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -284,6 +340,14 @@ if __name__ == "__main__":
     p_dg.add_argument("tipo", choices=["ping", "traceroute"])
     p_dg.add_argument("destino", help="IPv4 de destino (redes permitidas: DIAG_ALLOWED_NETS)")
     sub.add_parser("check-consistency", help="Revisar reloj, consistencia y cadena de auditoría")
+    p_dc = sub.add_parser("device-config", help="Guardar la configuración del equipo como versión (Fase 10.1)")
+    p_dc.add_argument("equipo")
+    p_dc.add_argument("--nota", default="", help="Motivo de la captura (opcional)")
+    p_dv = sub.add_parser("device-configs", help="Versiones de configuración de un equipo")
+    p_dv.add_argument("equipo")
+    p_df = sub.add_parser("config-diff", help="Diferencias entre dos versiones (ID de device-configs)")
+    p_df.add_argument("desde", type=int)
+    p_df.add_argument("hasta", type=int)
     args = parser.parse_args()
 
     if args.command == "init-db":
@@ -313,3 +377,9 @@ if __name__ == "__main__":
         cmd_device_diag(args.equipo, args.tipo, args.destino)
     elif args.command == "check-consistency":
         cmd_check_consistency()
+    elif args.command == "device-config":
+        cmd_device_config(args.equipo, args.nota)
+    elif args.command == "device-configs":
+        cmd_device_configs(args.equipo)
+    elif args.command == "config-diff":
+        cmd_config_diff(args.desde, args.hasta)
