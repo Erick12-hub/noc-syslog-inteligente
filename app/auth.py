@@ -59,6 +59,7 @@ RULES = {
     "audit.verify": AUDIT,              # verificar la cadena de integridad (Fase 8.2)
     "views.auditoria": AUDIT,
     "proposals.review": ADMIN,          # aprobar o rechazar propuestas
+    "changeexec.review_change": ADMIN,  # Fase 10.3: aprobar o rechazar cambios
     "configgen.generate": OPS,          # es GET, pero queda auditado como acción
     "configgen.baseline_endpoint": OPS, # configuración base de laboratorio (Fase 9.2)
     "console.allowed": OPS,

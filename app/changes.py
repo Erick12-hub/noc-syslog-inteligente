@@ -34,6 +34,7 @@ COMANDOS PROHIBIDOS en un cambio (ni con aprobación): credenciales, guardar,
 borrar, reiniciar, copiar archivos y apagar el envío de logs al NOC. El
 'configure terminal' y el 'end' los agrega el NOC al ejecutar.
 """
+import json
 import re
 from datetime import datetime, timedelta, timezone
 
@@ -324,6 +325,11 @@ def change_detail(cid):
         return jsonify(errors=["Cambio no encontrado"]), 404
     d = _public(row)
     d["warnings"] = _overlaps(conn, row)
+    # Fase 10.3: revisiones y pasos de la ejecución
+    d["approvals"] = [dict(r) for r in conn.execute(
+        "SELECT reviewer, decision, comment, decided_at FROM change_approvals WHERE change_id = ? ORDER BY id",
+        (cid,))]
+    d["execution"] = json.loads(row["execution"]) if row["execution"] else []
     d["baseline"] = None
     if row["baseline_version_id"]:
         b = conn.execute("SELECT id, version_no, captured_at, sha256 FROM config_versions WHERE id = ?",
