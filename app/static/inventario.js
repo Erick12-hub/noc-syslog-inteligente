@@ -39,6 +39,13 @@ async function loadDevices() {
     bCn.title = "Conexión, identificación del equipo físico e historial de sesiones";
     bCn.onclick = () => openConnection(d);
     cnc.append(bCn);
+    // Fase 10.1: versiones de configuración (en la misma celda, para no ensanchar la tabla)
+    if (d.connection_mode !== "ninguno" || d.config_count) {
+      const bCf = el("button", d.config_count ? `Config. v${d.config_count}` : "Config.", "btn sm cfg-btn");
+      bCf.title = "Versiones de configuración y diferencias";
+      bCf.onclick = () => openConfigs(d);
+      cnc.append(bCf);
+    }
     tr.append(src, ifc, cnc, el("td", fmtDate(d.updated_at), "small"));
 
     const actions = el("td", "", "row-actions");
@@ -255,6 +262,133 @@ frmDiag.addEventListener("submit", async (ev) => {
   } catch (err) { toast(err.message, "err"); }
   finally { btn.disabled = false; btn.textContent = "Ejecutar desde el equipo"; }
 });
+
+/* ---------------------------------------------------------------------------
+ * Fase 10.1: versiones de configuración  (/api/devices/<id>/configs, /api/configs/diff)
+ * La configuración es un DATO: se muestra con textContent, nunca como HTML.
+ * ------------------------------------------------------------------------- */
+const dlgCf = document.getElementById("dlg-configs");
+const frmCap = document.getElementById("frm-capture");
+const frmDiff = document.getElementById("frm-diff");
+let cfDevice = null;
+let cfVersions = [];
+
+async function openConfigs(d) {
+  cfDevice = d;
+  document.getElementById("cf-title").textContent = `Versiones de configuración · ${d.name}`;
+  frmCap.hidden = !CAN_EDIT || d.connection_mode === "ninguno";
+  for (const id of ["cf-errors", "cf-warnings", "cf-output"]) document.getElementById(id).replaceChildren();
+  document.getElementById("cf-message").replaceChildren();
+  frmCap.reset();
+  await loadConfigs();
+  dlgCf.showModal();
+}
+
+async function loadConfigs() {
+  cfVersions = await api(`/api/devices/${cfDevice.id}/configs`);
+  const tb = document.querySelector("#tbl-configs tbody");
+  tb.replaceChildren();
+  for (const v of cfVersions) {
+    const tr = document.createElement("tr");
+    const ch = el("td");
+    if (v.added === null) ch.append(el("span", "inicial", "tag"));
+    else ch.append(el("span", `+${v.added}`, "diff-plus mono"), " ", el("span", `−${v.removed}`, "diff-minus mono"));
+    const view = el("td");
+    const b = el("button", "Ver", "btn sm");
+    b.onclick = () => showConfig(v.id);
+    view.append(b);
+    tr.append(el("td", `v${v.version_no}`, "mono"), el("td", fmtDate(v.captured_at), "small"),
+              el("td", v.captured_by), el("td", v.serial_number || "—", "mono"), el("td", v.lines), ch,
+              el("td", v.masked), el("td", v.note || "—", "small"), view);
+    tb.append(tr);
+  }
+  if (!cfVersions.length) {
+    const tr = document.createElement("tr");
+    const td = el("td", "Sin versiones todavía: use «Leer y guardar configuración».", "muted");
+    td.colSpan = 9; tr.append(td); tb.append(tr);
+  }
+  // Selectores para comparar: por defecto, la penúltima contra la última
+  frmDiff.hidden = cfVersions.length < 2;
+  for (const name of ["from", "to"]) {
+    const sel = frmDiff.elements[name];
+    sel.replaceChildren(...cfVersions.map(v => new Option(`v${v.version_no} · ${fmtDate(v.captured_at)}`, v.id)));
+  }
+  if (cfVersions.length >= 2) {
+    frmDiff.elements.from.value = cfVersions[1].id;
+    frmDiff.elements.to.value = cfVersions[0].id;
+  }
+}
+
+async function showConfig(id) {
+  try {
+    const v = await api(`/api/configs/${id}`);
+    const out = document.getElementById("cf-output");
+    out.replaceChildren(
+      el("div", `v${v.version_no} · ${v.command} · ${v.lines} líneas · SHA-256 ${v.sha256.slice(0, 16)}…`, "cmd-head mono"),
+      el("pre", v.content, "cmd-out config-text"));
+  } catch (err) { toast(err.message, "err"); }
+}
+
+function renderDiff(r) {
+  const out = document.getElementById("cf-output");
+  out.replaceChildren();
+  document.getElementById("cf-warnings").replaceChildren(...(r.warnings || []).map(w => el("li", w)));
+  if (r.identical) { out.append(el("p", "Las dos versiones son idénticas.", "muted")); return; }
+  const head = el("p", "", "diag-summary");
+  head.append(el("strong", `v${r.from.version_no} → v${r.to.version_no}`), " ",
+              el("span", `+${r.added} agregadas`, "diff-plus mono"), " ",
+              el("span", `−${r.removed} quitadas`, "diff-minus mono"));
+  const pre = el("pre", "", "cmd-out diff");
+  for (const line of r.lines) {
+    let cls = "";
+    if (line.startsWith("+++") || line.startsWith("---")) cls = "d-file";
+    else if (line.startsWith("@@")) cls = "d-hunk";
+    else if (line.startsWith("+")) cls = "d-add";
+    else if (line.startsWith("-")) cls = "d-del";
+    pre.append(el("span", line + "\n", cls));
+  }
+  out.append(head, pre);
+  if (r.truncated) out.append(el("p", "Diferencia recortada: es muy larga.", "muted small"));
+}
+
+frmDiff.addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  try {
+    renderDiff(await api(`/api/configs/diff?from=${frmDiff.elements.from.value}&to=${frmDiff.elements.to.value}`));
+  } catch (err) { toast(err.message, "err"); }
+});
+
+frmCap.addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const btn = document.getElementById("btn-capture");
+  const errs = document.getElementById("cf-errors");
+  const msg = document.getElementById("cf-message");
+  errs.replaceChildren(); msg.replaceChildren();
+  document.getElementById("cf-warnings").replaceChildren();
+  btn.disabled = true; btn.textContent = "Leyendo el equipo…";
+  try {
+    const res = await fetch(`/api/devices/${cfDevice.id}/configs`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ note: frmCap.elements.note.value.trim() }),
+    });
+    const body = await res.json();
+    if (body.errors) errs.replaceChildren(...body.errors.map(m => el("li", m)));
+    if (body.version) {
+      const alert = body.changed && body.previous;
+      msg.replaceChildren(el("span", alert ? "CAMBIÓ" : body.changed ? "GUARDADA" : "SIN CAMBIOS",
+                             `tag ${alert ? "bad" : "ok"}`), " ",
+                          el("strong", body.message),
+                          el("span", ` · ${body.masked} secretos ocultos · sesión ${body.session}`, "muted small"));
+      document.getElementById("cf-warnings").replaceChildren(...body.warnings.map(w => el("li", w)));
+      frmCap.reset();
+      await loadConfigs();
+      if (alert) renderDiff(await api(`/api/configs/diff?from=${body.previous.id}&to=${body.version.id}`));
+      await loadDevices();
+    }
+  } catch (err) { toast(err.message, "err"); }
+  finally { btn.disabled = false; btn.textContent = "Leer y guardar configuración"; }
+});
+document.getElementById("btn-cf-close").onclick = () => dlgCf.close();
 
 /* ---------------------------------------------------------------------------
  * Fase 8.4: interfaces del equipo  (/api/devices/<id>/interfaces)

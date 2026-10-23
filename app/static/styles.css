@@ -329,3 +329,17 @@ table.hops td, table.hops th { padding: 4px 14px 4px 0; }
 .chunk.copied .chunk-head strong::after { content: "  ✓ copiado"; color: var(--green-fg); font-weight: normal; }
 .chunk-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 13px; }
 .chunk .config-out { margin: 0; max-height: 160px; }
+
+/* ---------- Fase 10.1: versiones de configuración ---------- */
+#frm-capture[hidden], #frm-diff[hidden] { display: none; }
+.diff-row { margin-top: 12px; }
+.diff-plus { color: var(--green-fg); }
+.diff-minus { color: var(--red-fg); }
+.cmd-out.diff, .cmd-out.config-text { max-height: 420px; }
+.cmd-out.diff span { display: block; }
+.cmd-out.diff .d-add { background: var(--green-bg); color: var(--green-fg); }
+.cmd-out.diff .d-del { background: var(--red-bg); color: var(--red-fg); }
+.cmd-out.diff .d-hunk { color: var(--blue-fg); }
+.cmd-out.diff .d-file { color: var(--muted); font-weight: 600; }
+#cf-message { margin: 10px 0 0; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.cfg-btn { display: block; margin-top: 4px; white-space: nowrap; }
