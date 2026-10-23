@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}Cambios{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <h1>Gestión de cambios</h1>
+    <p class="muted">Todo cambio en un equipo dice qué se aplica, por qué, <b>cómo se deshace</b>, cómo se verifica y
+      cuándo. El riesgo (impacto × probabilidad) decide cuántas aprobaciones necesita.</p>
+  </div>
+  {% if can('changes.create_change', 'POST') %}<button class="btn primary" id="btn-new">+ Nueva solicitud</button>{% endif %}
+</section>
+
+<div class="tabs" role="tablist">
+  <button class="tab active" data-estado="activos">Activos</button>
+  <button class="tab" data-estado="cerrados">Cerrados</button>
+  <button class="tab" data-estado="todos">Todos</button>
+</div>
+
+<section class="card" id="changes" data-can-edit="{{ 1 if can('changes.create_change', 'POST') else 0 }}"
+         data-user="{{ current_user.username }}" data-role="{{ current_user.role }}">
+  <p class="flow small">solicitud → <b>riesgo</b> → <b>revisión y aprobación</b> → ventana → línea base → ejecución →
+    verificación → (rollback si falla) → auditoría</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>#</th><th>Cambio</th><th>Equipo</th><th>Riesgo</th><th>Estado</th><th>Ventana</th>
+        <th>Solicitó</th><th>Actualizado</th></tr></thead>
+      <tbody id="tbl-changes"></tbody>
+    </table>
+  </div>
+  <p class="muted small" id="ch-count"></p>
+</section>
+
+<!-- Formulario: nueva solicitud o edición de un borrador -->
+<dialog id="dlg-form" class="wide">
+  <form id="frm-change" method="dialog" novalidate>
+    <div class="dlg-head">
+      <h2 id="f-title">Nueva solicitud de cambio</h2>
+      <button type="button" class="btn" id="btn-form-close">Cerrar</button>
+    </div>
+    <div class="change-form">
+      <div class="grid2">
+        <label>Equipo *<select name="device_id" id="f-device"></select></label>
+        <label>Título *<input name="title" maxlength="120" placeholder="Describir el enlace de respaldo"></label>
+        <label class="span2">Justificación * (por qué se necesita)
+          <textarea name="reason" rows="2" maxlength="1000"></textarea></label>
+        <label>Comandos * (sin configure terminal ni end)
+          <textarea name="commands" rows="6" class="mono" placeholder="interface GigabitEthernet0/0/1&#10; description Enlace a ISP de respaldo"></textarea></label>
+        <label>Rollback * (cómo se deshace)
+          <textarea name="rollback" rows="6" class="mono" placeholder="interface GigabitEthernet0/0/1&#10; no description"></textarea></label>
+        <label class="span2">Verificación (comandos de solo lectura, uno por línea)
+          <textarea name="verify" rows="2" class="mono" placeholder="show ip interface brief"></textarea></label>
+        <label>Impacto si sale mal *
+          <select name="impact"><option value="1">1 · bajo</option><option value="2">2 · medio</option><option value="3">3 · alto</option></select></label>
+        <label>Probabilidad de que salga mal *
+          <select name="probability"><option value="1">1 · improbable</option><option value="2">2 · posible</option><option value="3">3 · probable</option></select></label>
+        <label>Ventana: inicio (hora de Colombia)<input type="datetime-local" name="window_start"></label>
+        <label>Ventana: fin<input type="datetime-local" name="window_end"></label>
+      </div>
+      <aside class="risk-box">
+        <h3>Riesgo</h3>
+        <div id="f-matrix"></div>
+        <p id="f-risk"></p>
+        <ul class="warn-list" id="f-reasons"></ul>
+      </aside>
+    </div>
+    <ul class="errors" id="f-errors"></ul>
+    <div class="actions">
+      <button type="submit" class="btn" value="draft" id="btn-save">Guardar borrador</button>
+      <button type="submit" class="btn primary" value="submit" id="btn-save-submit">Guardar y enviar a aprobación</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Detalle -->
+<dialog id="dlg-detail" class="wide">
+  <div class="dlg-head">
+    <h2 id="d-title"></h2>
+    <button type="button" class="btn" id="btn-detail-close">Cerrar</button>
+  </div>
+  <div id="d-badges" class="badges"></div>
+  <ul class="warn-list" id="d-warnings"></ul>
+  <div class="change-form">
+    <dl class="detail" id="d-info"></dl>
+    <aside class="risk-box"><h3>Riesgo</h3><div id="d-matrix"></div><ul class="warn-list" id="d-reasons"></ul></aside>
+  </div>
+  <div class="cmd-grid">
+    <div><div class="cmd-head">Comandos del cambio</div><pre class="cmd-out" id="d-commands"></pre></div>
+    <div><div class="cmd-head">Rollback</div><pre class="cmd-out" id="d-rollback"></pre></div>
+  </div>
+  <div class="cmd-head">Verificación</div><pre class="cmd-out" id="d-verify"></pre>
+  <div class="actions" id="d-actions">
+    <button type="button" class="btn" id="btn-edit">Editar</button>
+    <button type="button" class="btn primary" id="btn-submit">Enviar a aprobación</button>
+  </div>
+  <form id="frm-cancel" class="inline-form" novalidate>
+    <label>Motivo para cancelar<input name="reason" maxlength="300" placeholder="Ya no se necesita"></label>
+    <button type="submit" class="btn danger">Cancelar cambio</button>
+  </form>
+  <ul class="errors" id="d-errors"></ul>
+</dialog>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='cambios.js') }}"></script>{% endblock %}

@@ -343,3 +343,30 @@ table.hops td, table.hops th { padding: 4px 14px 4px 0; }
 .cmd-out.diff .d-file { color: var(--muted); font-weight: 600; }
 #cf-message { margin: 10px 0 0; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .cfg-btn { display: block; margin-top: 4px; white-space: nowrap; }
+
+/* ---------- Fase 10.2: gestión de cambios ---------- */
+.tag.risk-bajo { background: var(--green-bg); color: var(--green-fg); }
+.tag.risk-medio { background: var(--amber-bg); color: var(--amber-fg); }
+.tag.risk-alto { background: var(--red-bg); color: var(--red-fg); }
+#dlg-form, #dlg-detail { width: min(1040px, 96vw); }
+.change-form { display: grid; grid-template-columns: 1fr 250px; gap: 16px; align-items: start; }
+.change-form textarea.mono { font-family: var(--mono); font-size: 12.5px; }
+.risk-box { background: var(--panel-2); border-radius: 8px; padding: 12px; }
+.risk-box h3 { margin: 0 0 8px; font-size: 14px; }
+.risk-box .warn-list { padding-left: 16px; font-size: 12px; }
+table.risk-matrix { width: 100%; border-collapse: separate; border-spacing: 3px; margin-bottom: 8px; }
+table.risk-matrix th { font-size: 10.5px; text-transform: none; padding: 2px; text-align: center; }
+table.risk-matrix td { text-align: center; padding: 8px 0; border-radius: 4px; font-family: var(--mono);
+                       font-size: 12px; border: 2px solid transparent; }
+table.risk-matrix td.lvl-bajo { background: var(--green-bg); color: var(--green-fg); }
+table.risk-matrix td.lvl-medio { background: var(--amber-bg); color: var(--amber-fg); }
+table.risk-matrix td.lvl-alto { background: var(--red-bg); color: var(--red-fg); }
+table.risk-matrix td.selected { border-color: var(--text); font-weight: 700; }
+.cmd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
+#d-actions[hidden], #frm-cancel[hidden] { display: none; }
+#frm-cancel { margin-top: 12px; }
+@media (max-width: 760px) { .change-form, .cmd-grid { grid-template-columns: 1fr; } }
+/* Fase 10.2: con "Cambios" el menú del administrador tiene 9 enlaces: se compacta para que la
+   barra siga en una sola línea a 1366 px */
+nav { gap: 2px; }
+nav a, .nav-soon { padding: 6px 8px; }
