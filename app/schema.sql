@@ -187,10 +187,41 @@ CREATE TABLE IF NOT EXISTS change_requests (
     submitted_at       TEXT,
     baseline_version_id INTEGER REFERENCES config_versions(id),   -- versión conocida al enviarlo
     cancel_reason      TEXT,
-    closed_at          TEXT
+    closed_at          TEXT,
+    -- Fase 10.3: aprobación y ejecución
+    approved_at        TEXT,
+    executed_by        TEXT,
+    executed_at        TEXT,
+    pre_version_id     INTEGER,                -- configuración ANTES de aplicar
+    post_version_id    INTEGER,                -- configuración DESPUÉS (o tras el rollback)
+    result             TEXT,                   -- resumen del resultado
+    execution          TEXT                    -- pasos de la ejecución (JSON)
 );
 CREATE INDEX IF NOT EXISTS idx_changes_status ON change_requests(status, id);
 CREATE INDEX IF NOT EXISTS idx_changes_device ON change_requests(device_id, window_start);
+
+-- Revisiones de cada cambio (Fase 10.3): una por revisor; son evidencia.
+CREATE TABLE IF NOT EXISTS change_approvals (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    change_id  INTEGER NOT NULL REFERENCES change_requests(id),
+    reviewer   TEXT NOT NULL,
+    decision   TEXT NOT NULL CHECK (decision IN ('aprobado', 'rechazado')),
+    comment    TEXT NOT NULL,
+    decided_at TEXT NOT NULL,
+    UNIQUE (change_id, reviewer)
+);
+CREATE TRIGGER IF NOT EXISTS approvals_no_update BEFORE UPDATE ON change_approvals
+BEGIN SELECT RAISE(ABORT, 'Las revisiones de un cambio no se pueden modificar'); END;
+CREATE TRIGGER IF NOT EXISTS approvals_no_delete BEFORE DELETE ON change_approvals
+BEGIN SELECT RAISE(ABORT, 'Las revisiones de un cambio no se pueden borrar'); END;
+
+-- Solo para el modo SIMULADO (Fase 10.3): las líneas que el NOC "aplicó" a un
+-- equipo simulado, para que su configuración refleje los cambios ejecutados.
+CREATE TABLE IF NOT EXISTS sim_device_config (
+    device_id  INTEGER PRIMARY KEY REFERENCES devices(id) ON DELETE CASCADE,
+    lines      TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL
+);
 
 -- ---------------------------------------------------------------------
 -- 3. Eventos Syslog recibidos o importados

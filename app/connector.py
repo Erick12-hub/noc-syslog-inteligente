@@ -91,12 +91,127 @@ class SimulatedTransport:
         if sample.is_file():
             text = sample.read_text(encoding="utf-8")
             if command == "show running-config":
-                return simulated_running_config(text, self.device, self.conn)
+                text = simulated_running_config(text, self.device, self.conn)
+                return apply_config_lines(text, simulated_applied(self.conn, self.device["id"]))
             return text
         return console_simulate(self.conn, self.device, command)   # salida simulada de la Fase 4
 
+    def send_config(self, lines: list[str]) -> str:
+        """Fase 10.3: "aplica" las líneas al equipo simulado (quedan guardadas en
+        sim_device_config) y responde como lo haría IOS."""
+        bad = [l for l in lines if l.strip().lower().startswith(("simular-error", "ip address 999."))]
+        echo = [f"{self.device['name']}(config)#{l.strip()}" for l in lines]
+        if bad:          # para probar el rollback: una línea que el equipo rechaza
+            return "\n".join(echo + ["% Invalid input detected at '^' marker."])
+        previous = simulated_applied(self.conn, self.device["id"])
+        self.conn.execute(
+            "INSERT INTO sim_device_config (device_id, lines, updated_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(device_id) DO UPDATE SET lines = excluded.lines, updated_at = excluded.updated_at",
+            (self.device["id"], "\n".join(previous + list(lines)), now_iso()))
+        self.conn.commit()
+        return "\n".join([f"{self.device['name']}#configure terminal",
+                          "Enter configuration commands, one per line.  End with CNTL/Z."] + echo +
+                         [f"{self.device['name']}(config)#end"])
+
     def close(self):
         pass
+
+
+def simulated_applied(conn, device_id) -> list[str]:
+    row = conn.execute("SELECT lines FROM sim_device_config WHERE device_id = ?", (device_id,)).fetchone()
+    return row["lines"].split("\n") if row and row["lines"] else []
+
+
+# Comandos que abren un submodo en IOS (sus líneas siguientes van "dentro")
+BLOCK_STARTERS = ("interface ", "line ", "router ", "vlan ", "archive", "ip access-list ", "class-map ",
+                  "policy-map ", "key chain ")
+
+
+CHILD_ORDER = {"description": 0, "ip address": 1, "shutdown": 2}
+
+
+def _key(cmd: str) -> str:
+    """Qué identifica a una línea para reemplazarla: 'description X' -> 'description',
+    'ip address A M' -> 'ip address', 'logging trap Y' -> 'logging trap'."""
+    words = cmd.split()
+    two = ("ip", "logging", "ntp", "service", "spanning-tree", "switchport", "clock", "snmp-server", "login")
+    if words and words[0] in two and len(words) > 1:
+        return " ".join(words[:2])
+    return words[0] if words else ""
+
+
+def apply_config_lines(text: str, lines: list[str]) -> str:
+    """Modelo sencillo de cómo IOS aplica comandos sobre la running-config (modo
+    SIMULADO): reemplaza la línea con la misma clave, 'no X' la quita y
+    'no shutdown' quita 'shutdown'. Suficiente para practicar cambios y rollback."""
+    if not lines:
+        return text
+    cfg = text.rstrip("\n").split("\n")
+
+    def block_range(header):
+        i = cfg.index(header)
+        j = i + 1
+        while j < len(cfg) and cfg[j].startswith(" "):
+            j += 1
+        return i, j
+
+    def insert_top(line):
+        end = len(cfg) - 1 if cfg and cfg[-1].strip() == "end" else len(cfg)
+        cfg[end:end] = [line]
+
+    header = None
+    for raw in lines:
+        cmd = " ".join(raw.split())
+        if not cmd:
+            continue
+        child = raw.startswith(" ") and header is not None
+        if not child:
+            header = None
+            if cmd.lower().startswith(BLOCK_STARTERS):
+                header = cmd
+                if header not in cfg:
+                    insert_top("!")
+                    insert_top(header)
+                continue
+            if cmd == "exit":
+                continue
+        if cmd == "exit":
+            header = None
+            continue
+        if header is not None:
+            i, j = block_range(header)
+            body = [l.strip() for l in cfg[i + 1:j]]
+            if cmd == "no shutdown":
+                body = [l for l in body if l != "shutdown"]
+            elif cmd.startswith("no "):
+                target = cmd[3:]
+                body = [l for l in body if not (l == target or _key(l) == _key(target))]
+                if target.startswith("ip address"):
+                    body.append("no ip address")
+            else:
+                same = [n for n, l in enumerate(body) if _key(l) == _key(cmd)
+                        or (cmd.startswith("ip address") and l == "no ip address")]
+                if same:
+                    body[same[0]] = cmd                     # se reemplaza en su lugar
+                    body = [l for n, l in enumerate(body) if n not in same[1:]]
+                else:
+                    body.append(cmd)
+            # IOS muestra la interfaz en un orden fijo: descripción, IP, shutdown, el resto
+            body.sort(key=lambda l: CHILD_ORDER.get("ip address" if l == "no ip address" else _key(l), 9))
+            cfg[i + 1:j] = [" " + l for l in body]
+        else:
+            top = [n for n, l in enumerate(cfg) if not l.startswith(" ")]
+            if cmd.startswith("no "):
+                target = cmd[3:]
+                cfg[:] = [l for n, l in enumerate(cfg)
+                          if l.startswith(" ") or not (l == target or l.startswith(_key(target) + " "))]
+            else:
+                same = [n for n in top if _key(cfg[n]) == _key(cmd) and _key(cmd) not in ("ntp server", "logging host")]
+                if same:
+                    cfg[same[0]] = cmd
+                else:
+                    insert_top(cmd)
+    return "\n".join(cfg) + "\n"
 
 
 def simulated_running_config(text: str, device, conn) -> str:
@@ -213,6 +328,13 @@ class NetmikoTransport:
                                            else Config.COMMAND_TIMEOUT)
         except Exception as e:
             raise ConnectionError_(f"Error ejecutando '{command}': {type(e).__name__}")
+
+    def send_config(self, lines: list[str]) -> str:
+        """Fase 10.3: entra a configure terminal, envía las líneas y sale (Netmiko)."""
+        try:
+            return self._conn.send_config_set(lines, read_timeout=Config.COMMAND_TIMEOUT * 2)
+        except Exception as e:
+            raise ConnectionError_(f"Error aplicando la configuración: {type(e).__name__}")
 
     def close(self):
         if self._conn is not None:
@@ -430,6 +552,81 @@ def _run(conn, transport, sid, command, user, sanitize=None) -> str:
     if status == "error":
         raise ConnectionError_(output)
     return output
+
+
+RE_CONFIG_ERROR = re.compile(r"^\s*%\s*(Invalid|Incomplete|Ambiguous|Unknown|Bad|Unrecognized|Error)", re.M | re.I)
+
+
+def run_config(conn, device, lines: list[str], user: str, expected_serial: str | None = None,
+               label: str = "cambio") -> tuple[dict, int]:
+    """Fase 10.3: aplica líneas de configuración en una sesión trazable.
+
+    Lo llama SOLO la ejecución de un cambio APROBADO (app/changeexec.py), que ya
+    validó los comandos. Igual se repite la defensa: un agente de IA nunca aplica
+    configuración, y si responde otro equipo físico no se envía nada."""
+    if user == "asistente_ia":
+        return {"errors": ["Un agente de IA no aplica configuración"]}, 403
+    problems = readiness_errors(device)
+    if problems:
+        return {"errors": problems}, 400
+    lock = _lock_for(device)
+    if not lock.acquire(blocking=False):
+        return {"errors": ["El equipo (o el puerto de consola) está ocupado con otra sesión"]}, 409
+    try:
+        transport = make_transport(device, conn)
+        cur = conn.execute(
+            "INSERT INTO device_sessions (device_id, device_name, transport, target, started_by, started_at, "
+            "is_simulated) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (device["id"], device["name"], transport.transport, transport.target, user, now_iso(),
+             int(transport.transport == "simulado" or bool(device["is_simulated"]))))
+        conn.commit()
+        sid = cur.lastrowid
+        status, error = "cerrada", None
+        try:
+            transport.open()
+            identity = parse_identity(device["platform"], _run(conn, transport, sid, IDENTITY_COMMAND[device["platform"]], user))
+            conn.execute("UPDATE device_sessions SET serial_number = ?, model = ?, os_version = ? WHERE id = ?",
+                         (identity["serial"], identity["model"], identity["version"], sid))
+            if expected_serial and identity["serial"] and identity["serial"] != expected_serial:
+                status, error = "fallida", (f"Respondió OTRO equipo físico ({identity['serial']}, se esperaba "
+                                            f"{expected_serial}): no se aplicó nada")
+            else:
+                started, t0 = now_iso(), time.monotonic()
+                try:
+                    output, cmd_status = transport.send_config(lines), "ok"
+                except ConnectionError_ as e:
+                    output, cmd_status = str(e), "error"
+                if cmd_status == "ok" and RE_CONFIG_ERROR.search(output):
+                    cmd_status = "error"
+                conn.execute(
+                    "INSERT INTO device_commands (session_id, command, requested_by, started_at, duration_ms, "
+                    "status, output, output_sha256) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (sid, f"configure terminal ({label}: {len(lines)} líneas)", user, started,
+                     int((time.monotonic() - t0) * 1000), cmd_status, output[:MAX_OUTPUT],
+                     hashlib.sha256(output.encode("utf-8", "replace")).hexdigest()))
+                audit(conn, user, "device.config_apply", "device_sessions", sid,
+                      f"{device['name']}: {label}, {len(lines)} líneas -> {cmd_status}",
+                      "ok" if cmd_status == "ok" else "alerta")
+                if cmd_status != "ok":
+                    error = next((l.strip() for l in output.splitlines() if RE_CONFIG_ERROR.match(l)),
+                                 output.splitlines()[-1] if output else "error")
+                    status = "fallida"
+        except ConnectionError_ as e:
+            status, error = "fallida", str(e)
+        finally:
+            transport.close()
+        n = conn.execute("SELECT COUNT(*) FROM device_commands WHERE session_id = ?", (sid,)).fetchone()[0]
+        conn.execute("UPDATE device_sessions SET status = ?, error = ?, ended_at = ?, commands_count = ? WHERE id = ?",
+                     (status, error, now_iso(), n, sid))
+        conn.commit()
+        result = get_session(conn, sid)
+        # Fase 10.3: respondió otro equipo físico -> quien llama NO debe hacer rollback
+        result["wrong_device"] = bool(expected_serial and result["serial_number"] not in (None, expected_serial))
+        if error:
+            result["errors"] = [error]
+        return result, 200 if status == "cerrada" else 502
+    finally:
+        lock.release()
 
 
 def get_session(conn, sid) -> dict | None:
