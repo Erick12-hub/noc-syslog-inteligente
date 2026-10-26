@@ -7,7 +7,7 @@ eventos Syslog de equipos **Cisco, Fortinet y Huawei**, con controles de segurid
 acciones no autorizadas de agentes de IA.
 
 > Proyecto individual · Administración y Gestión de Redes · 2026-2 · Ing. John Harold Pérez Calderón
-> **Versión:** v0.4.0 (equipos del laboratorio, diagnóstico y consistencia) · [CHANGELOG](CHANGELOG.md)
+> **Versión:** v0.5.0 (gestión de cambios e indicadores de operación) · [CHANGELOG](CHANGELOG.md)
 > ⚠️ **Los equipos y eventos incluidos en el repositorio son DATOS SIMULADOS** (prefijo `SIM-`, IP de documentación RFC 5737).
 > Desde v0.4.0 el NOC también trabaja con equipos **reales y autorizados** del laboratorio (sin `SIM-`).
 
@@ -45,6 +45,10 @@ acciones no autorizadas de agentes de IA.
 | Diagnóstico desde el equipo: ping y traceroute con destino validado y límite por minuto | ✅ |
 | Consistencia de la red: reloj (NTP) de cada equipo, equipos callados, IP duplicadas o fuera del inventario | ✅ |
 | Verificación automática de la cadena de auditoría con incidente de severidad 1 si se rompe | ✅ |
+| Versiones de configuración con secretos ocultos y diff entre versiones | ✅ |
+| Gestión de cambios: matriz de riesgo, rollback obligatorio, aprobación por dos personas en riesgo alto, ventana | ✅ |
+| Ejecución verificada con detección de deriva y rollback automático | ✅ |
+| Indicadores de operación: MTTA, MTTR, cumplimiento por severidad, vencidos y éxito de los cambios | ✅ |
 
 ## Requisitos
 
@@ -121,6 +125,10 @@ python manage.py device-session LAB-RTR01                       :: identifica el
 python manage.py device-sessions LAB-RTR01                      :: historial de conexiones
 python manage.py device-interfaces LAB-RTR01                    :: lee las interfaces reales
 python manage.py device-diag LAB-RTR01 ping 192.168.100.10       :: ping desde el equipo
+python manage.py device-config LAB-RTR01 --nota "Linea base"     :: guarda la configuración (secretos ocultos)
+python manage.py device-configs LAB-RTR01                       :: versiones guardadas
+python manage.py config-diff 1 2                                :: diferencias entre dos versiones
+python manage.py metrics --dias 30                              :: MTTA, MTTR, SLA y cambios
 ```
 
 Cierre PuTTY antes de conectar desde el NOC (el puerto COM no se comparte). Para recibir Syslog de los
@@ -134,7 +142,7 @@ limpieza están en [docs/laboratorio/plan_sesion_laboratorio.md](docs/laboratori
 python -m pytest -v
 ```
 
-423 pruebas automáticas: parser (PRI, Cisco, Huawei, Fortinet, RFC 5424, límites), ingesta
+564 pruebas automáticas: parser (PRI, Cisco, Huawei, Fortinet, RFC 5424, límites), ingesta
 (lista permitida, deduplicación, prompt injection), API (CRUD, validaciones, filtros, importación),
 incidentes (creación automática, correlación, transiciones de estado, cierre con resolución), dashboard
 y seguridad (configuraciones, consola, reglas, tormentas, propuestas con aprobación humana, auditoría).
@@ -144,6 +152,8 @@ Desde v0.3.0: sesión, bloqueo, CSRF, roles y separación de funciones, cadena d
 (alteración y borrado detectados), ventana de seguridad e interfaces por equipo.
 Desde v0.4.0: gestor de conexiones (consola, SSH, simulado; número de serie, llave SSH, bloqueos),
 configuración base, interfaces reales, diagnóstico (destinos y límite) y consistencia (reloj, IP, cadena).
+Desde v0.5.0: versiones y secretos ocultos, matriz de riesgo, aprobación y separación de funciones,
+ejecución verificada, deriva, rollback automático y manual, cambio autorizado e indicadores MTTA/MTTR.
 
 ## Variables de configuración (`.env`)
 
@@ -195,6 +205,10 @@ configuración base, interfaces reales, diagnóstico (destinos y límite) y cons
   permitida; la salida del equipo es un dato no confiable (solo se extraen campos con patrones fijos).
 - **Diagnóstico acotado (v0.4.0):** ping y traceroute solo hacia redes privadas o de documentación, 5 por minuto,
   y solo por la ruta de Diagnóstico: los equipos no se usan para sondear Internet.
+- **Gestión de cambios (v0.5.0):** nada se aplica sin solicitud, riesgo evaluado (con impacto mínimo que
+  imponen los comandos), rollback, aprobación de otra persona (dos en riesgo alto) y ventana. Al ejecutar se
+  comprueba que la configuración sea la aprobada (deriva) y el equipo físico; si algo falla se revierte solo.
+  Las configuraciones se guardan con los secretos ocultos y las versiones y revisiones no se pueden alterar.
 - **Consistencia (v0.4.0):** el receptor verifica la cadena de auditoría cada 10 minutos; si se rompe abre un
   incidente de severidad 1.
 
@@ -215,8 +229,12 @@ Política completa: [docs/04_politica_ia.md](docs/04_politica_ia.md).
 - La marca `interfaz_desconocida` solo se aplica a equipos que tienen interfaces registradas.
 - La fecha de mensajes sin zona horaria se interpreta en hora de Colombia (los equipos del laboratorio envían la zona).
 - La detección de prompt injection es heurística (por patrones): marca, no bloquea.
-- La ejecución de propuestas y la consola de la página Consola siguen **simuladas**; la conexión real es solo de
-  lectura y diagnóstico (los cambios de configuración con aprobación llegan en la Fase 10).
+- La ejecución de propuestas del asistente y la consola de la página Consola siguen **simuladas**. Los cambios
+  reales solo se aplican por la gestión de cambios (solo Cisco en esta versión).
+- La verificación automática de un cambio busca cada línea aplicada en la configuración: escriba los comandos
+  completos (sin abreviar), como los muestra `show running-config`.
+- El flujo de cambios se probó con equipos simulados en formato real; la prueba con el router del laboratorio
+  está pendiente ([protocolo](docs/laboratorio/protocolo_pruebas_reales.md)).
 - El límite de tormentas vive en memoria del receptor (se reinicia con él).
 - Syslog por UDP no cifra ni autentica; en producción se recomienda TLS (RFC 5425) donde el equipo lo soporte.
 

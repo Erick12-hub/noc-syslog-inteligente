@@ -27,7 +27,7 @@ KNOWN_FLAGS = (
     "equipo_desconocido", "fuente_no_autorizada", "posible_prompt_injection",
     "fecha_futura", "marca_inconsistente", "interfaz_desconocida",
     # reglas (app/rules.py)
-    "login_fallido", "cambio_config", "fuerza_bruta", "cambio_fuera_de_horario",
+    "login_fallido", "cambio_config", "fuerza_bruta", "cambio_fuera_de_horario", "cambio_autorizado",
     "cuenta_servicio", "logs_deshabilitados",
 )
 EVENT_VENDORS = ("Cisco", "Fortinet", "Huawei", "Otro", "Desconocido")

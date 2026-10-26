@@ -100,6 +100,14 @@ MIGRATIONS = [
     ("interfaces", "ip_address", "TEXT"),
     ("interfaces", "source", "TEXT NOT NULL DEFAULT 'manual'"),
     ("interfaces", "last_seen_at", "TEXT"),
+    # Fase 10.3: aprobación y ejecución de los cambios
+    ("change_requests", "approved_at", "TEXT"),
+    ("change_requests", "executed_by", "TEXT"),
+    ("change_requests", "executed_at", "TEXT"),
+    ("change_requests", "pre_version_id", "INTEGER"),
+    ("change_requests", "post_version_id", "INTEGER"),
+    ("change_requests", "result", "TEXT"),
+    ("change_requests", "execution", "TEXT"),
 ]
 
 

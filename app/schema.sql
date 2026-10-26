@@ -120,6 +120,110 @@ CREATE INDEX IF NOT EXISTS idx_sessions_device ON device_sessions(device_id, sta
 CREATE INDEX IF NOT EXISTS idx_commands_session ON device_commands(session_id);
 
 -- ---------------------------------------------------------------------
+-- 2d. Versiones de configuración (Fase 10.1)
+--    Una fila por cada configuración DISTINTA leída de un equipo. El texto se
+--    guarda normalizado y SIN secretos (app/configversions.py). Son evidencia:
+--    los triggers impiden modificar el contenido o borrarlas.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS config_versions (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    device_id     INTEGER REFERENCES devices(id) ON DELETE SET NULL,
+    device_name   TEXT NOT NULL,            -- se conserva aunque se borre el equipo
+    version_no    INTEGER NOT NULL,         -- 1, 2, 3... por equipo
+    session_id    INTEGER REFERENCES device_sessions(id) ON DELETE SET NULL,
+    captured_by   TEXT NOT NULL,
+    captured_at   TEXT NOT NULL,
+    serial_number TEXT,                     -- equipo FÍSICO del que se leyó
+    command       TEXT NOT NULL,            -- show running-config, display current-configuration...
+    sha256        TEXT NOT NULL,            -- huella del texto guardado
+    lines         INTEGER NOT NULL,
+    masked        INTEGER NOT NULL DEFAULT 0,   -- secretos ocultados
+    added         INTEGER,                  -- líneas agregadas respecto a la versión anterior
+    removed       INTEGER,                  -- líneas quitadas respecto a la versión anterior
+    note          TEXT,
+    is_simulated  INTEGER NOT NULL DEFAULT 0 CHECK (is_simulated IN (0, 1)),
+    content       TEXT NOT NULL,
+    UNIQUE (device_id, version_no)
+);
+CREATE INDEX IF NOT EXISTS idx_configs_device ON config_versions(device_id, version_no);
+-- Solo se protege el contenido: borrar el equipo pone device_id en NULL (permitido)
+CREATE TRIGGER IF NOT EXISTS config_no_update
+BEFORE UPDATE OF device_name, version_no, captured_by, captured_at, serial_number, command, sha256,
+                 lines, masked, added, removed, note, content ON config_versions
+BEGIN SELECT RAISE(ABORT, 'Las versiones de configuración son evidencia: no se pueden modificar'); END;
+CREATE TRIGGER IF NOT EXISTS config_no_delete BEFORE DELETE ON config_versions
+BEGIN SELECT RAISE(ABORT, 'Las versiones de configuración son evidencia: no se pueden borrar'); END;
+
+-- ---------------------------------------------------------------------
+-- 2e. Solicitudes de cambio (Fase 10.2)
+--    Qué se aplica, por qué, cómo se deshace (rollback), cómo se verifica,
+--    cuándo (ventana) y con qué riesgo (impacto x probabilidad).
+--    Fechas en UTC. Estados: borrador -> pendiente -> aprobado/rechazado ->
+--    en_ejecucion -> ejecutado/fallido/revertido; o cancelado.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS change_requests (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    device_id          INTEGER REFERENCES devices(id) ON DELETE SET NULL,
+    device_name        TEXT NOT NULL,
+    title              TEXT NOT NULL,
+    reason             TEXT NOT NULL,           -- justificación
+    commands           TEXT NOT NULL,           -- se aplican dentro de configure terminal
+    rollback           TEXT NOT NULL,           -- obligatorio: cómo se deshace
+    verify             TEXT,                    -- comandos de solo lectura para verificar
+    impact             INTEGER NOT NULL CHECK (impact BETWEEN 1 AND 3),
+    probability        INTEGER NOT NULL CHECK (probability BETWEEN 1 AND 3),
+    min_impact         INTEGER NOT NULL DEFAULT 1,  -- impuesto por los comandos
+    risk_score         INTEGER NOT NULL,        -- impacto x probabilidad (1-9)
+    risk_level         TEXT NOT NULL CHECK (risk_level IN ('bajo', 'medio', 'alto')),
+    risk_reasons       TEXT,
+    approvals_required INTEGER NOT NULL,
+    window_start       TEXT,
+    window_end         TEXT,
+    status             TEXT NOT NULL DEFAULT 'borrador' CHECK (status IN ('borrador', 'pendiente',
+                       'aprobado', 'rechazado', 'en_ejecucion', 'ejecutado', 'fallido', 'revertido', 'cancelado')),
+    requested_by       TEXT NOT NULL,
+    created_at         TEXT NOT NULL,
+    updated_at         TEXT NOT NULL,
+    submitted_at       TEXT,
+    baseline_version_id INTEGER REFERENCES config_versions(id),   -- versión conocida al enviarlo
+    cancel_reason      TEXT,
+    closed_at          TEXT,
+    -- Fase 10.3: aprobación y ejecución
+    approved_at        TEXT,
+    executed_by        TEXT,
+    executed_at        TEXT,
+    pre_version_id     INTEGER,                -- configuración ANTES de aplicar
+    post_version_id    INTEGER,                -- configuración DESPUÉS (o tras el rollback)
+    result             TEXT,                   -- resumen del resultado
+    execution          TEXT                    -- pasos de la ejecución (JSON)
+);
+CREATE INDEX IF NOT EXISTS idx_changes_status ON change_requests(status, id);
+CREATE INDEX IF NOT EXISTS idx_changes_device ON change_requests(device_id, window_start);
+
+-- Revisiones de cada cambio (Fase 10.3): una por revisor; son evidencia.
+CREATE TABLE IF NOT EXISTS change_approvals (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    change_id  INTEGER NOT NULL REFERENCES change_requests(id),
+    reviewer   TEXT NOT NULL,
+    decision   TEXT NOT NULL CHECK (decision IN ('aprobado', 'rechazado')),
+    comment    TEXT NOT NULL,
+    decided_at TEXT NOT NULL,
+    UNIQUE (change_id, reviewer)
+);
+CREATE TRIGGER IF NOT EXISTS approvals_no_update BEFORE UPDATE ON change_approvals
+BEGIN SELECT RAISE(ABORT, 'Las revisiones de un cambio no se pueden modificar'); END;
+CREATE TRIGGER IF NOT EXISTS approvals_no_delete BEFORE DELETE ON change_approvals
+BEGIN SELECT RAISE(ABORT, 'Las revisiones de un cambio no se pueden borrar'); END;
+
+-- Solo para el modo SIMULADO (Fase 10.3): las líneas que el NOC "aplicó" a un
+-- equipo simulado, para que su configuración refleje los cambios ejecutados.
+CREATE TABLE IF NOT EXISTS sim_device_config (
+    device_id  INTEGER PRIMARY KEY REFERENCES devices(id) ON DELETE CASCADE,
+    lines      TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL
+);
+
+-- ---------------------------------------------------------------------
 -- 3. Eventos Syslog recibidos o importados
 --    'raw' guarda el mensaje original TAL CUAL llegó. Se trata como DATO
 --    NO CONFIABLE: nunca se interpreta como instrucción ni se ejecuta.

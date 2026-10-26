@@ -10,7 +10,8 @@ comando, hora) y nunca obedece al texto del log. Si una regla se cumple:
     ----------------------   ----------------------------------------------   --------------
     fuerza_bruta             >= 5 inicios de sesión fallidos en 2 minutos     2 Critical
     cambio_fuera_de_horario  cambio de configuración fuera del horario         3 Error
-                             laboral o en fin de semana
+                             laboral o en fin de semana (no aplica si hay un
+                             cambio APROBADO en ejecución: 'cambio_autorizado')
     cuenta_servicio          una cuenta de servicio (svc_*) cambia la          2 Critical
                              configuración (las cuentas de servicio no
                              deberían hacer cambios manuales)
@@ -77,6 +78,20 @@ def _iso(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+AUTHORIZED_GRACE = timedelta(minutes=10)     # los eventos del equipo llegan después del cambio
+
+
+def authorized_change(conn, device_id, now: datetime) -> int | None:
+    """Id del cambio aprobado que se está ejecutando (o terminó hace poco) en el equipo."""
+    if not device_id:
+        return None
+    row = conn.execute(
+        "SELECT id FROM change_requests WHERE device_id = ? AND (status = 'en_ejecucion' OR "
+        "(executed_at IS NOT NULL AND closed_at >= ?)) ORDER BY id DESC LIMIT 1",
+        (device_id, _iso(now - AUTHORIZED_GRACE))).fetchone()
+    return row["id"] if row else None
+
+
 def evaluate(conn, ev: dict, now: datetime | None = None) -> list[str]:
     """
     Evalúa las reglas sobre un evento y devuelve la lista de reglas cumplidas.
@@ -98,7 +113,12 @@ def evaluate(conn, ev: dict, now: datetime | None = None) -> list[str]:
             hits.append("fuerza_bruta")
 
     if is_config_change(ev["message"], ev["mnemonic"]):
-        if outside_business_hours(now):
+        # Fase 10.3: si el NOC está ejecutando (o acaba de ejecutar) un cambio APROBADO
+        # en ese equipo, el cambio es esperado: se marca 'cambio_autorizado' y no se
+        # abre el incidente de "fuera de horario" (las ventanas suelen ser de noche).
+        if authorized_change(conn, ev.get("device_id"), now):
+            hits.append("cambio_autorizado")
+        elif outside_business_hours(now):
             hits.append("cambio_fuera_de_horario")
         user = extract_user(ev["message"])
         if user and user.startswith(Config.SERVICE_ACCOUNT_PREFIXES):
@@ -137,6 +157,8 @@ def apply_rule_hits(conn, ev: dict, hits: list[str]) -> list[dict]:
     if not ev["authorized"]:
         return results
     for rule in hits:
+        if rule not in RULES:          # marcas informativas (cambio_autorizado): sin incidente
+            continue
         severity, title = RULES[rule]
         key = f"regla|{rule}|{ev['device_id']}"
         open_inc = conn.execute(

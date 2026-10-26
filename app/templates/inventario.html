@@ -116,6 +116,38 @@
   </div>
 </dialog>
 
+<!-- Fase 10.1: versiones de configuración y diferencias -->
+<dialog id="dlg-configs" class="wide">
+  <div class="dlg-head">
+    <div>
+      <h2 id="cf-title">Versiones de configuración</h2>
+      <p class="muted small">El NOC lee la configuración del equipo, <b>oculta los secretos</b> (contraseñas,
+        comunidades, llaves) y la guarda solo si cambió. Las versiones no se pueden modificar ni borrar.</p>
+    </div>
+    <button type="button" class="btn" id="btn-cf-close">Cerrar</button>
+  </div>
+  <form id="frm-capture" class="inline-form" novalidate>
+    <label>Motivo (opcional)<input name="note" maxlength="200" placeholder="Línea base antes del cambio"></label>
+    <button type="submit" class="btn primary" id="btn-capture">Leer y guardar configuración</button>
+  </form>
+  <ul class="errors" id="cf-errors"></ul>
+  <ul class="warn-list" id="cf-warnings"></ul>
+  <p id="cf-message"></p>
+  <div class="table-wrap">
+    <table id="tbl-configs">
+      <thead><tr><th>Versión</th><th>Fecha</th><th>Usuario</th><th>N.º de serie</th><th>Líneas</th>
+        <th>Cambios</th><th>Secretos ocultos</th><th>Motivo</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <form id="frm-diff" class="inline-form diff-row" novalidate>
+    <label>Desde<select name="from"></select></label>
+    <label>Hasta<select name="to"></select></label>
+    <button type="submit" class="btn">Comparar</button>
+  </form>
+  <div id="cf-output"></div>
+</dialog>
+
 <!-- Fase 8.4: interfaces del equipo -->
 <dialog id="dlg-ifaces" class="wide">
   <div class="dlg-head">

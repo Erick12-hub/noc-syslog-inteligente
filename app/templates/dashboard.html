@@ -81,6 +81,66 @@
   </div>
 </section>
 
+<!-- Fase 10.4: indicadores de operación -->
+<section class="card" id="metrics">
+  <div class="chart-head">
+    <div>
+      <h2>Indicadores de operación</h2>
+      <p class="small muted">MTTA = tiempo hasta que alguien atiende el incidente · MTTR = tiempo hasta cerrarlo ·
+        promedio y mediana</p>
+    </div>
+    <div class="inline-form metrics-filters">
+      <label>Periodo
+        <select id="mt-days"><option value="7">7 días</option><option value="30" selected>30 días</option>
+          <option value="90">90 días</option><option value="0">Todo</option></select></label>
+      <label>Incidentes
+        <select id="mt-origin"><option value="todos">Todos</option><option value="reales">Solo reales</option>
+          <option value="simulados">Solo simulados (SIM)</option></select></label>
+    </div>
+  </div>
+  <div class="kpis mt-kpis">
+    <div class="kpi"><span class="kpi-label">MTTA (promedio)</span><span class="kpi-value" id="mt-mtta">—</span>
+      <span class="kpi-sub" id="mt-mtta-sub"></span></div>
+    <div class="kpi"><span class="kpi-label">MTTR (promedio)</span><span class="kpi-value" id="mt-mttr">—</span>
+      <span class="kpi-sub" id="mt-mttr-sub"></span></div>
+    <div class="kpi"><span class="kpi-label">Dentro del objetivo</span><span class="kpi-value" id="mt-sla">—</span>
+      <span class="kpi-sub" id="mt-sla-sub"></span></div>
+    <div class="kpi kpi-crit"><span class="kpi-label">Abiertos vencidos</span><span class="kpi-value" id="mt-overdue">—</span>
+      <span class="kpi-sub" id="mt-overdue-sub"></span></div>
+    <a class="kpi" href="/cambios"><span class="kpi-label">Cambios: éxito</span><span class="kpi-value" id="mt-changes">—</span>
+      <span class="kpi-sub" id="mt-changes-sub"></span></a>
+  </div>
+  <h3 class="small-title">Por severidad (objetivos internos del NOC)</h3>
+  <div class="table-wrap">
+    <table class="compact mt-sev">
+      <thead><tr><th>Severidad</th><th>Total</th><th>Abiertos</th><th>MTTA</th><th>Objetivo</th><th>% a tiempo</th>
+        <th>MTTR</th><th>Objetivo</th><th>% a tiempo</th></tr></thead>
+      <tbody id="tbl-mt-sev"></tbody>
+    </table>
+  </div>
+  <div class="dash-grid">
+    <div>
+      <div class="chart-head">
+        <h3 class="small-title">Incidentes por día</h3>
+        <div class="legend"><span><i class="sw sw-total"></i>Abiertos ese día</span><span><i class="sw sw-ok"></i>Cerrados</span></div>
+      </div>
+      <div class="hour-chart day-chart" id="mt-trend" role="img" aria-label="Incidentes por día"></div>
+      <div class="hour-axis" id="mt-trend-axis"></div>
+    </div>
+    <div>
+      <h3 class="small-title">Equipos con más incidentes</h3>
+      <div class="table-wrap">
+        <table class="compact">
+          <thead><tr><th>Equipo</th><th>Total</th><th>Abiertos</th><th>MTTR</th></tr></thead>
+          <tbody id="tbl-mt-dev"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <h3 class="small-title">Incidentes abiertos que pasaron su objetivo</h3>
+  <ul class="warn-list" id="mt-overdue-list"></ul>
+</section>
+
 <!-- Fase 9.5: consistencia de la red y del NOC -->
 <section class="dash-grid">
   <div class="card span-2" id="consistency" data-can-run="{{ 1 if can('consistency.consistency_run', 'POST') else 0 }}">

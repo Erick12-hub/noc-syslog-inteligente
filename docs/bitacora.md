@@ -737,16 +737,137 @@ Documento detallado: [`docs/FASE9_proceso_completo.txt`](FASE9_proceso_completo.
 
 ---
 
+## Fase 10 — Gestión de cambios e indicadores de operación (v0.5.0)
+
+**Fechas:** 2026-10-22 a 2026-10-26 · **Rama:** `feature/fase10-cambios` · **Estado:** ✅ Cerrada (release v0.5.0)
+
+Objetivo: que ningún cambio en un equipo se haga «a mano y sin avisar». Cada cambio tiene solicitud,
+riesgo evaluado, rollback, aprobación de otra persona, ventana, ejecución verificada y evidencia
+(versiones de configuración con diff). Medir la operación del NOC con MTTA y MTTR.
+
+### Qué se realizó
+
+| Paso | Actividad | Archivo(s) | Pruebas |
+|---|---|---|---|
+| 10.1 | Versiones de configuración: lectura de la running-config solo por esta ruta, **secretos ocultos antes de guardar**, normalización, versión solo si cambió, diff, triggers de evidencia; `device-config`, `device-configs`, `config-diff`; ventana en el Inventario | `configversions.py` (nuevo), `connector.py`, `console.py`, `schema.sql`, `inventario.*`, `manage.py`, `samples/cli/*/show_running-config.txt` | 423 → 461 |
+| 10.2 | Solicitudes de cambio: rollback obligatorio, verificación de solo lectura, ventana (máx. 4 h), **matriz de riesgo** con impacto mínimo impuesto por los comandos, comandos prohibidos, línea base al enviar, aviso de ventanas cruzadas; página **Cambios** | `changes.py` (nuevo), `cambios.*` (nuevos), `views.py`, `base.html` | 461 → 515 |
+| 10.3 | Aprobación con separación de funciones (dos personas en riesgo alto), ejecución con línea base, **deriva**, mismo equipo físico, verificación y **rollback automático**; rollback manual; marca `cambio_autorizado`; modelo simulado de la running-config | `changeexec.py` (nuevo), `connector.py`, `rules.py`, `schema.sql`, `cambios.*` | 515 → 542 |
+| 10.4 | Indicadores: MTTA y MTTR (promedio y mediana), objetivos por severidad, vencidos, tendencia, equipos y métricas de cambios; `manage.py metrics` | `metrics.py` (nuevo), `dashboard.*`, `manage.py` | 542 → 560 |
+| Fix | El login fallaba en Chrome y Edge por la petición de `/favicon.ico` (hallazgo del 25-oct) | `auth.py` | 560 → 564 |
+| Cierre | Versión 0.5.0, CHANGELOG, README, bitácora, protocolo de pruebas reales, `FASE10_proceso_completo.txt` | `app/__init__.py`, `CHANGELOG.md`, `README.md`, `docs/` | 564 |
+
+### Marcha blanca — sesión 2 (pendiente)
+
+La sesión 2 de laboratorio (viernes 23-oct) **no se pudo realizar**. Para no frenar el proyecto:
+
+- Todo lo que se iba a probar con los equipos funciona en modo simulado con salidas en el **formato
+  real** del C8200L y del 2960, y lo cubren 564 pruebas automáticas.
+- Se dejó el [protocolo de pruebas reales](laboratorio/protocolo_pruebas_reales.md): conexión e identidad,
+  línea base, cambio real con aprobación y ejecución, rollback, enlace caído, NTP y limpieza.
+- En el informe se declara qué se probó con equipos reales (sesión 1), qué en simulado con formato real y
+  qué queda pendiente.
+
+### Historial de commits de la Fase 10
+
+| Commit | Mensaje | Pruebas |
+|---|---|---|
+| 92ec2fa | feat(configuraciones): versiones de configuracion con secretos ocultos y diff | 423 |
+| 6f53f59 | feat(cli): comandos device-config, device-configs y config-diff | 423 |
+| 570a228 | feat(interfaz): ventana de versiones de configuracion con diff en el inventario | 423 |
+| 192995d | test: 38 pruebas de versiones de configuracion (461 en total) | 461 |
+| fe9068d | docs: evidencias del paso 10.1 y release v0.4.0 | 461 |
+| e28f65c | feat(cambios): solicitudes de cambio con matriz de riesgo, rollback y ventana | 461 |
+| e43bdb4 | feat(interfaz): pagina de cambios con matriz de riesgo en vivo | 461 |
+| 30da936 | test: 54 pruebas de la gestion de cambios (515 en total) | 515 |
+| 8b6a9e2 | docs: evidencias del paso 10.2 (gestion de cambios) | 515 |
+| 0c8f56c | feat(conexiones): aplicar configuracion en una sesion trazable y modelo simulado de la running-config | 515 |
+| 7b64c67 | feat(cambios): aprobacion con separacion de funciones, ejecucion verificada y rollback automatico | 515 |
+| 09fe735 | feat(interfaz): revision, ejecucion, resultado y rollback en la pagina de cambios | 515 |
+| 2c93f3b | test: 27 pruebas de aprobacion, ejecucion y rollback de cambios (542 en total) | 542 |
+| c1a9a9f | docs: evidencias del paso 10.3 (aprobacion, ejecucion y rollback) | 542 |
+| a603424 | fix(auth): una peticion sin sesion (favicon) ya no borra el token del login y se agrega el icono | 546 |
+| fe9af92 | feat(indicadores): MTTA, MTTR, objetivos por severidad y metricas de cambios | 546 |
+| d692f32 | feat(cli): comando metrics con periodo y origen | 546 |
+| e8de81f | feat(interfaz): indicadores de operacion en el dashboard | 546 |
+| 3672f09 | test: 18 pruebas de los indicadores de operacion (560 en total) *(con el fix: 564)* | 564 |
+| cf0663c | docs: evidencias del paso 10.4 (indicadores) | 564 |
+| ee95022 | docs: corrige el nombre de dos capturas del paso 10.4 | 564 |
+| (siguiente) | chore(release): version 0.5.0, changelog, readme, bitacora y proceso de la fase 10 | 564 |
+
+**Los 21 commits se verificaron uno por uno: todos pasan sus pruebas.** El fix `a603424` quedó antes
+que el código del 10.4 (se confirmó primero); se probó solo sobre el 10.3 (546) y con el 10.4 (564).
+
+### Ancla de la auditoría
+
+Último registro verificado el 2026-10-25 al cerrar la fase (`python manage.py verify-audit`), con los
+cambios, aprobaciones, ejecuciones y rollbacks de la Fase 10:
+
+- Registro **321** · hash `3717358c91603c1e0da55aadeef3df583127ebd49b4ed389d2c9ca6f19bda748`
+- Ancla anterior (Fase 9): registro 225 · `3a2d5b59…0d1c6564`. La cadena sigue íntegra desde entonces.
+
+### Evidencias de la Fase 10 (`docs/evidencias/`)
+
+| Archivo | Qué muestra |
+|---|---|
+| C3-F10-01_pruebas_461_passed | 461 pruebas en verde (paso 10.1) |
+| C3-F10-02 / 03 | Versión inicial con 3 secretos ocultos y `enable secret 9 <oculto>` en el texto guardado |
+| C3-F10-04_web_sin_cambios | Segunda lectura sin cambios: no se crea otra versión |
+| C3-F10-05_web_cambio_diff | v2 con el diff: descripción vieja en rojo y nueva en verde (+1 −1) |
+| C3-F10-06_consola_device_configs_diff | `device-configs` y `config-diff` por consola |
+| C3-F10-07_web_auditoria_config | `config.capture` y `config.changed` (alerta) en la auditoría |
+| C3-F10-08_pruebas_515_passed | 515 pruebas en verde (paso 10.2) |
+| C3-F10-09_web_cambio_bajo | Solicitud con la matriz en bajo (1) |
+| C3-F10-10_web_validaciones | `write memory` prohibido, impacto menor al mínimo y ventana obligatoria |
+| C3-F10-11_web_cambio_pendiente | Cambio enviado, ligado a la línea base v2 |
+| C3-F10-12_web_cambio_alto | Riesgo alto (6): dos aprobaciones de personas distintas |
+| C3-F10-13_web_auditoria_cambios | `change.create` y `change.submit` |
+| C3-F10-14_pruebas_542_passed | 542 pruebas en verde (paso 10.3) |
+| C3-F10-15 / 15b | Revisión aprobada por el administrador (dos vistas) |
+| C3-F10-16_web_cambio_ejecutado_diff | Ejecución con los 5 pasos y el diff antes → después |
+| C3-F10-17_web_rollback_automatico | El equipo rechaza un comando: rollback automático e «Idéntica a la de antes» |
+| C3-F10-18_web_alto_dos_aprobaciones | Riesgo alto aprobado por dos administradores, fuera de su ventana |
+| C3-F10-19_web_auditoria_ejecucion | Aprobaciones, ejecución y rollback en la auditoría |
+| C3-F10-20_pruebas_564_passed | 564 pruebas en verde (10.4 + corrección del login) |
+| C3-F10-21_web_indicadores_operacion | MTTA, MTTR, cumplimiento, vencidos, tendencia y cambios |
+| C3-F10-22_consola_metrics | `manage.py metrics --dias 0` |
+| C3-F9-34_github_release_v040 | Release v0.4.0 publicada (cierre de la Fase 9) |
+
+### Observaciones de la Fase 10
+
+| Situación | Explicación / acción |
+|---|---|
+| **El login fallaba en Chrome y Edge** («La sesión del formulario expiró»), también en incógnito | **Hallazgo de la marcha blanca (25-oct).** Diagnóstico por descarte: un solo servidor (`netstat`), configuración correcta, y un script que hizo el login sin navegador y **funcionó**. La diferencia: el navegador pide `/favicon.ico` solo; esa petición sin sesión hacía `session.clear()` y borraba el token del formulario. Error presente desde v0.3.0; no se veía mientras el navegador tenía el ícono en caché. Corrección: solo se borra una sesión que tenía usuario, y el NOC tiene ícono. 4 pruebas nuevas que fallan con el código anterior |
+| Dos cambios aprobados en el mismo equipo: el segundo fallaba por «deriva» | **Hallazgo de la prueba en vivo del 10.3.** La diferencia la dejó el primer cambio, ejecutado por el propio NOC. Ahora no se considera deriva si la configuración actual es la que dejó otro cambio ejecutado después del envío, y queda escrito en el paso |
+| `GigabitEthernet0/0/1` ya existía al probar el 10.1 | El inventario ya la tenía (Fase 8 y 9.3): se editó su descripción en vez de agregarla. El diff mostró la descripción vieja («Leída del equipo») y la nueva |
+| Contraseña olvidada de `admin_dos` | Las contraseñas no se pueden ver (solo el hash scrypt) ni los usuarios se borran (la auditoría guarda su nombre). Se restableció desde la ventana Seguridad: el procedimiento de la Fase 8 funcionó |
+| Nombres de usuario distintos a los de la Fase 8 | La base actual tiene `admin`, `admin_dos`, `operador1`, `operador2` y `auditor1` |
+| Capturas con nombre duplicado o con «Captura » al inicio | Se corrigieron antes del commit o con `git mv` (`ee95022`) |
+| La sesión 2 de laboratorio no se realizó | Protocolo de pruebas reales pendiente en `docs/laboratorio/` |
+| El modo simulado aplica los cambios con un modelo sencillo de IOS | Reemplaza la línea con la misma clave, `no X` la quita y `no shutdown` quita `shutdown`; ordena la interfaz como IOS. Suficiente para practicar y para que el rollback deje la configuración idéntica |
+
+### Pregunta de validación de la Fase 10
+
+> `operador1` pide en el LAB-RTR01: `interface GigabitEthernet0/0/0` / ` ip address 192.168.100.5 255.255.255.0`
+> (la interfaz por la que llega el NOC), con impacto **bajo** y probabilidad **posible**, sin ventana.
+> ¿Qué responde el NOC y qué riesgo, aprobaciones y ventana termina exigiendo? Si se aprueba y, al
+> ejecutar, el NOC encuentra que alguien cambió una `description` por PuTTY después de la aprobación,
+> ¿qué hace y por qué? Y si no hubiera deriva pero la verificación fallara, ¿qué pasa?
+
+Respuesta del estudiante: ver la sección 11 de [`docs/FASE10_proceso_completo.txt`](FASE10_proceso_completo.txt).
+
+Documento detallado: [`docs/FASE10_proceso_completo.txt`](FASE10_proceso_completo.txt)
+
+---
+
 ## Próximos pasos — Corte 3 (v1.0.0)
 
-Replanificado el 2026-10-22 (la Fase 9 tomó un día más por la sesión de laboratorio interrumpida).
+Replanificado el 2026-10-25 (la sesión 2 de laboratorio no se realizó).
 
 | Fase | Fechas | Pendiente |
 |---|---|---|
-| 8 | Sáb 18 - Lun 19 | ✅ Cerrada (v0.3.0) |
-| 9 | Mar 20 - Jue 22 | ✅ Cerrada (v0.4.0): conexiones, configuración base, interfaces reales, diagnóstico, consistencia. Marcha blanca iniciada (sesión 1) |
-| 10 | Jue 22 - Vie 23 | Gestión de cambios: matriz de riesgo, versiones de configuración con diff, aprobación, rollback; tablero MTTA/MTTR. **Sesión 2 de laboratorio el viernes 23** (conexión desde el NOC, interfaces, diagnóstico, incidente por enlace caído, NTP) |
-| 11 | Sáb 24 | Alertas por Telegram (token en `.env`) y defensa IA mejorada |
-| 12 | Dom 25 | Pruebas funcionales, de seguridad, carga, respaldo, recuperación y rollback; cierre de la marcha blanca |
+| 9 | 20 - 22 oct | ✅ Cerrada (v0.4.0) |
+| 10 | 22 - 26 oct | ✅ Cerrada (v0.5.0): versiones de configuración, cambios con riesgo, aprobación, ejecución verificada y rollback, MTTA/MTTR |
+| 11 | Lun 26 | Alertas por Telegram (token en `.env`) y defensa ante IA mejorada |
+| 12 | Lun 26 | Pruebas funcionales, de seguridad, carga, respaldo y recuperación; cierre de la marcha blanca (con el protocolo de pruebas reales pendiente) |
 | 13 | Lun 26 | Despliegue y rollback documentados, manual técnico y de usuario, release v1.0.0 |
 | 14 | Mar 27 | Informe `Corte3_NOC_Syslog_Castro_Erick.pdf` y sustentación |
