@@ -179,3 +179,80 @@ document.getElementById("btn-refresh").onclick = refresh;
 refresh();
 loadConsistency();
 setInterval(refresh, REFRESH_MS);
+
+/* ---------------------------------------------------------------------------
+ * Fase 10.4: indicadores de operación (MTTA, MTTR, SLA y cambios).
+ * Se cargan al abrir la página y al cambiar los filtros (no cada 15 s).
+ * ------------------------------------------------------------------------- */
+const pct = (v) => (v === null || v === undefined ? "—" : `${v} %`);
+
+function renderMetrics(m) {
+  setText("mt-mtta", m.mtta.mean);
+  setText("mt-mtta-sub", `mediana ${m.mtta.median} · ${m.mtta.n} atendidos`);
+  setText("mt-mttr", m.mttr.mean);
+  setText("mt-mttr-sub", `mediana ${m.mttr.median} · ${m.mttr.n} cerrados`);
+  setText("mt-sla", pct(m.res_sla_pct));
+  setText("mt-sla-sub", `resueltos a tiempo · atendidos a tiempo ${pct(m.ack_sla_pct)}`);
+  setText("mt-overdue", m.overdue_count);
+  setText("mt-overdue-sub", `de ${m.open} abiertos · ${m.incidents} incidentes en el periodo`);
+  const c = m.changes;
+  setText("mt-changes", pct(c.success_pct));
+  setText("mt-changes-sub", `${c.finished} terminados · ${c.rollbacks} rollbacks · ${c.failed} fallidos · ` +
+                            `aprobación media ${c.approval_time.mean}`);
+
+  const tb = document.getElementById("tbl-mt-sev");
+  tb.replaceChildren(...m.by_severity.map(g => {
+    const tr = el("tr");
+    tr.append(el("td", g.label), el("td", g.total, "mono"), el("td", g.open, "mono"),
+              el("td", g.mtta.mean), el("td", g.target_ack, "muted small"), el("td", pct(g.ack_sla_pct), "mono"),
+              el("td", g.mttr.mean), el("td", g.target_res, "muted small"), el("td", pct(g.res_sla_pct), "mono"));
+    return tr;
+  }));
+  const ul = document.getElementById("mt-overdue-list");
+  ul.replaceChildren(...m.overdue.map(o => {
+    const li = el("li");
+    const a = el("a", `#${o.id} ${o.title}`);
+    a.href = `/incidentes#${o.id}`;
+    li.append(a, el("span", ` · sev ${o.severity} · ${o.device} · ${o.detail}`, "small"));
+    if (o.is_simulated) li.append(" ", el("span", "SIM", "tag sim"));
+    return li;
+  }));
+  if (!m.overdue.length) ul.append(el("li", "Ningún incidente abierto pasó su objetivo.", "muted small"));
+
+  const dv = document.getElementById("tbl-mt-dev");
+  dv.replaceChildren(...m.by_device.map(d => {
+    const tr = el("tr");
+    tr.append(el("td", d.device), el("td", d.total, "mono"), el("td", d.open, "mono"), el("td", d.mttr.mean));
+    return tr;
+  }));
+  if (!m.by_device.length) {
+    const tr = el("tr"); const td = el("td", "Sin incidentes en el periodo", "muted"); td.colSpan = 4;
+    tr.append(td); dv.append(tr);
+  }
+
+  // Barras por día: abiertos (gris) y cerrados (verde), misma escala
+  const chart = document.getElementById("mt-trend");
+  const axis = document.getElementById("mt-trend-axis");
+  chart.replaceChildren(); axis.replaceChildren();
+  const max = Math.max(1, ...m.trend.map(t => Math.max(t.created, t.closed)));
+  const step = Math.ceil(m.trend.length / 8);
+  m.trend.forEach((t, i) => {
+    const col = el("div", "", "hour-col");
+    col.title = `${t.day}: ${t.created} abiertos, ${t.closed} cerrados`;
+    const a = el("div", "", "hour-bar total"); a.style.height = `${(t.created / max) * 100}%`;
+    const b = el("div", "", "hour-bar closed"); b.style.height = `${(t.closed / max) * 100}%`;
+    col.append(a, b);
+    chart.append(col);
+    axis.append(el("span", i % step === 0 ? t.day.slice(5) : ""));
+  });
+}
+
+async function loadMetrics() {
+  const days = document.getElementById("mt-days").value;
+  const origin = document.getElementById("mt-origin").value;
+  try { renderMetrics(await api(`/api/metrics?dias=${days}&origen=${origin}`)); }
+  catch (err) { toast(err.message, "err"); }
+}
+document.getElementById("mt-days").onchange = loadMetrics;
+document.getElementById("mt-origin").onchange = loadMetrics;
+loadMetrics();

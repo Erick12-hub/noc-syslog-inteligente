@@ -383,3 +383,16 @@ ol.steps .step-mark { font-weight: 700; width: 14px; }
 ol.steps li.ok .step-mark { color: var(--green-fg); }
 ol.steps li.bad .step-mark { color: var(--red-fg); }
 #frm-rollback { margin-top: 12px; }
+
+/* ---------- Fase 10.4: indicadores de operación ---------- */
+#metrics .chart-head { align-items: flex-start; }
+.metrics-filters label { min-width: 150px; }
+.mt-kpis { margin: 12px 0 4px; grid-template-columns: repeat(5, 1fr); }
+.mt-kpis .kpi-value { font-size: 24px; }
+.sw-ok, .day-chart .hour-bar.closed { background: var(--accent); }
+.day-chart .hour-bar.total { right: 50%; }
+.day-chart .hour-bar.closed { left: 50%; }
+#mt-overdue-list a { color: inherit; }
+@media (max-width: 900px) { .mt-kpis { grid-template-columns: repeat(2, 1fr); } }
+table.mt-sev td { white-space: nowrap; }
+#metrics .dash-grid { margin-top: 8px; }
