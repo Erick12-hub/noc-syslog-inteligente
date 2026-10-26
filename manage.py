@@ -334,6 +334,46 @@ def cmd_metrics(days: int, origin: str):
     conn.close()
 
 
+def cmd_notify_test():
+    """Fase 11: envía un aviso de prueba por Telegram (o lo simula)."""
+    from app.db import audit, now_iso
+    from app.notify import clean, mode, queue_notification
+    conn = connect(Config.DATABASE_PATH)
+    init_db(conn)
+    m = mode()
+    if m == "apagado":
+        print("[!] Avisos apagados: configure TELEGRAM_BOT_TOKEN y TELEGRAM_CHAT_ID en .env (o NOTIFY_SIMULATE=1)")
+        return
+    nid = queue_notification(conn, "prueba", None,
+                             clean(f"🧪 NOC · Aviso de prueba desde la consola ({Config.DEFAULT_OPERATOR})"),
+                             f"test|{now_iso()}", sync=True)
+    row = conn.execute("SELECT status, error FROM notifications WHERE id = ?", (nid,)).fetchone()
+    audit(conn, Config.DEFAULT_OPERATOR, "notify.test", "notifications", nid, f"modo={m} estado={row['status']}",
+          "ok" if row["status"] in ("enviado", "simulado") else "alerta")
+    print(f"[{'OK' if row['status'] in ('enviado', 'simulado') else '!'}] Aviso #{nid} · modo {m} · "
+          f"{row['status']}" + (f" · {row['error']}" if row["error"] else ""))
+    conn.close()
+
+
+def cmd_telegram_chat_id():
+    """Fase 11: muestra los chats que le escribieron al bot (para TELEGRAM_CHAT_ID). No muestra el token."""
+    from app.notify import get_chat_ids
+    if not Config.TELEGRAM_BOT_TOKEN:
+        print("[!] Primero ponga TELEGRAM_BOT_TOKEN en .env (lo entrega @BotFather)")
+        return
+    try:
+        chats = get_chat_ids(Config.TELEGRAM_BOT_TOKEN)
+    except RuntimeError as e:
+        print(f"[!] {e}")
+        return
+    if not chats:
+        print("[!] El bot no tiene mensajes: abra el bot en Telegram, envíele /start y repita este comando")
+    for c in chats:
+        print(f"  chat id: {c['id']:<16} tipo: {c['type']:<10} nombre: {c['name']}")
+    if chats:
+        print("\nCopie el chat id en .env como TELEGRAM_CHAT_ID=... y reinicie serve.py y el receptor")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Administración NOC Syslog Inteligente")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -377,6 +417,8 @@ if __name__ == "__main__":
     p_mt = sub.add_parser("metrics", help="Indicadores de operación: MTTA, MTTR, SLA y cambios (Fase 10.4)")
     p_mt.add_argument("--dias", type=int, default=30, choices=[7, 30, 90, 0], help="0 = todo el historial")
     p_mt.add_argument("--origen", default="todos", choices=["todos", "reales", "simulados"])
+    sub.add_parser("notify-test", help="Enviar un aviso de prueba por Telegram (Fase 11)")
+    sub.add_parser("telegram-chat-id", help="Ver el chat id de quien le escribió al bot (Fase 11)")
     args = parser.parse_args()
 
     if args.command == "init-db":
@@ -414,3 +456,7 @@ if __name__ == "__main__":
         cmd_config_diff(args.desde, args.hasta)
     elif args.command == "metrics":
         cmd_metrics(args.dias, args.origen)
+    elif args.command == "notify-test":
+        cmd_notify_test()
+    elif args.command == "telegram-chat-id":
+        cmd_telegram_chat_id()
