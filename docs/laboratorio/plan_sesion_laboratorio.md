@@ -147,3 +147,6 @@ zona antes de la hora y `no ip domain lookup`.
 | 9 | **Limpieza**: bloque 4 en los dos equipos, borrar reglas del firewall, cerrar la ventana del receptor, IP en automático | C3-F10-LAB-10 |
 
 Las capturas de la sesión 2 llevan el prefijo de la fase en curso (`C3-F10-LAB-NN`).
+
+> **Actualización 2026-10-25:** la sesión 2 no se realizó el viernes 23. Su contenido, ampliado con la
+> gestión de cambios de la Fase 10, quedó como [protocolo de pruebas reales pendiente](protocolo_pruebas_reales.md).

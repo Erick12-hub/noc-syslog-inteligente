@@ -1,0 +1,1141 @@
+################################################################################
+#                                                                              #
+#                       NOC SYSLOG INTELIGENTE                                 #
+#        FASE 10 - PROCESO COMPLETO, COMANDOS EXPLICADOS Y CÓDIGO COMENTADO    #
+#   Gestión de cambios e indicadores de operación (versión v0.5.0)            #
+#                                                                              #
+################################################################################
+
+  Proyecto    : NOC Syslog Inteligente (proyecto individual)
+  Asignatura  : Administración y Gestión de Redes - Periodo 2026-2
+  Docente     : Ing. John Harold Pérez Calderón
+  Estudiante  : Erick Santiago Castro Linares (GitHub: Erick12-hub)
+  Repositorio : https://github.com/Erick12-hub/noc-syslog-inteligente
+  Versión     : v0.5.0 (cuarta versión del Corte 3)
+  Fechas      : 2026-10-22 a 2026-10-26
+  Rama        : feature/fase10-cambios  ->  develop  ->  main
+  Entorno     : Windows 11 · Anaconda Prompt · Python 3.14 · Git · GitHub
+
+  Propósito de este documento:
+    Explicar qué se construyó en la Fase 10, por qué, cómo se probó y cómo se
+    publicó, con el código nuevo numerado y comentado para la sustentación.
+
+  Convenciones:
+    >     comando escrito en Anaconda Prompt
+    =>    resultado obtenido
+    [OK]  verificación superada
+    [E]   evidencia (captura) guardada en docs/evidencias/
+    Los cambios se ejecutaron sobre equipos SIMULADOS con salidas en el formato
+    real del Catalyst 8200L y del 2960. La prueba con el router del laboratorio
+    está PENDIENTE (docs/laboratorio/protocolo_pruebas_reales.md).
+    NINGUNA CONTRASEÑA APARECE EN ESTE DOCUMENTO NI EN LAS CAPTURAS.
+
+
+================================================================================
+ ÍNDICE
+================================================================================
+   1. Resumen de la Fase 10
+   2. Conceptos nuevos
+   3. Cronología: cada paso y cada comando, explicado
+   4. Código nuevo comentado
+        4.1  Secretos ocultos y normalización (app/configversions.py)
+        4.2  Captura de versiones y diff (app/configversions.py)
+        4.3  Matriz de riesgo e impacto mínimo (app/changes.py)
+        4.4  Aprobación con separación de funciones (app/changeexec.py)
+        4.5  Ejecución, deriva, verificación y rollback (app/changeexec.py)
+        4.6  Aplicar configuración en una sesión trazable (app/connector.py)
+        4.7  Cambio autorizado en las reglas (app/rules.py)
+        4.8  Indicadores MTTA y MTTR (app/metrics.py)
+        4.9  Corrección del inicio de sesión (app/auth.py)
+   5. Pruebas automáticas (423 -> 564)
+   6. Seguridad aplicada en la Fase 10
+   7. Problemas y observaciones
+   8. Control de versiones: historial de la fase
+   9. Evidencias de la Fase 10
+  10. Preguntas probables de sustentación (con respuesta)
+  11. Pregunta de validación del estudiante
+  12. Lista de verificación de cierre
+
+
+
+================================================================================
+ 1. RESUMEN DE LA FASE 10
+================================================================================
+
+
+ OBJETIVO
+   Que ningún cambio en un equipo se haga sin control: solicitud, riesgo,
+   rollback, aprobación de otra persona, ventana, ejecución verificada y
+   evidencia. Y medir qué tan rápido el NOC atiende y resuelve (MTTA/MTTR).
+
+ RESULTADO
+   [OK] Versiones de configuración con los SECRETOS OCULTOS antes de guardar,
+        solo si cambió, con diff y protegidas contra modificación.
+   [OK] Solicitudes de cambio con rollback obligatorio, verificación y ventana.
+   [OK] Matriz de riesgo 3x3 con impacto MÍNIMO impuesto por los comandos.
+   [OK] Comandos prohibidos incluso con aprobación.
+   [OK] Aprobación: otra persona (admin_seguridad); dos personas en riesgo alto.
+   [OK] Ejecución: línea base, deriva, mismo equipo físico, verificación y
+        rollback automático comparando con la configuración de antes.
+   [OK] Rollback manual y marca 'cambio_autorizado' en las reglas.
+   [OK] Indicadores: MTTA, MTTR (promedio y mediana), objetivos por
+        severidad, vencidos, tendencia y éxito de los cambios.
+   [OK] Corregido el inicio de sesión en Chrome y Edge (favicon).
+   [OK] 564 pruebas automáticas en verde (423 en v0.4.0): +141.
+   [OK] Los 21 commits de la fase pasan sus pruebas uno por uno.
+   [ ]  Prueba con el router real: PENDIENTE (protocolo listo).
+
+ RELACIÓN CON LOS REQUISITOS DEL CORTE 3
+   | Requisito del Corte 3                          | Cómo lo cubre la Fase 10           |
+   |------------------------------------------------|------------------------------------|
+   | Gestión de cambios con riesgo                  | Matriz e impacto mínimo (10.2)     |
+   | Versiones de configuración y diff              | config_versions (10.1)             |
+   | Aprobación humana / separación de funciones    | Revisiones (10.3)                  |
+   | Rollback                                       | Automático y manual (10.3)         |
+   | Defensa ante agentes de IA                     | La IA no aprueba ni aplica         |
+   | Indicadores MTTA / MTTR                        | Dashboard y CLI (10.4)             |
+
+
+
+================================================================================
+ 2. CONCEPTOS NUEVOS
+================================================================================
+
+
+ GESTIÓN DE CAMBIOS (ITIL)
+   Proceso para hacer cambios con el menor riesgo: se pide, se evalúa, se
+   aprueba, se programa, se ejecuta, se verifica y, si falla, se revierte.
+
+ RUNNING-CONFIG Y VERSIONES
+   La configuración en uso del equipo. Guardar sus versiones permite saber qué
+   cambió, cuándo y quién, y volver atrás. El DIFF muestra solo las líneas que
+   cambiaron (+ agregada, - quitada), como 'git diff'.
+
+ SECRETOS EN LA CONFIGURACIÓN
+   'enable secret', usuarios, comunidad SNMP y llaves aparecen en la
+   running-config (cifrados o en hash, pero no deben guardarse). El NOC los
+   reemplaza por <oculto> ANTES de escribir nada en la base.
+
+ MATRIZ DE RIESGO
+   riesgo = impacto (1-3) x probabilidad (1-3) = 1..9
+     1-2 bajo · 3-4 medio · 6-9 alto
+   El riesgo decide las aprobaciones (1, 1 o 2) y si la ventana es obligatoria.
+
+ IMPACTO MÍNIMO
+   El solicitante elige el impacto, pero los comandos imponen un piso: un
+   'shutdown' o un cambio de IP no pueden ser "bajo". Así el riesgo no depende
+   solo de la opinión de quien pide el cambio.
+
+ VENTANA DE CAMBIO
+   Intervalo acordado para ejecutar (normalmente con poco tráfico). Fuera de
+   ella el NOC no ejecuta.
+
+ SEPARACIÓN DE FUNCIONES
+   Quien pide no aprueba. En riesgo alto aprueban dos personas distintas.
+
+ LÍNEA BASE Y DERIVA (DRIFT)
+   Línea base = configuración leída justo antes de aplicar. Deriva = la
+   configuración ya no es la que se aprobó (alguien la cambió por fuera). Si
+   hay deriva, aplicar el cambio podría tener efectos que nadie revisó.
+
+ ROLLBACK
+   Comandos que deshacen el cambio. Se aplican solos si el equipo rechaza un
+   comando o la verificación falla, y el NOC comprueba que la configuración
+   quedó IDÉNTICA a la de antes (misma huella SHA-256).
+
+ MTTA Y MTTR
+   MTTA (Mean Time To Acknowledge): tiempo hasta que alguien atiende.
+   MTTR (Mean Time To Resolve): tiempo hasta cerrar. Promedio y MEDIANA: un
+   caso extremo sube el promedio; la mediana muestra lo típico.
+
+ SLA INTERNO (OBJETIVOS)
+   Tiempo máximo esperado por severidad: sev 0-1 atender 15 min y resolver 4 h;
+   sev 2 30 min / 8 h; sev 3 1 h / 24 h; sev 4-7 4 h / 3 días.
+
+
+
+================================================================================
+ 3. CRONOLOGÍA: CADA PASO Y CADA COMANDO, EXPLICADO
+================================================================================
+
+
+--------------------------------------------------------------------------------
+ 3.0 Preparación de la rama
+--------------------------------------------------------------------------------
+
+
+ > git switch develop
+ > git switch -c feature/fase10-cambios
+
+
+--------------------------------------------------------------------------------
+ 3.1 Paso 10.1 - Versiones de configuración
+--------------------------------------------------------------------------------
+
+
+ > python -m pytest -q                       => 461 passed                [E] 01
+   Inventario -> SIM-CORE-RTR01 -> Config. -> "Línea base antes del cambio"
+   => GUARDADA v1 · 3 secretos ocultos                                    [E] 02
+   Ver -> enable secret 9 <oculto>                                        [E] 03
+   Leer y guardar otra vez => SIN CAMBIOS (no crea v2)                    [E] 04
+   Interfaces -> Gi0/0/1 -> nueva descripción -> Config. -> Leer y guardar
+   => CAMBIÓ v2 (+1 -1): "description Leída del equipo" ->
+      "description Enlace a ISP de respaldo"                              [E] 05
+ > python manage.py device-configs SIM-CORE-RTR01
+ > python manage.py config-diff 1 2                                       [E] 06
+   Auditoría -> config.capture y config.changed (alerta)                  [E] 07
+
+
+--------------------------------------------------------------------------------
+ 3.2 Paso 10.2 - Solicitudes de cambio y matriz de riesgo
+--------------------------------------------------------------------------------
+
+
+ > python -m pytest -q                       => 515 passed                [E] 08
+   Cambios -> Nueva solicitud (descripción, impacto 1, prob. 1) -> bajo (1)
+                                                                          [E] 09
+   Comandos con 'no shutdown' y 'write memory' -> 3 errores: prohibido,
+   impacto menor al mínimo (alto) y ventana obligatoria                   [E] 10
+   Guardar y enviar -> Pendiente, línea base v2                           [E] 11
+   Cambio de IP + no shutdown, impacto 3, prob. 2, ventana -> alto (6),
+   2 aprobaciones de personas distintas                                   [E] 12
+   Auditoría -> change.create, change.submit                              [E] 13
+
+
+--------------------------------------------------------------------------------
+ 3.3 Paso 10.3 - Aprobación, ejecución y rollback
+--------------------------------------------------------------------------------
+
+
+ > python -m pytest -q                       => 542 passed                [E] 14
+ > python manage.py create-user admin_dos --rol admin_seguridad
+   admin -> cambio #1 -> comentario -> Aprobar                            [E] 15, 15b
+   operador1 -> #1 -> Ejecutar -> 5 pasos en ✓ -> diff antes/después      [E] 16
+   Cambio con 'simular-error' -> Aplicar ✗ (% Invalid input) -> Rollback ✓
+   -> "Idéntica a la configuración de antes" -> Revertido                 [E] 17
+   Cambio alto: aprueba admin (1 de 2) y admin_dos (2 de 2) -> Aprobado,
+   "Fuera de la ventana": no se ejecuta                                   [E] 18
+   Auditoría -> change.approve, execute, executed, rollback               [E] 19
+
+
+--------------------------------------------------------------------------------
+ 3.4 Paso 10.4 - Indicadores y corrección del login
+--------------------------------------------------------------------------------
+
+
+   HALLAZGO (25-oct): el login fallaba en Chrome y Edge, también en incógnito,
+   con "La sesión del formulario expiró".
+ > netstat -ano | findstr :5000             => un solo servidor (PID 13464)
+ > curl http://127.0.0.1:5000/api/health    => {"status":"ok",...}
+ > python diagnostico_login.py operador1    (script temporal, no se subió)
+   => SECRET_KEY definida, cookie y token entregados, y el login SIN
+      navegador FUNCIONA -> el problema estaba en algo que hace el navegador.
+   Causa: el navegador pide /favicon.ico; esa petición sin sesión borraba la
+   sesión (y el token del formulario). Corrección en app/auth.py.
+ > python -m pytest -q                       => 564 passed                [E] 20
+   Dashboard -> Indicadores de operación (Todo)                           [E] 21
+ > python manage.py metrics --dias 0                                      [E] 22
+
+
+
+================================================================================
+ 4. CÓDIGO NUEVO COMENTADO
+================================================================================
+
+
+--------------------------------------------------------------------------------
+ 4.1 Secretos ocultos y normalización (app/configversions.py)
+--------------------------------------------------------------------------------
+
+  +--- app/configversions.py -------------------------------------------------
+  |  55 | RE_SECRET = re.compile(
+  |  56 |     r"(?i)\b(secret|password|passwd|community|key-string|authentication-key|pre-shared-key|"
+  |  57 |     r"psksecret|passphrase|key)"
+  |  58 |     r"((?:\s+(?:\d{1,2}|ENC|cipher|simple|irreversible-cipher))?)"
+  |  59 |     r"\s+(\S+)")
+  |  60 | # Casos con el secreto en otra posición: "ntp authentication-key 1 md5 <clave> 7"
+  |  61 | RE_SPECIAL = [re.compile(r"(?i)\b(authentication-key\s+\d+\s+md5)\s+(\S+)")]
+  |  62 | RE_KEY_BLOCK_START = re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")
+  |  63 | RE_KEY_BLOCK_END = re.compile(r"-----END [A-Z ]*PRIVATE KEY-----")
+  |  64 | # Palabras que NO esconden un secreto aunque contengan "key" o "password"
+  |  65 | NOT_SECRET = re.compile(r"(?i)^\s*(service password-encryption|no service password-encryption|"
+  |  66 |                         r"crypto key generate|key chain|password encryption aes|"
+  |  67 |                         r"security passwords min-length)")
+  |  68 |
+  |  69 |
+  |  70 | def mask_secrets(text: str) -> tuple[str, int]:
+  |  71 |     """Devuelve (texto sin secretos, cuántas líneas se ocultaron)."""
+  |  72 |     out, masked, in_key = [], 0, False
+  |  73 |     for line in text.splitlines():
+  |  74 |         if in_key or RE_KEY_BLOCK_START.search(line):
+  |  75 |             in_key = not RE_KEY_BLOCK_END.search(line)
+  |  76 |             if RE_KEY_BLOCK_START.search(line) or RE_KEY_BLOCK_END.search(line):
+  |  77 |                 out.append(line)
+  |  78 |             else:
+  |  79 |                 out.append(MASK)
+  |  80 |                 masked += 1
+  |  81 |             continue
+  |  82 |         if MASK not in line and not NOT_SECRET.match(line):      # MASK: ya estaba oculto
+  |  83 |             new = line
+  |  84 |             for rx in RE_SPECIAL:
+  |  85 |                 new = rx.sub(lambda m: f"{m.group(1)} {MASK}", new)
+  |  86 |             if new == line:
+  |  87 |                 new = RE_SECRET.sub(lambda m: f"{m.group(1)}{m.group(2)} {MASK}", line)
+  |  88 |             if new != line:
+  |  89 |                 masked += 1
+  |  90 |                 line = new
+  |  91 |         out.append(line)
+  |  92 |     return "\n".join(out), masked
+  |  93 |
+  |  94 |
+  |  95 | # ---------------------------------------------------------------------------
+  |  96 | # 2. Normalizar: quitar lo que cambia SIN que cambie la configuración
+  |  97 | #    (fechas de "último cambio", tamaño en bytes, reloj del NTP...). Si no se
+  |  98 | #    quitara, cada lectura parecería una versión nueva.
+  |  99 | # ---------------------------------------------------------------------------
+  | 100 | VOLATILE = [re.compile(p) for p in (
+  | 101 |     r"^Building configuration\.\.\.$",
+  | 102 |     r"^Current configuration\s*:\s*\d+ bytes$",
+  | 103 |     r"^! Last configuration change at ",
+  | 104 |     r"^! NVRAM config last updated at ",
+  | 105 |     r"^! No configuration change since last restart",
+  | 106 |     r"^ntp clock-period \d+$",
+  | 107 |     r"^!Software Version ",                    # Huawei
+  | 108 |     r"^!Last configuration was (updated|saved) at ",
+  | 109 |     r"^#config-version=",                       # Fortinet
+  | 110 |     r"^#conf_file_ver=",
+  | 111 |     r"^#buildno=",
+  | 112 |     r"^#global_vdom=",
+  | 113 | )]
+  | 114 |
+  | 115 |
+  | 116 | def normalize(text: str) -> str:
+  | 117 |     lines = [l.rstrip() for l in text.replace("\r\n", "\n").replace("\r", "\n").split("\n")]
+  | 118 |     lines = [l for l in lines if not any(p.match(l) for p in VOLATILE)]
+  | 119 |     while lines and not lines[0].strip():
+  | 120 |         lines.pop(0)
+  | 121 |     while lines and not lines[-1].strip():
+  | 122 |         lines.pop()
+  | 123 |     return "\n".join(lines)
+  | 124 |
+  | 125 |
+  | 126 | def prepare(raw: str) -> tuple[str, int]:
+  | 127 |     """Lo que se guarda: configuración normalizada y SIN secretos."""
+  | 128 |     clean, masked = mask_secrets(normalize(raw))
+  | 129 |     return clean, masked
+  +----------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+ 4.2 Captura de versiones y diff (app/configversions.py)
+--------------------------------------------------------------------------------
+
+  +--- app/configversions.py -------------------------------------------------
+  | 139 | def diff_lines(a: str, b: str, name_a: str, name_b: str) -> dict:
+  | 140 |     """Diff unificado (como 'git diff'): + agregada, - quitada, 3 líneas de contexto."""
+  | 141 |     lines = list(difflib.unified_diff(a.splitlines(), b.splitlines(), name_a, name_b, lineterm="", n=3))
+  | 142 |     added = sum(1 for l in lines if l.startswith("+") and not l.startswith("+++"))
+  | 143 |     removed = sum(1 for l in lines if l.startswith("-") and not l.startswith("---"))
+  | 144 |     truncated = len(lines) > MAX_DIFF_LINES
+  | 145 |     return {"lines": lines[:MAX_DIFF_LINES], "added": added, "removed": removed, "truncated": truncated}
+  +----------------------------------------------------------------------------
+  +--- app/configversions.py -------------------------------------------------
+  | 162 | def capture_config(conn, device, user: str, note: str = "") -> tuple[dict, int]:
+  | 163 |     """Lee la configuración del equipo y guarda una versión nueva si cambió."""
+  | 164 |     from .connector import run_session            # import tardío: evita importaciones circulares
+  | 165 |     note = (note or "").strip()
+  | 166 |     if len(note) > MAX_NOTE:
+  | 167 |         return {"errors": [f"La nota admite máximo {MAX_NOTE} caracteres"]}, 400
+  | 168 |     command = CAPTURE_COMMAND.get(device["platform"] or "")
+  | 169 |     if command is None:
+  | 170 |         return {"errors": ["Elija la plataforma del equipo en el inventario"]}, 400
+  | 171 |
+  | 172 |     session, status = run_session(conn, device, [command], user, sanitize=lambda raw: prepare(raw)[0])
+  | 173 |     if status != 200:
+  | 174 |         return session, status
+  | 175 |     cmd = next((c for c in session["commands"] if c["command"] == command), None)
+  | 176 |     if cmd is None or cmd["status"] != "ok":
+  | 177 |         return {"errors": ["El equipo no entregó la configuración"], "session": session["id"]}, 502
+  | 178 |     content = cmd["output"]                         # ya normalizada y sin secretos (sanitize)
+  | 179 |     if len(content.encode("utf-8")) > MAX_CONFIG:
+  | 180 |         return {"errors": [f"La configuración supera {MAX_CONFIG // 1024} KB"], "session": session["id"]}, 413
+  | 181 |     if not content.strip() or len(content.splitlines()) < 3:
+  | 182 |         return {"errors": ["La salida no parece una configuración (muy corta o vacía)"],
+  | 183 |                 "session": session["id"]}, 502
+  | 184 |     masked = len(re.findall(re.escape(MASK), content))
+  | 185 |     digest = sha256(content)
+  | 186 |     warnings = list(session["warnings"])
+  | 187 |
+  | 188 |     prev = conn.execute("SELECT * FROM config_versions WHERE device_id = ? ORDER BY version_no DESC LIMIT 1",
+  | 189 |                         (device["id"],)).fetchone()
+  | 190 |     if prev is not None and prev["serial_number"] and session["serial_number"] \
+  | 191 |             and prev["serial_number"] != session["serial_number"]:
+  | 192 |         warnings.append(f"La versión anterior es de OTRO equipo físico ({prev['serial_number']}); "
+  | 193 |                         f"ahora responde {session['serial_number']}. Compare con cuidado")
+  | 194 |     if prev is not None and prev["sha256"] == digest:
+  | 195 |         audit(conn, user, "config.capture", "config_versions", prev["id"],
+  | 196 |               f"{device['name']}: sin cambios desde v{prev['version_no']} ({digest[:12]})")
+  | 197 |         return {"changed": False, "version": _public(prev), "previous": None, "session": session["id"],
+  | 198 |                 "masked": masked, "warnings": warnings,
+  | 199 |                 "message": f"Sin cambios desde la versión {prev['version_no']}"}, 200
+  | 200 |
+  | 201 |     added = removed = None
+  | 202 |     if prev is not None:
+  | 203 |         d = diff_lines(prev["content"], content, "", "")
+  | 204 |         added, removed = d["added"], d["removed"]
+  | 205 |     number = (prev["version_no"] + 1) if prev is not None else 1
+  | 206 |     cur = conn.execute(
+  | 207 |         "INSERT INTO config_versions (device_id, device_name, version_no, session_id, captured_by, captured_at, "
+  | 208 |         "serial_number, command, sha256, lines, masked, added, removed, note, is_simulated, content) "
+  | 209 |         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  | 210 |         (device["id"], device["name"], number, session["id"], user, now_iso(), session["serial_number"], command,
+  | 211 |          digest, len(content.splitlines()), masked, added, removed, note or None,
+  | 212 |          int(bool(session["is_simulated"])), content))
+  | 213 |     conn.commit()
+  | 214 |     vid = cur.lastrowid
+  | 215 |     if prev is None:
+  | 216 |         audit(conn, user, "config.capture", "config_versions", vid,
+  | 217 |               f"{device['name']}: versión inicial v1 ({len(content.splitlines())} líneas, "
+  | 218 |               f"{masked} secretos ocultos, {digest[:12]})")
+  | 219 |     else:
+  | 220 |         audit(conn, user, "config.changed", "config_versions", vid,
+  | 221 |               f"{device['name']}: v{number} cambió respecto a v{prev['version_no']} (+{added} -{removed})",
+  | 222 |               "alerta")
+  | 223 |     row = conn.execute("SELECT * FROM config_versions WHERE id = ?", (vid,)).fetchone()
+  | 224 |     return {"changed": True, "version": _public(row), "previous": _public(prev) if prev else None,
+  | 225 |             "session": session["id"], "masked": masked, "warnings": warnings,
+  | 226 |             "message": (f"Versión inicial guardada (v1)" if prev is None else
+  | 227 |                         f"La configuración CAMBIÓ: v{number} (+{added} -{removed} respecto a v{prev['version_no']})")}, 201
+  +----------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+ 4.3 Matriz de riesgo e impacto mínimo (app/changes.py)
+--------------------------------------------------------------------------------
+
+  +--- app/changes.py --------------------------------------------------------
+  |  64 | # Comandos que NUNCA van en un cambio (motivo)
+  |  65 | FORBIDDEN = [
+  |  66 |     (r"^(conf(igure)?|end)\b", "no escriba 'configure terminal' ni 'end': el NOC los agrega al ejecutar"),
+  |  67 |     (r"^do\b", "'do' ejecuta comandos de modo privilegiado desde la configuración"),
+  |  68 |     (r"^(write|copy|erase|delete|format|reload|boot|config-register|archive config)\b",
+  |  69 |      "guarda, borra, copia o reinicia el equipo (préstamo: nunca se guarda)"),
+  |  70 |     (r"^(no\s+)?(username|enable\s+(secret|password)|password|secret|crypto\s+(key|pki)|"
+  |  71 |      r"snmp-server\s+community|aaa|key\s+chain)\b", "maneja credenciales: no se gestionan por cambios"),
+  |  72 |     (r"^no\s+(logging|archive|service\s+timestamps|service\s+sequence-numbers)\b",
+  |  73 |      "apaga o degrada el registro de eventos que recibe el NOC"),
+  |  74 |     (r"^logging\s+(off|on\s+.*disable)\b", "apaga el registro de eventos"),
+  |  75 | ]
+  |  76 | # Comandos que obligan un impacto mínimo (nivel, motivo)
+  |  77 | MIN_IMPACT = [
+  |  78 |     (r"^(no\s+)?shutdown\b", 3, "apaga o enciende una interfaz (puede cortar la conexión)"),
+  |  79 |     (r"^(no\s+)?ip\s+address\b", 3, "cambia una dirección IP"),
+  |  80 |     (r"^(no\s+)?ip\s+route\b|^(no\s+)?router\s", 3, "cambia el enrutamiento"),
+  |  81 |     (r"^(no\s+)?(ip\s+access-group|access-list|ip\s+access-list)\b", 3, "cambia filtros de tráfico (ACL)"),
+  |  82 |     (r"^(no\s+)?(switchport|spanning-tree|vlan)\b", 3, "cambia la conmutación (VLAN o puertos)"),
+  |  83 |     (r"^(no\s+)?(ip\s+default-gateway|line\s+(vty|con))\b", 3, "cambia el acceso de gestión al equipo"),
+  |  84 |     (r"^(no\s+)?(logging|ntp|clock)\b", 2, "cambia el registro de eventos o la hora (afecta al NOC)"),
+  |  85 |     (r"^(no\s+)?hostname\b", 2, "cambia el nombre que aparece en los eventos"),
+  |  86 |     (r"^(no\s+)?(service|ip\s+domain|ip\s+http|banner)\b", 2, "cambia un servicio del equipo"),
+  |  87 | ]
+  |  88 |
+  |  89 |
+  |  90 | def risk_level(impact: int, probability: int) -> tuple[int, str]:
+  |  91 |     score = impact * probability
+  |  92 |     return score, ("bajo" if score <= 2 else "medio" if score <= 4 else "alto")
+  |  93 |
+  |  94 |
+  |  95 | def _lines(text) -> list[str]:
+  |  96 |     """Líneas del cuadro de texto: sin vacías ni comentarios '!', con la sangría de los submodos."""
+  |  97 |     return [l.rstrip() for l in str(text or "").replace("\r", "").split("\n")
+  |  98 |             if l.strip() and not l.strip().startswith("!")]
+  |  99 |
+  | 100 |
+  | 101 | def check_commands(lines: list[str], label: str, required: bool = True) -> list[str]:
+  | 102 |     errors = []
+  | 103 |     if required and not lines:
+  | 104 |         errors.append(f"{label}: escriba al menos un comando")
+  | 105 |     if len(lines) > MAX_LINES:
+  | 106 |         errors.append(f"{label}: máximo {MAX_LINES} líneas")
+  | 107 |     for i, line in enumerate(lines, 1):
+  | 108 |         cmd = re.sub(r"\s+", " ", line.strip()).lower()
+  | 109 |         if len(line) > MAX_LINE:
+  | 110 |             errors.append(f"{label}, línea {i}: más de {MAX_LINE} caracteres")
+  | 111 |         elif RE_META.search(line):
+  | 112 |             errors.append(f"{label}, línea {i}: caracteres no permitidos (; | & ` $ > <)")
+  | 113 |         else:
+  | 114 |             for pattern, why in FORBIDDEN:
+  | 115 |                 if re.match(pattern, cmd):
+  | 116 |                     errors.append(f"{label}, línea {i} '{line.strip()[:50]}': prohibido, {why}")
+  | 117 |                     break
+  | 118 |     return errors
+  | 119 |
+  | 120 |
+  | 121 | def minimum_impact(conn, device, lines: list[str]) -> tuple[int, list[str]]:
+  | 122 |     """Impacto mínimo que imponen los comandos (1 bajo, 2 medio, 3 alto) y sus motivos."""
+  | 123 |     level, reasons = 1, []
+  | 124 |     mgmt = set()
+  | 125 |     if device is not None:      # interfaz que tiene la IP de gestión del inventario
+  | 126 |         mgmt = {r["name"].lower() for r in conn.execute(
+  | 127 |             "SELECT name FROM interfaces WHERE device_id = ? AND ip_address = ?", (device["id"], device["ip"]))}
+  | 128 |     for line in lines:
+  | 129 |         cmd = re.sub(r"\s+", " ", line.strip()).lower()
+  | 130 |         for pattern, lvl, why in MIN_IMPACT:
+  | 131 |             if re.match(pattern, cmd):
+  | 132 |                 if lvl > level:
+  | 133 |                     level = lvl
+  | 134 |                 text = f"'{line.strip()[:40]}': {why}"
+  | 135 |                 if text not in reasons:
+  | 136 |                     reasons.append(text)
+  | 137 |                 break
+  | 138 |         if cmd.startswith("interface ") and normalize_for_vendor("Cisco", line.strip()[10:].strip()).lower() in mgmt:
+  | 139 |             level = 3
+  | 140 |             reasons.append(f"'{line.strip()[:40]}': es la interfaz de GESTIÓN (por ella llega el NOC)")
+  | 141 |     return level, reasons
+  +----------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+ 4.4 Aprobación con separación de funciones (app/changeexec.py)
+--------------------------------------------------------------------------------
+
+  +--- app/changeexec.py -----------------------------------------------------
+  |  59 | def review(conn, row, reviewer: str, decision: str, comment: str) -> tuple[dict, int]:
+  |  60 |     if row["status"] != "pendiente":
+  |  61 |         return {"errors": [f"Solo se revisa un cambio pendiente (estado actual: {row['status']})"]}, 409
+  |  62 |     if decision not in ("aprobar", "rechazar"):
+  |  63 |         return {"errors": ["Decisión inválida: aprobar o rechazar"]}, 400
+  |  64 |     comment = (comment or "").strip()
+  |  65 |     if not MIN_COMMENT <= len(comment) <= 500:
+  |  66 |         return {"errors": [f"El comentario es obligatorio: entre {MIN_COMMENT} y 500 caracteres"]}, 400
+  |  67 |     if reviewer == row["requested_by"]:
+  |  68 |         audit(conn, reviewer, "change.review_bloqueado", "change_requests", row["id"],
+  |  69 |               "intentó revisar su propio cambio", "bloqueado")
+  |  70 |         return {"errors": ["Separación de funciones: nadie revisa su propio cambio"]}, 403
+  |  71 |     if conn.execute("SELECT 1 FROM change_approvals WHERE change_id = ? AND reviewer = ?",
+  |  72 |                     (row["id"], reviewer)).fetchone():
+  |  73 |         return {"errors": ["Ya revisó este cambio: la segunda aprobación debe ser de OTRA persona"]}, 409
+  |  74 |     ts = now_iso()
+  |  75 |     word = "aprobado" if decision == "aprobar" else "rechazado"
+  |  76 |     conn.execute("INSERT INTO change_approvals (change_id, reviewer, decision, comment, decided_at) "
+  |  77 |                  "VALUES (?, ?, ?, ?, ?)", (row["id"], reviewer, word, comment, ts))
+  |  78 |     approved = conn.execute("SELECT COUNT(*) FROM change_approvals WHERE change_id = ? AND decision = 'aprobado'",
+  |  79 |                             (row["id"],)).fetchone()[0]
+  |  80 |     if word == "rechazado":
+  |  81 |         conn.execute("UPDATE change_requests SET status = 'rechazado', closed_at = ?, updated_at = ?, result = ? "
+  |  82 |                      "WHERE id = ?", (ts, ts, f"Rechazado por {reviewer}: {comment}", row["id"]))
+  |  83 |     elif approved >= row["approvals_required"]:
+  |  84 |         conn.execute("UPDATE change_requests SET status = 'aprobado', approved_at = ?, updated_at = ? WHERE id = ?",
+  |  85 |                      (ts, ts, row["id"]))
+  |  86 |     else:
+  |  87 |         conn.execute("UPDATE change_requests SET updated_at = ? WHERE id = ?", (ts, row["id"]))
+  |  88 |     conn.commit()
+  |  89 |     audit(conn, reviewer, f"change.{'approve' if word == 'aprobado' else 'reject'}", "change_requests", row["id"],
+  |  90 |           f"'{row['title']}': {word} ({approved}/{row['approvals_required']}) · {comment[:120]}",
+  |  91 |           "ok" if word == "aprobado" else "alerta")
+  |  92 |     return {"approvals": approvals(conn, row["id"]), "approved": approved}, 200
+  +----------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+ 4.5 Ejecución, deriva, verificación y rollback (app/changeexec.py)
+--------------------------------------------------------------------------------
+
+  +--- app/changeexec.py -----------------------------------------------------
+  | 141 | def execute_change(conn, row, user: str, now: datetime | None = None) -> tuple[dict, int]:
+  | 142 |     from .connector import run_config, run_session
+  | 143 |     now = now or datetime.now(timezone.utc)
+  | 144 |     errors = can_execute(conn, row, now)
+  | 145 |     if errors:
+  | 146 |         return {"errors": errors}, 409
+  | 147 |     device = conn.execute("SELECT * FROM devices WHERE id = ?", (row["device_id"],)).fetchone()
+  | 148 |     cid, ts = row["id"], now_iso()
+  | 149 |     commands, rollback, verify = _lines(row["commands"]), _lines(row["rollback"]), _lines(row["verify"])
+  | 150 |     conn.execute("UPDATE change_requests SET status = 'en_ejecucion', executed_by = ?, executed_at = ?, "
+  | 151 |                  "updated_at = ? WHERE id = ?", (user, ts, ts, cid))
+  | 152 |     conn.commit()
+  | 153 |     audit(conn, user, "change.execute", "change_requests", cid, f"{row['device_name']}: inicia '{row['title']}'")
+  | 154 |     steps = []
+  | 155 |
+  | 156 |     def step(name, ok, detail, **extra):
+  | 157 |         steps.append({"step": name, "ok": ok, "detail": detail, "at": now_iso(), **extra})
+  | 158 |
+  | 159 |     # --- 1. Línea base (antes) --------------------------------------------------
+  | 160 |     pre, status = capture_config(conn, device, user, f"Antes del cambio #{cid}")
+  | 161 |     if status not in (200, 201):
+  | 162 |         step("Línea base", False, "; ".join(pre.get("errors", ["no se pudo leer la configuración"])))
+  | 163 |         conn.execute("UPDATE change_requests SET status = 'aprobado', execution = ?, updated_at = ? WHERE id = ?",
+  | 164 |                      (json.dumps(steps, ensure_ascii=False), now_iso(), cid))
+  | 165 |         conn.commit()
+  | 166 |         audit(conn, user, "change.execute_abortado", "change_requests", cid,
+  | 167 |               "no se pudo leer la configuración: no se aplicó nada (sigue aprobado)", "alerta")
+  | 168 |         return {"errors": ["No se pudo leer la configuración antes del cambio: no se aplicó nada"] +
+  | 169 |                           pre.get("errors", []), "steps": steps}, 502
+  | 170 |     pre_v = pre["version"]
+  | 171 |     conn.execute("UPDATE change_requests SET pre_version_id = ? WHERE id = ?", (pre_v["id"], cid))
+  | 172 |     conn.commit()
+  | 173 |     step("Línea base", True, f"v{pre_v['version_no']} · {pre_v['lines']} líneas · serie {pre_v['serial_number']}",
+  | 174 |          version_id=pre_v["id"])
+  | 175 |
+  | 176 |     # --- 2. Deriva: ¿es la configuración que se aprobó? ---------------------------------
+  | 177 |     if row["baseline_version_id"]:
+  | 178 |         base = conn.execute("SELECT version_no, sha256 FROM config_versions WHERE id = ?",
+  | 179 |                             (row["baseline_version_id"],)).fetchone()
+  | 180 |         # Lo que cambiaron OTROS cambios ejecutados por el NOC después de enviar este no es deriva
+  | 181 |         by_noc = conn.execute(
+  | 182 |             "SELECT c.id FROM change_requests c JOIN config_versions v ON v.id = c.post_version_id "
+  | 183 |             "WHERE c.device_id = ? AND c.id != ? AND c.executed_at >= ? AND v.sha256 = ? ORDER BY c.id DESC LIMIT 1",
+  | 184 |             (row["device_id"], cid, row["submitted_at"] or "", pre_v["sha256"])).fetchone()
+  | 185 |         if base and base["sha256"] != pre_v["sha256"] and by_noc:
+  | 186 |             step("Deriva", True, f"La configuración cambió solo por el cambio #{by_noc['id']}, ejecutado por el "
+  | 187 |                                  f"NOC (v{base['version_no']} -> v{pre_v['version_no']})")
+  | 188 |         elif base and base["sha256"] != pre_v["sha256"]:
+  | 189 |             step("Deriva", False, f"La configuración cambió desde la aprobación (v{base['version_no']} -> "
+  | 190 |                                   f"v{pre_v['version_no']}). No se aplicó nada")
+  | 191 |             _finish(conn, cid, "fallido", "No aplicado: la configuración cambió por fuera después de aprobar "
+  | 192 |                                           "(deriva). Revise el diff y cree una nueva solicitud", steps)
+  | 193 |             inc = create_incident(conn, title=f"Deriva de configuración en {row['device_name']} (cambio #{cid})",
+  | 194 |                                   severity=3, created_by="sistema", device_id=row["device_id"],
+  | 195 |                                   correlation_key=f"cambio|{cid}",
+  | 196 |                                   description="La configuración no es la que se aprobó: alguien la cambió por fuera "
+  | 197 |                                               "del proceso de cambios.")
+  | 198 |             audit(conn, user, "change.deriva", "change_requests", cid,
+  | 199 |                   f"v{base['version_no']} != v{pre_v['version_no']} · incidente {inc}", "alerta")
+  | 200 |             return _detail(conn, cid), 200
+  | 201 |         else:
+  | 202 |             step("Deriva", True, "La configuración es la misma que se aprobó")
+  | 203 |
+  | 204 |     # --- 3. Aplicar ---------------------------------------------------------------
+  | 205 |     applied, status = run_config(conn, device, commands, user, pre_v["serial_number"], f"cambio #{cid}")
+  | 206 |     ok = status == 200
+  | 207 |     step("Aplicar", ok, f"{len(commands)} líneas · sesión {applied.get('id', '-')}"
+  | 208 |                         + ("" if ok else f" · {'; '.join(applied.get('errors', []))}"), session_id=applied.get("id"))
+  | 209 |     if applied.get("wrong_device"):
+  | 210 |         # No se aplicó nada y NO se hace rollback: sería sobre un equipo que no es el aprobado
+  | 211 |         _finish(conn, cid, "fallido", "No aplicado: respondió otro equipo físico (cable o consola equivocados, "
+  | 212 |                                       "o posible suplantación). No se hizo rollback", steps)
+  | 213 |         inc = create_incident(conn, title=f"Cambio #{cid}: respondió otro equipo físico en {row['device_name']}",
+  | 214 |                               severity=2, created_by="sistema", device_id=row["device_id"],
+  | 215 |                               correlation_key=f"cambio|{cid}",
+  | 216 |                               description="El número de serie no coincide con el de la línea base.")
+  | 217 |         audit(conn, user, "change.equipo_distinto", "change_requests", cid, f"incidente {inc}", "alerta")
+  | 218 |         return _detail(conn, cid), 200
+  | 219 |
+  | 220 |     # --- 4. Verificar ------------------------------------------------------------
+  | 221 |     post_v = None
+  | 222 |     if ok and verify:
+  | 223 |         vs, vstatus = run_session(conn, device, verify, user)
+  | 224 |         bad = [c["command"] for c in vs.get("commands", []) if c["status"] != "ok" or "% Invalid" in (c["output"] or "")]
+  | 225 |         ok = vstatus == 200 and not bad
+  | 226 |         step("Verificación", ok, f"{len(verify)} comando(s) · sesión {vs.get('id', '-')}"
+  | 227 |                                  + (f" · fallaron: {', '.join(bad)}" if bad else ""), session_id=vs.get("id"))
+  | 228 |     if ok:
+  | 229 |         post, pstatus = capture_config(conn, device, user, f"Después del cambio #{cid}")
+  | 230 |         if pstatus in (200, 201):
+  | 231 |             post_v = post["version"]
+  | 232 |             missing = missing_lines(conn.execute("SELECT content FROM config_versions WHERE id = ?",
+  | 233 |                                                  (post_v["id"],)).fetchone()[0], commands)
+  | 234 |             ok = not missing
+  | 235 |             step("Configuración después", ok, f"v{post_v['version_no']}" +
+  | 236 |                  (" · sin diferencias con la de antes (ya estaba así)" if post_v["id"] == pre_v["id"] else "") +
+  | 237 |                  (f" · NO aparecen: {', '.join(missing)}" if missing else " · todas las líneas aplicadas"),
+  | 238 |                  version_id=post_v["id"])
+  | 239 |         else:
+  | 240 |             ok = False
+  | 241 |             step("Configuración después", False, "; ".join(post.get("errors", ["no se pudo leer"])))
+  | 242 |
+  | 243 |     if ok:
+  | 244 |         _finish(conn, cid, "ejecutado", "Ejecutado y verificado", steps, post_v["id"])
+  | 245 |         audit(conn, user, "change.executed", "change_requests", cid,
+  | 246 |               f"{row['device_name']}: '{row['title']}' ejecutado y verificado (v{pre_v['version_no']} -> "
+  | 247 |               f"v{post_v['version_no']})")
+  | 248 |         return _detail(conn, cid), 200
+  | 249 |
+  | 250 |     # --- 5. Rollback automático -------------------------------------------------------
+  | 251 |     return _rollback(conn, row, device, user, pre_v, steps, rollback, automatic=True)
+  +----------------------------------------------------------------------------
+  +--- app/changeexec.py -----------------------------------------------------
+  | 254 | def _rollback(conn, row, device, user, pre_v, steps, rollback, automatic):
+  | 255 |     from .connector import run_config
+  | 256 |     cid = row["id"]
+  | 257 |     rb, status = run_config(conn, device, rollback, user, pre_v["serial_number"], f"rollback #{cid}")
+  | 258 |     steps.append({"step": "Rollback", "ok": status == 200, "at": now_iso(), "session_id": rb.get("id"),
+  | 259 |                   "detail": f"{len(rollback)} líneas · sesión {rb.get('id', '-')}"
+  | 260 |                             + ("" if status == 200 else f" · {'; '.join(rb.get('errors', []))}")})
+  | 261 |     after, astatus = capture_config(conn, device, user, f"Después del rollback #{cid}")
+  | 262 |     after_serial = None
+  | 263 |     if astatus in (200, 201):
+  | 264 |         s = conn.execute("SELECT serial_number FROM device_sessions WHERE id = ?", (after["session"],)).fetchone()
+  | 265 |         after_serial = s["serial_number"] if s else None
+  | 266 |     restored = (astatus in (200, 201) and after["version"]["sha256"] == pre_v["sha256"]
+  | 267 |                 and after_serial == pre_v["serial_number"])      # y leída del MISMO equipo físico
+  | 268 |     after_id = after["version"]["id"] if astatus in (200, 201) else None
+  | 269 |     steps.append({"step": "Comparar con la de antes", "ok": restored, "at": now_iso(), "version_id": after_id,
+  | 270 |                   "detail": "Idéntica a la configuración de antes" if restored else
+  | 271 |                             "NO quedó igual a la de antes: requiere revisión manual"})
+  | 272 |     why = "automático por falla" if automatic else "manual"
+  | 273 |     if restored:
+  | 274 |         _finish(conn, cid, "revertido", f"Revertido ({why}): el equipo quedó como antes del cambio", steps, after_id)
+  | 275 |         audit(conn, user, "change.rollback", "change_requests", cid,
+  | 276 |               f"{row['device_name']}: rollback {why}, configuración restaurada", "alerta")
+  | 277 |         return _detail(conn, cid), 200
+  | 278 |     _finish(conn, cid, "fallido", f"Falló y el rollback ({why}) no restauró la configuración", steps, after_id)
+  | 279 |     inc = create_incident(conn, title=f"Cambio #{cid} falló en {row['device_name']}: rollback incompleto",
+  | 280 |                           severity=2, created_by="sistema", device_id=row["device_id"],
+  | 281 |                           correlation_key=f"cambio|{cid}",
+  | 282 |                           description="El rollback no dejó la configuración igual a la de antes. Revise el diff "
+  | 283 |                                       "entre la versión anterior y la actual.")
+  | 284 |     audit(conn, user, "change.rollback_fallido", "change_requests", cid,
+  | 285 |           f"{row['device_name']}: configuración distinta a la de antes · incidente {inc}", "alerta")
+  +----------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+ 4.6 Aplicar configuración en una sesión trazable (app/connector.py)
+--------------------------------------------------------------------------------
+
+  +--- app/connector.py ------------------------------------------------------
+  | 560 | def run_config(conn, device, lines: list[str], user: str, expected_serial: str | None = None,
+  | 561 |                label: str = "cambio") -> tuple[dict, int]:
+  | 562 |     """Fase 10.3: aplica líneas de configuración en una sesión trazable.
+  | 563 |
+  | 564 |     Lo llama SOLO la ejecución de un cambio APROBADO (app/changeexec.py), que ya
+  | 565 |     validó los comandos. Igual se repite la defensa: un agente de IA nunca aplica
+  | 566 |     configuración, y si responde otro equipo físico no se envía nada."""
+  | 567 |     if user == "asistente_ia":
+  | 568 |         return {"errors": ["Un agente de IA no aplica configuración"]}, 403
+  | 569 |     problems = readiness_errors(device)
+  | 570 |     if problems:
+  | 571 |         return {"errors": problems}, 400
+  | 572 |     lock = _lock_for(device)
+  | 573 |     if not lock.acquire(blocking=False):
+  | 574 |         return {"errors": ["El equipo (o el puerto de consola) está ocupado con otra sesión"]}, 409
+  | 575 |     try:
+  | 576 |         transport = make_transport(device, conn)
+  | 577 |         cur = conn.execute(
+  | 578 |             "INSERT INTO device_sessions (device_id, device_name, transport, target, started_by, started_at, "
+  | 579 |             "is_simulated) VALUES (?, ?, ?, ?, ?, ?, ?)",
+  | 580 |             (device["id"], device["name"], transport.transport, transport.target, user, now_iso(),
+  | 581 |              int(transport.transport == "simulado" or bool(device["is_simulated"]))))
+  | 582 |         conn.commit()
+  | 583 |         sid = cur.lastrowid
+  | 584 |         status, error = "cerrada", None
+  | 585 |         try:
+  | 586 |             transport.open()
+  | 587 |             identity = parse_identity(device["platform"], _run(conn, transport, sid, IDENTITY_COMMAND[device["platform"]], user))
+  | 588 |             conn.execute("UPDATE device_sessions SET serial_number = ?, model = ?, os_version = ? WHERE id = ?",
+  | 589 |                          (identity["serial"], identity["model"], identity["version"], sid))
+  | 590 |             if expected_serial and identity["serial"] and identity["serial"] != expected_serial:
+  | 591 |                 status, error = "fallida", (f"Respondió OTRO equipo físico ({identity['serial']}, se esperaba "
+  | 592 |                                             f"{expected_serial}): no se aplicó nada")
+  | 593 |             else:
+  | 594 |                 started, t0 = now_iso(), time.monotonic()
+  | 595 |                 try:
+  | 596 |                     output, cmd_status = transport.send_config(lines), "ok"
+  | 597 |                 except ConnectionError_ as e:
+  | 598 |                     output, cmd_status = str(e), "error"
+  | 599 |                 if cmd_status == "ok" and RE_CONFIG_ERROR.search(output):
+  | 600 |                     cmd_status = "error"
+  | 601 |                 conn.execute(
+  | 602 |                     "INSERT INTO device_commands (session_id, command, requested_by, started_at, duration_ms, "
+  | 603 |                     "status, output, output_sha256) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+  | 604 |                     (sid, f"configure terminal ({label}: {len(lines)} líneas)", user, started,
+  | 605 |                      int((time.monotonic() - t0) * 1000), cmd_status, output[:MAX_OUTPUT],
+  | 606 |                      hashlib.sha256(output.encode("utf-8", "replace")).hexdigest()))
+  | 607 |                 audit(conn, user, "device.config_apply", "device_sessions", sid,
+  | 608 |                       f"{device['name']}: {label}, {len(lines)} líneas -> {cmd_status}",
+  | 609 |                       "ok" if cmd_status == "ok" else "alerta")
+  | 610 |                 if cmd_status != "ok":
+  | 611 |                     error = next((l.strip() for l in output.splitlines() if RE_CONFIG_ERROR.match(l)),
+  | 612 |                                  output.splitlines()[-1] if output else "error")
+  | 613 |                     status = "fallida"
+  | 614 |         except ConnectionError_ as e:
+  | 615 |             status, error = "fallida", str(e)
+  | 616 |         finally:
+  | 617 |             transport.close()
+  | 618 |         n = conn.execute("SELECT COUNT(*) FROM device_commands WHERE session_id = ?", (sid,)).fetchone()[0]
+  | 619 |         conn.execute("UPDATE device_sessions SET status = ?, error = ?, ended_at = ?, commands_count = ? WHERE id = ?",
+  | 620 |                      (status, error, now_iso(), n, sid))
+  | 621 |         conn.commit()
+  | 622 |         result = get_session(conn, sid)
+  | 623 |         # Fase 10.3: respondió otro equipo físico -> quien llama NO debe hacer rollback
+  | 624 |         result["wrong_device"] = bool(expected_serial and result["serial_number"] not in (None, expected_serial))
+  | 625 |         if error:
+  | 626 |             result["errors"] = [error]
+  | 627 |         return result, 200 if status == "cerrada" else 502
+  | 628 |     finally:
+  | 629 |         lock.release()
+  +----------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+ 4.7 Cambio autorizado en las reglas (app/rules.py)
+--------------------------------------------------------------------------------
+
+  +--- app/rules.py ----------------------------------------------------------
+  |  81 | AUTHORIZED_GRACE = timedelta(minutes=10)     # los eventos del equipo llegan después del cambio
+  |  82 |
+  |  83 |
+  |  84 | def authorized_change(conn, device_id, now: datetime) -> int | None:
+  |  85 |     """Id del cambio aprobado que se está ejecutando (o terminó hace poco) en el equipo."""
+  |  86 |     if not device_id:
+  |  87 |         return None
+  |  88 |     row = conn.execute(
+  |  89 |         "SELECT id FROM change_requests WHERE device_id = ? AND (status = 'en_ejecucion' OR "
+  |  90 |         "(executed_at IS NOT NULL AND closed_at >= ?)) ORDER BY id DESC LIMIT 1",
+  |  91 |         (device_id, _iso(now - AUTHORIZED_GRACE))).fetchone()
+  |  92 |     return row["id"] if row else None
+  +----------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+ 4.8 Indicadores MTTA y MTTR (app/metrics.py)
+--------------------------------------------------------------------------------
+
+  +--- app/metrics.py --------------------------------------------------------
+  |  74 | def ack_time(row):
+  |  75 |     """Primer momento en que alguien atendió el incidente (o None si nadie lo ha hecho)."""
+  |  76 |     times = [t for t in (_parse(row["assigned_at"]), _parse(row["started_at"]), _parse(row["closed_at"])) if t]
+  |  77 |     return min(times) if times else None
+  +----------------------------------------------------------------------------
+  +--- app/metrics.py --------------------------------------------------------
+  |  92 | def compute(conn, days: int = 30, origin: str = "todos", now: datetime | None = None) -> dict:
+  |  93 |     now = now or datetime.now(timezone.utc)
+  |  94 |     where, params = [], []
+  |  95 |     if days:
+  |  96 |         where.append("created_at >= ?")
+  |  97 |         params.append(_iso(now - timedelta(days=days)))
+  |  98 |     if origin == "reales":
+  |  99 |         where.append("is_simulated = 0")
+  | 100 |     elif origin == "simulados":
+  | 101 |         where.append("is_simulated = 1")
+  | 102 |     sql = "SELECT i.*, d.name AS device_name FROM incidents i LEFT JOIN devices d ON d.id = i.device_id"
+  | 103 |     if where:
+  | 104 |         sql += " WHERE " + " AND ".join("i." + w for w in where)
+  | 105 |     rows = conn.execute(sql, params).fetchall()
+  | 106 |
+  | 107 |     acks, ress = [], []
+  | 108 |     groups = {label: {"label": label, "target_ack": human(a), "target_res": human(r), "total": 0, "open": 0,
+  | 109 |                       "ack": [], "res": [], "ack_ok": 0, "res_ok": 0, "ack_n": 0, "res_n": 0}
+  | 110 |               for _, label, a, r in SEV_GROUPS}
+  | 111 |     devices, overdue = {}, []
+  | 112 |     for r in rows:
+  | 113 |         created = _parse(r["created_at"])
+  | 114 |         label, t_ack, t_res = target_for(r["severity"])
+  | 115 |         g = groups[label]
+  | 116 |         g["total"] += 1
+  | 117 |         a = ack_time(r)
+  | 118 |         closed = _parse(r["closed_at"]) if r["status"] == "cerrado" else None
+  | 119 |         if a:
+  | 120 |             secs = max(0.0, (a - created).total_seconds())
+  | 121 |             acks.append(secs)
+  | 122 |             g["ack"].append(secs)
+  | 123 |             g["ack_n"] += 1
+  | 124 |             g["ack_ok"] += secs <= t_ack
+  | 125 |         if closed:
+  | 126 |             secs = max(0.0, (closed - created).total_seconds())
+  | 127 |             ress.append(secs)
+  | 128 |             g["res"].append(secs)
+  | 129 |             g["res_n"] += 1
+  | 130 |             g["res_ok"] += secs <= t_res
+  +----------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+ 4.9 Corrección del inicio de sesión (app/auth.py)
+--------------------------------------------------------------------------------
+
+  +--- app/auth.py -----------------------------------------------------------
+  | 209 |     user = _load_user(session["user_id"]) if "user_id" in session else None
+  | 210 |     if user is None or not user["active"]:
+  | 211 |         # Corrección (2026-10-25): solo se borra una sesión que SÍ tenía usuario
+  | 212 |         # (usuario eliminado o desactivado). Antes se borraba siempre: el navegador
+  | 213 |         # pide /favicon.ico justo después de mostrar el login, esa petición borraba
+  | 214 |         # el token del formulario y el inicio de sesión fallaba con "La sesión del
+  | 215 |         # formulario expiró" (hallazgo del 25-oct, en Chrome y Edge).
+  | 216 |         if "user_id" in session:
+  | 217 |             session.clear()
+  +----------------------------------------------------------------------------
+  +--- app/auth.py -----------------------------------------------------------
+  | 316 | @bp.get("/favicon.ico")
+  | 317 | def favicon():
+  | 318 |     """Ícono de la pestaña (el punto verde de la marca). Es PÚBLICO: el navegador lo
+  | 319 |     pide solo, también desde la página de inicio de sesión (ver enforce())."""
+  | 320 |     svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">'
+  | 321 |            '<circle cx="8" cy="8" r="6" fill="#3fb68b"/></svg>')
+  | 322 |     return Response(svg, mimetype="image/svg+xml", headers={"Cache-Control": "public, max-age=86400"})
+  +----------------------------------------------------------------------------
+
+
+================================================================================
+ 5. PRUEBAS AUTOMÁTICAS (423 -> 564)
+================================================================================
+
+
+ > python -m pytest -q
+   => 564 passed
+
+   | Archivo                          | Pruebas | Qué verifica                                   |
+   |----------------------------------|---------|------------------------------------------------|
+   | tests/test_versiones_config.py   |   38    | Secretos (Cisco, Huawei, Fortinet, llaves),    |
+   |                                  |         | normalización, sin cambios, diff, roles,       |
+   |                                  |         | triggers, otro equipo físico                   |
+   | tests/test_cambios.py            |   54    | Matriz, impacto mínimo, interfaz de gestión,   |
+   |                                  |         | prohibidos, ventanas, estados, roles           |
+   | tests/test_ejecucion_cambios.py  |   27    | Aprobación (1 y 2 personas), ventana, deriva,  |
+   |                                  |         | rollback automático y manual, otro equipo,     |
+   |                                  |         | cambio autorizado, modelo simulado             |
+   | tests/test_metricas.py           |   18    | MTTA/MTTR, mediana, SLA, vencidos, filtros,    |
+   |                                  |         | tendencia, cambios, API                        |
+   | tests/test_auth.py (+4)          |    4    | Favicon público; una petición sin sesión no    |
+   |                                  |         | borra el token del login                       |
+   | (ajustes)                        |    -    | 15 tablas en /api/health                       |
+
+
+
+================================================================================
+ 6. SEGURIDAD APLICADA EN LA FASE 10
+================================================================================
+
+
+   - Los secretos de la configuración se ocultan ANTES de guardar (ni la
+     versión ni el historial de comandos los contienen).
+   - 'show running-config' sigue bloqueado en la sesión normal.
+   - Versiones y revisiones son evidencia: triggers impiden modificarlas.
+   - Comandos prohibidos aun con aprobación: guardar, borrar, copiar,
+     reiniciar, credenciales, 'do' y apagar el logging hacia el NOC.
+   - Impacto mínimo impuesto por los comandos (interfaz de gestión = alto).
+   - Separación de funciones: nadie aprueba su propio cambio; dos personas en
+     riesgo alto; el auditor no aprueba ni ejecuta; la IA no aplica nada.
+   - Defensa en profundidad: los comandos se validan otra vez al ejecutar.
+   - Deriva: no se aplica sobre una configuración distinta a la aprobada.
+   - Mismo equipo físico (número de serie) o no se aplica (sin rollback).
+   - Rollback verificado por huella; si no restaura, incidente de severidad 2.
+   - La regla "fuera de horario" distingue el cambio autorizado.
+   - Login: una petición sin sesión ya no invalida el formulario (CSRF intacto).
+
+ LÍMITES DECLARADOS
+   - La ejecución de cambios es solo para Cisco en esta versión.
+   - La verificación busca las líneas tal como se escribieron: los comandos se
+     escriben completos (sin abreviaturas).
+   - El flujo con el router real está pendiente (protocolo en docs/laboratorio).
+
+
+
+================================================================================
+ 7. PROBLEMAS Y OBSERVACIONES
+================================================================================
+
+
+ 1. Login imposible en Chrome y Edge (favicon) - hallazgo del 25-oct.
+    Diagnóstico por descarte: un servidor (netstat), salud (curl), login sin
+    navegador correcto. Causa: session.clear() ante /favicon.ico. Corregido
+    con 4 pruebas. Existía desde v0.3.0; la caché del navegador lo ocultaba.
+
+ 2. Dos cambios aprobados: el segundo fallaba por "deriva".
+    La diferencia la dejó el propio NOC: ahora se reconoce (prueba en vivo).
+
+ 3. Gi0/0/1 ya existía en el inventario (10.1): se editó la descripción.
+
+ 4. Contraseña olvidada de admin_dos: no se ven ni se borran usuarios; se
+    restableció desde Seguridad (procedimiento de la Fase 8).
+
+ 5. Capturas con nombre duplicado o con "Captura " al inicio: corregidas.
+
+ 6. El fix del login quedó confirmado antes que el código del 10.4: se probó
+    solo (546) y con el 10.4 (564).
+
+ 7. La sesión 2 de laboratorio no se realizó: protocolo pendiente.
+
+
+
+================================================================================
+ 8. CONTROL DE VERSIONES: HISTORIAL DE LA FASE
+================================================================================
+
+
+   92ec2fa feat(configuraciones): versiones de configuracion con secretos ocultos y diff
+   6f53f59 feat(cli): comandos device-config, device-configs y config-diff
+   570a228 feat(interfaz): ventana de versiones de configuracion con diff en el inventario
+   192995d test: 38 pruebas de versiones de configuracion (461 en total)
+   fe9068d docs: evidencias del paso 10.1 y release v0.4.0
+   e28f65c feat(cambios): solicitudes de cambio con matriz de riesgo, rollback y ventana
+   e43bdb4 feat(interfaz): pagina de cambios con matriz de riesgo en vivo
+   30da936 test: 54 pruebas de la gestion de cambios (515 en total)
+   8b6a9e2 docs: evidencias del paso 10.2 (gestion de cambios)
+   0c8f56c feat(conexiones): aplicar configuracion en una sesion trazable y modelo simulado de la running-config
+   7b64c67 feat(cambios): aprobacion con separacion de funciones, ejecucion verificada y rollback automatico
+   09fe735 feat(interfaz): revision, ejecucion, resultado y rollback en la pagina de cambios
+   2c93f3b test: 27 pruebas de aprobacion, ejecucion y rollback de cambios (542 en total)
+   c1a9a9f docs: evidencias del paso 10.3 (aprobacion, ejecucion y rollback)
+   a603424 fix(auth): una peticion sin sesion (favicon) ya no borra el token del login y se agrega el icono
+   fe9af92 feat(indicadores): MTTA, MTTR, objetivos por severidad y metricas de cambios
+   d692f32 feat(cli): comando metrics con periodo y origen
+   e8de81f feat(interfaz): indicadores de operacion en el dashboard
+   3672f09 test: 18 pruebas de los indicadores de operacion (560 en total)
+   cf0663c docs: evidencias del paso 10.4 (indicadores)
+   ee95022 docs: corrige el nombre de dos capturas del paso 10.4
+   319b21d chore(release): borrador cierre fase 10 (local)
+   (cierre) chore(release): version 0.5.0, changelog, readme, bitacora y proceso de la fase 10
+
+
+ PUBLICACIÓN
+ > git add app/__init__.py CHANGELOG.md README.md docs/bitacora.md docs/FASE10_proceso_completo.txt docs/laboratorio
+ > git status
+ > git commit -m "chore(release): version 0.5.0, changelog, readme, bitacora y proceso de la fase 10"
+ > git push
+ GitHub -> Pull request: base develop <- compare feature/fase10-cambios (Merge commit)
+ GitHub -> Pull request: base main <- compare develop (Merge commit)
+ > git switch main
+ > git pull
+ > git tag -a v0.5.0 -m "v0.5.0 gestion de cambios e indicadores de operacion"
+ > git push origin v0.5.0
+ GitHub -> Releases -> v0.5.0 -> notas del CHANGELOG
+ > git switch develop
+ > git merge --ff-only main
+ > git push
+
+
+
+================================================================================
+ 9. EVIDENCIAS DE LA FASE 10
+================================================================================
+
+
+   [E] C3-F10-01_pruebas_461_passed.png
+   [E] C3-F10-02_web_version_inicial.png
+   [E] C3-F10-03_web_secretos_ocultos.png
+   [E] C3-F10-04_web_sin_cambios.png
+   [E] C3-F10-05_web_cambio_diff.png
+   [E] C3-F10-06_consola_device_configs_diff.png
+   [E] C3-F10-07_web_auditoria_config.png
+   [E] C3-F10-08_pruebas_515_passed.png
+   [E] C3-F10-09_web_cambio_bajo.png
+   [E] C3-F10-10_web_validaciones.png
+   [E] C3-F10-11_web_cambio_pendiente.png
+   [E] C3-F10-12_web_cambio_alto.png
+   [E] C3-F10-13_web_auditoria_cambios.png
+   [E] C3-F10-14_pruebas_542_passed.png
+   [E] C3-F10-15_web_revision_aprobada.png
+   [E] C3-F10-15b_web_revision_aprobada.png
+   [E] C3-F10-16_web_cambio_ejecutado_diff.png
+   [E] C3-F10-17_web_rollback_automatico.png
+   [E] C3-F10-18_web_alto_dos_aprobaciones.png
+   [E] C3-F10-19_web_auditoria_ejecucion.png
+   [E] C3-F10-20_pruebas_564_passed.png
+   [E] C3-F10-21_web_indicadores_operacion.png
+   [E] C3-F10-22_consola_metrics.png
+
+
+
+================================================================================
+ 10. PREGUNTAS PROBABLES DE SUSTENTACIÓN (CON RESPUESTA)
+================================================================================
+
+
+ P: ¿Por qué el NOC no guarda la configuración tal cual?
+ R: Porque trae secretos (enable secret, usuarios, SNMP, llaves). Se ocultan
+    antes de guardar; la huella es de lo guardado.
+
+ P: ¿Cómo evitas que alguien diga que un cambio peligroso es de riesgo bajo?
+ R: Los comandos imponen un impacto mínimo: shutdown, IP, rutas, ACL, VLAN o
+    la interfaz de gestión son alto; logging, NTP o hostname, medio.
+
+ P: ¿Quién aprueba?
+ R: Un administrador de seguridad distinto de quien pidió; en riesgo alto, dos
+    personas distintas. Cada revisión lleva comentario y no se puede alterar.
+
+ P: ¿Qué es la deriva y qué haces si la encuentras?
+ R: Que la configuración ya no es la que se aprobó. No se aplica nada: el
+    cambio falla y se abre un incidente para revisar el diff. Excepción: si la
+    diferencia la dejó otro cambio aprobado ejecutado por el NOC.
+
+ P: ¿Cómo sabes que el rollback funcionó?
+ R: Se lee la configuración después del rollback y se compara su SHA-256 con
+    la de antes. Idéntica = revertido; distinta = fallido + incidente sev. 2.
+
+ P: ¿Qué pasa si responde otro router por el cable de consola?
+ R: El número de serie no coincide con la línea base: no se aplica nada y NO
+    se hace rollback (sería sobre un equipo que no es el aprobado).
+
+ P: ¿Por qué un cambio a las 8 p. m. no abre "cambio fuera de horario"?
+ R: Si hay un cambio aprobado en ejecución (o terminado hace menos de 10 min)
+    en ese equipo, el evento se marca 'cambio_autorizado'.
+
+ P: ¿Qué es MTTA y MTTR y por qué muestras la mediana?
+ R: Tiempo hasta atender y hasta resolver. La mediana no se deforma por un
+    incidente olvidado un fin de semana.
+
+ P: ¿Cómo encontraste el error del login?
+ R: Por descarte: un solo servidor, salud correcta y un login sin navegador que
+    sí funcionó. La diferencia era el favicon que pide el navegador.
+
+ P: ¿Probaste el cambio en el router real?
+ R: Todavía no: la sesión 2 no se realizó. El flujo funciona en simulado con
+    el formato real y hay un protocolo listo para ejecutarlo.
+
+
+
+================================================================================
+ 11. PREGUNTA DE VALIDACIÓN DEL ESTUDIANTE
+================================================================================
+
+
+ Pregunta:
+   operador1 pide en el LAB-RTR01:
+       interface GigabitEthernet0/0/0
+        ip address 192.168.100.5 255.255.255.0
+   (la interfaz por la que llega el NOC), con impacto BAJO y probabilidad
+   POSIBLE, sin ventana.
+   1. ¿Qué responde el NOC y qué riesgo, aprobaciones y ventana termina
+      exigiendo?
+   2. Si se aprueba y, al ejecutar, el NOC encuentra que alguien cambió una
+      'description' por PuTTY después de la aprobación, ¿qué hace y por qué?
+   3. Si no hubiera deriva pero la verificación fallara, ¿qué pasa?
+
+ Respuesta del estudiante (con sus propias palabras, revisada el 2026-10-25):
+   El NOC rechazará la solicitud inicial del operador1 debido a que modificar
+   la dirección IP de la interfaz GigabitEthernet0/0/0 -que es la vía de
+   gestión del propio NOC- implica un riesgo alto de pérdida inmediata de
+   conectividad y aislamiento del equipo, por lo que exigirá reclasificar la
+   tarea con impacto alto, requerirá aprobaciones de supervisión y una ventana
+   de mantenimiento programada con plan de reversión; si al momento de la
+   ejecución se detecta que la description fue alterada por PuTTY sin
+   registro, el NOC abortará la actividad inmediatamente por violación de la
+   línea base y deriva de configuración (configuration drift); finalmente, si
+   no existe tal deriva pero las pruebas de verificación post-cambio fallan,
+   el NOC ejecutará de inmediato el plan de rollback para restaurar el estado
+   previo funcional.
+
+ Nota de revisión (lo que hace exactamente este NOC):
+   1. Rechaza con 400: "Impacto bajo es menor que el mínimo que imponen los
+      comandos (alto)" por 'ip address' y por ser la interfaz de GESTIÓN, y
+      "Ventana obligatoria". Reclasificado: impacto 3 x probabilidad 2 = 6,
+      riesgo ALTO -> DOS aprobaciones de administradores de seguridad
+      distintos entre sí y distintos de operador1, con comentario, y ventana
+      obligatoria de máximo 4 h. El rollback es obligatorio y son comandos
+      (ej. ip address 192.168.100.1 ...); 'reload in' NO se permite: reload
+      está entre los comandos prohibidos.
+   2. Deriva: no aplica NADA; el cambio queda "fallido" con el motivo, se abre
+      un incidente de severidad 3 y hay que crear una solicitud nueva sobre la
+      configuración actual. Si la diferencia la hubiera dejado otro cambio
+      aprobado ejecutado por el NOC, no sería deriva.
+   3. Rollback automático y nueva lectura: si la configuración queda idéntica
+      a la de antes (misma SHA-256, mismo número de serie) -> "revertido"; si
+      no -> "fallido" e incidente de severidad 2 para revisión manual.
+
+
+
+================================================================================
+ 12. LISTA DE VERIFICACIÓN DE CIERRE DE LA FASE 10
+================================================================================
+
+
+ [x] Versiones de configuración con secretos ocultos y diff (10.1)
+ [x] Solicitudes de cambio, matriz de riesgo e impacto mínimo (10.2)
+ [x] Aprobación, ejecución verificada, deriva y rollback (10.3)
+ [x] Indicadores MTTA/MTTR y cambios (10.4)
+ [x] Corrección del login (favicon) con pruebas
+ [x] 564 pruebas en verde; los 21 commits verificados uno por uno
+ [x] Protocolo de pruebas reales pendiente en docs/laboratorio
+ [x] APP_VERSION = 0.5.0, CHANGELOG, README y bitácora
+ [x] Hash ancla de la auditoría
+ [x] Respuesta a la pregunta de validación
+ [ ] Pull Requests, etiqueta v0.5.0, release y develop sincronizada
+ [ ] Pruebas con el router real (protocolo pendiente)
+
+################################################################################
+#                          FIN DEL DOCUMENTO - FASE 10                         #
+################################################################################
