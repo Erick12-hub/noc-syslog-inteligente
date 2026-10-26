@@ -244,5 +244,8 @@ Política completa: [docs/04_politica_ia.md](docs/04_politica_ia.md).
 - [Historias de usuario](docs/02_historias_usuario.md)
 - [Arquitectura y modelo de datos](docs/03_arquitectura.md)
 - [Política de defensa frente a agentes de IA](docs/04_politica_ia.md)
+- [Manual de usuario](docs/manual_usuario.md) · [Manual técnico](docs/manual_tecnico.md)
+- [Despliegue y operación](docs/despliegue.md) · [Plan de vuelta atrás (rollback)](docs/rollback.md)
+- [Plan y resultados de pruebas](docs/pruebas/README.md) · [Avisos por Telegram](docs/telegram.md)
 - [Bitácora de desarrollo](docs/bitacora.md)
 - [Registro de cambios](CHANGELOG.md)
