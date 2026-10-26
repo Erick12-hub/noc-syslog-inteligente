@@ -104,3 +104,18 @@ class Config:
     CONSISTENCY_SILENT_HOURS = int(os.getenv("CONSISTENCY_SILENT_HOURS", "24"))   # equipo "callado"
     # El receptor revisa la consistencia (y la cadena de auditoría) cada N minutos. 0 = desactivado
     CONSISTENCY_INTERVAL_MINUTES = int(os.getenv("CONSISTENCY_INTERVAL_MINUTES", "10"))
+
+    # --- Fase 11: alertas por Telegram (app/notify.py) -----------------------
+    # El TOKEN del bot es un SECRETO: solo en .env, nunca en GitHub ni en capturas.
+    TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+    TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+    # Se avisa de incidentes con severidad <= este valor (0 Emergency ... 3 Error)
+    NOTIFY_MIN_SEVERITY = int(os.getenv("NOTIFY_MIN_SEVERITY", "2"))
+    # Sin token: NOTIFY_SIMULATE=1 registra los avisos sin enviarlos (demostración)
+    NOTIFY_SIMULATE = os.getenv("NOTIFY_SIMULATE", "0") == "1"
+    NOTIFY_MAX_PER_MINUTE = int(os.getenv("NOTIFY_MAX_PER_MINUTE", "20"))
+    NOTIFY_GROUP_MINUTES = int(os.getenv("NOTIFY_GROUP_MINUTES", "10"))   # mismo incidente/correlación
+    NOC_URL = os.getenv("NOC_URL", "http://127.0.0.1:5000")
+    # Fase 11.2: interruptor del asistente de IA (0 = no propone nada)
+    AI_ASSISTANT_ENABLED = os.getenv("AI_ASSISTANT_ENABLED", "1") == "1"
+    AI_MAX_SUGGESTIONS_PER_MINUTE = int(os.getenv("AI_MAX_SUGGESTIONS_PER_MINUTE", "10"))

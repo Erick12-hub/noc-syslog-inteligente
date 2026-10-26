@@ -27,6 +27,16 @@ def reset_storm():
 
 
 @pytest.fixture(autouse=True)
+def no_real_telegram(monkeypatch):
+    """Fase 11: aunque el .env tenga el token del bot, las pruebas nunca envían avisos reales
+    (ni dentro de la web ni en funciones que leen Config directamente, como la consistencia)."""
+    monkeypatch.setattr(Config, "TELEGRAM_BOT_TOKEN", "")
+    monkeypatch.setattr(Config, "TELEGRAM_CHAT_ID", "")
+    monkeypatch.setattr(Config, "NOTIFY_SIMULATE", False)
+    monkeypatch.setattr(Config, "AI_ASSISTANT_ENABLED", True)
+
+
+@pytest.fixture(autouse=True)
 def fast_password_hash(monkeypatch):
     """
     En la aplicación real las contraseñas usan scrypt (lento a propósito, ~0,2 s).
@@ -43,6 +53,11 @@ def app(tmp_path):
         TESTING = True
         DATABASE_PATH = tmp_path / "test.db"
         DEFAULT_OPERATOR = "tester"
+        # Fase 11: las pruebas NUNCA usan el bot real aunque el .env tenga el token
+        TELEGRAM_BOT_TOKEN = ""
+        TELEGRAM_CHAT_ID = ""
+        NOTIFY_SIMULATE = False
+        AI_ASSISTANT_ENABLED = True
 
     application = create_app(TestConfig)   # crea las tablas
     conn = connect(TestConfig.DATABASE_PATH)
