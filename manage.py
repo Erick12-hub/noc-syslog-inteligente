@@ -308,6 +308,32 @@ def cmd_config_diff(id_a: int, id_b: int):
     conn.close()
 
 
+def cmd_metrics(days: int, origin: str):
+    """Fase 10.4: indicadores de operación (MTTA, MTTR, SLA y cambios)."""
+    from app.metrics import compute
+    conn = connect(Config.DATABASE_PATH)
+    init_db(conn)
+    m = compute(conn, days, origin)
+    period = f"últimos {days} días" if days else "todo el historial"
+    print(f"Indicadores del NOC · {period} · incidentes {origin} ({m['incidents']})\n")
+    print(f"  MTTA (tiempo hasta atender) : promedio {m['mtta']['mean']:<10} mediana {m['mtta']['median']:<10} "
+          f"({m['mtta']['n']} atendidos) · dentro del objetivo: {m['ack_sla_pct'] if m['ack_sla_pct'] is not None else '—'} %")
+    print(f"  MTTR (tiempo hasta resolver): promedio {m['mttr']['mean']:<10} mediana {m['mttr']['median']:<10} "
+          f"({m['mttr']['n']} cerrados) · dentro del objetivo: {m['res_sla_pct'] if m['res_sla_pct'] is not None else '—'} %")
+    print(f"  Abiertos: {m['open']} · vencidos: {m['overdue_count']}\n")
+    print(f"  {'Severidad':<22}{'Total':>6}{'Abiertos':>9}  {'MTTA':>10} {'obj.':>7}  {'MTTR':>10} {'obj.':>7}")
+    for g in m["by_severity"]:
+        print(f"  {g['label']:<22}{g['total']:>6}{g['open']:>9}  {g['mtta']['mean']:>10} {g['target_ack']:>7}  "
+              f"{g['mttr']['mean']:>10} {g['target_res']:>7}")
+    for o in m["overdue"][:5]:
+        print(f"  [VENCIDO] #{o['id']} sev {o['severity']} {o['device']}: {o['detail']}")
+    c = m["changes"]
+    print(f"\nCambios: {c['total']} · terminados {c['finished']} · éxito "
+          f"{c['success_pct'] if c['success_pct'] is not None else '—'} % · rollbacks {c['rollbacks']} · fallidos "
+          f"{c['failed']} · aprobación media {c['approval_time']['mean']}")
+    conn.close()
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Administración NOC Syslog Inteligente")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -348,6 +374,9 @@ if __name__ == "__main__":
     p_df = sub.add_parser("config-diff", help="Diferencias entre dos versiones (ID de device-configs)")
     p_df.add_argument("desde", type=int)
     p_df.add_argument("hasta", type=int)
+    p_mt = sub.add_parser("metrics", help="Indicadores de operación: MTTA, MTTR, SLA y cambios (Fase 10.4)")
+    p_mt.add_argument("--dias", type=int, default=30, choices=[7, 30, 90, 0], help="0 = todo el historial")
+    p_mt.add_argument("--origen", default="todos", choices=["todos", "reales", "simulados"])
     args = parser.parse_args()
 
     if args.command == "init-db":
@@ -383,3 +412,5 @@ if __name__ == "__main__":
         cmd_device_configs(args.equipo)
     elif args.command == "config-diff":
         cmd_config_diff(args.desde, args.hasta)
+    elif args.command == "metrics":
+        cmd_metrics(args.dias, args.origen)
