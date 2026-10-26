@@ -119,3 +119,9 @@ class Config:
     # Fase 11.2: interruptor del asistente de IA (0 = no propone nada)
     AI_ASSISTANT_ENABLED = os.getenv("AI_ASSISTANT_ENABLED", "1") == "1"
     AI_MAX_SUGGESTIONS_PER_MINUTE = int(os.getenv("AI_MAX_SUGGESTIONS_PER_MINUTE", "10"))
+
+    # --- Fase 12: respaldos de la base (app/backup.py) ----------------------
+    # Carpeta FUERA de GitHub (.gitignore): los respaldos tienen datos de operación.
+    _backup_dir = Path(os.getenv("BACKUP_DIR", "data/respaldos"))
+    BACKUP_DIR = _backup_dir if _backup_dir.is_absolute() else BASE_DIR / _backup_dir
+    BACKUP_KEEP = int(os.getenv("BACKUP_KEEP", "10"))     # retención: últimos N respaldos
