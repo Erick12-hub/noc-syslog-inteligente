@@ -32,6 +32,12 @@ def configuraciones():
     return render_template("configuraciones.html", active="configuraciones")
 
 
+@bp.get("/cambios")
+def cambios():
+    """Fase 10.2: solicitudes de cambio con matriz de riesgo y rollback."""
+    return render_template("cambios.html", active="cambios")
+
+
 @bp.get("/consola")
 def consola():
     return render_template("consola.html", active="consola")

@@ -22,6 +22,7 @@
       <a href="{{ url_for('views.inventario') }}" class="{{ 'active' if active == 'inventario' }}">Inventario</a>
       <a href="{{ url_for('views.eventos') }}" class="{{ 'active' if active == 'eventos' }}">Eventos</a>
       <a href="{{ url_for('views.incidentes') }}" class="{{ 'active' if active == 'incidentes' }}">Incidentes</a>
+      <a href="{{ url_for('views.cambios') }}" class="{{ 'active' if active == 'cambios' }}">Cambios</a>
       {# Fase 8: el menú muestra solo lo que el rol puede usar #}
       {% if can('views.configuraciones') %}<a href="{{ url_for('views.configuraciones') }}" class="{{ 'active' if active == 'configuraciones' }}">Configuraciones</a>{% endif %}
       {% if can('views.consola') %}<a href="{{ url_for('views.consola') }}" class="{{ 'active' if active == 'consola' }}">Consola</a>{% endif %}

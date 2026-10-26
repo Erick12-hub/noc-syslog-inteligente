@@ -133,6 +133,8 @@ def list_devices():
     # Fase 8.4: cuántas interfaces tiene registradas cada equipo
     rows = get_db().execute(
         "SELECT d.*, (SELECT COUNT(*) FROM interfaces i WHERE i.device_id = d.id) AS interface_count "
+        # Fase 10.1: versiones de configuración guardadas
+        ", (SELECT COUNT(*) FROM config_versions c WHERE c.device_id = d.id) AS config_count "
         "FROM devices d ORDER BY d.name").fetchall()
     return jsonify([dict(r) for r in rows])
 

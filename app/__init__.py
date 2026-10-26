@@ -24,7 +24,7 @@ from flask import Flask, jsonify
 from .config import Config
 from . import db
 
-APP_VERSION = "0.4.0"
+APP_VERSION = "0.5.0"
 
 
 def create_app(config_class=Config):
@@ -41,10 +41,11 @@ def create_app(config_class=Config):
     app.teardown_appcontext(db.close_db)
 
     # Registrar módulos
-    from . import (admin_api, audit_api, auth, configgen, connector, consistency, console, dashboard,
-                   devices, diagnostics, events, incidents, interfaces, proposals, views)
-    for module in (auth, devices, interfaces, connector, diagnostics, consistency, events, incidents,
-                   dashboard, configgen, console, proposals, audit_api, admin_api, views):
+    from . import (admin_api, audit_api, auth, changeexec, changes, configgen, configversions, connector, consistency, console,
+                   dashboard, devices, diagnostics, events, incidents, interfaces, metrics, proposals, views)
+    for module in (auth, devices, interfaces, connector, diagnostics, consistency, configversions, changes,
+                   changeexec, events,
+                   incidents, dashboard, metrics, configgen, console, proposals, audit_api, admin_api, views):
         app.register_blueprint(module.bp)
 
     # Fase 8: cada petición pasa por el control de sesión, CSRF y roles

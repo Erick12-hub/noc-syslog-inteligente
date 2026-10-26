@@ -3,6 +3,44 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y
 [versionado semántico](https://semver.org/lang/es/). Todos los datos son **SIMULADOS**.
 
+## [0.5.0] - 2026-10-26 — Gestión de cambios e indicadores de operación (Fase 10)
+
+Cuarta versión del Corte 3. Ningún cambio en un equipo se hace sin solicitud, evaluación de riesgo,
+plan de rollback, aprobación de otra persona y verificación; todo queda en versiones de configuración
+con su diff. El dashboard mide el MTTA y el MTTR contra objetivos por severidad. 564 pruebas
+automáticas (423 en v0.4.0).
+
+### Agregado
+- Versiones de configuración por equipo (`config_versions`): el NOC lee `show running-config` (o
+  `display current-configuration` / `show full-configuration`), **oculta los secretos** antes de guardar,
+  normaliza las líneas que cambian solas y guarda una versión solo si cambió. Diff tipo `git diff`.
+  Las versiones no se pueden modificar ni borrar (triggers). Comandos `device-config`, `device-configs`,
+  `config-diff`.
+- Solicitudes de cambio (página **Cambios**): comandos, justificación, **rollback obligatorio**,
+  verificación de solo lectura y ventana. **Matriz de riesgo** impacto × probabilidad (1-9) con
+  **impacto mínimo impuesto por los comandos** (`shutdown`, IP, rutas, ACL, VLAN, interfaz de gestión...).
+  Comandos prohibidos aun con aprobación (guardar, borrar, reiniciar, credenciales, apagar el logging).
+- Aprobación con separación de funciones: revisa un `admin_seguridad` distinto del solicitante, con
+  comentario; riesgo alto requiere **dos personas distintas**. Revisiones inmutables.
+- Ejecución verificada dentro de la ventana: línea base, detección de **deriva**, aplicación en el mismo
+  equipo físico (número de serie), verificación (comandos y líneas presentes) y **rollback automático**
+  con comparación contra la configuración de antes; incidente si el rollback no restaura. Rollback manual.
+- Marca `cambio_autorizado`: un cambio aprobado en ejecución no dispara la regla "fuera de horario".
+- Indicadores de operación en el dashboard y `manage.py metrics`: MTTA y MTTR (promedio y mediana),
+  cumplimiento por severidad, incidentes vencidos, tendencia diaria, equipos con más incidentes y métricas
+  de cambios (éxito, rollbacks, tiempo de aprobación). Filtros por periodo y por origen (reales / SIM).
+- Modo simulado: la running-config refleja el inventario y los cambios aplicados (`sim_device_config`).
+- Ícono del NOC en la pestaña del navegador.
+
+### Cambiado
+- `show running-config` sigue bloqueado en la sesión normal: solo lo usa la captura de versiones.
+- Menú compactado para 9 enlaces a 1366 px.
+
+### Corregido
+- **Inicio de sesión imposible en Chrome y Edge** ("La sesión del formulario expiró"): la petición
+  automática de `/favicon.ico` sin sesión borraba el token del formulario. Error presente desde v0.3.0;
+  aparecía al limpiarse la caché del navegador.
+
 ## [0.4.0] - 2026-10-22 — Equipos del laboratorio, diagnóstico y consistencia (Fase 9)
 
 Tercera versión del Corte 3. El NOC se conecta a equipos reales por cable de consola (o por SSH en

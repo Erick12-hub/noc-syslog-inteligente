@@ -30,7 +30,7 @@ import re
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from flask import (Blueprint, current_app, g, has_request_context, jsonify, redirect,
+from flask import (Blueprint, Response, current_app, g, has_request_context, jsonify, redirect,
                    render_template, request, session, url_for)
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -47,7 +47,7 @@ AUDIT = frozenset({"auditor", "admin_seguridad"})       # pueden ver la auditor�
 ADMIN = frozenset({"admin_seguridad"})
 
 # Rutas que NO exigen sesión
-PUBLIC = {"auth.login_page", "auth.login", "static", "health"}
+PUBLIC = {"auth.login_page", "auth.login", "static", "health", "auth.favicon"}
 
 # Excepciones a la regla por defecto (endpoint -> roles permitidos)
 RULES = {
@@ -59,6 +59,7 @@ RULES = {
     "audit.verify": AUDIT,              # verificar la cadena de integridad (Fase 8.2)
     "views.auditoria": AUDIT,
     "proposals.review": ADMIN,          # aprobar o rechazar propuestas
+    "changeexec.review_change": ADMIN,  # Fase 10.3: aprobar o rechazar cambios
     "configgen.generate": OPS,          # es GET, pero queda auditado como acción
     "configgen.baseline_endpoint": OPS, # configuración base de laboratorio (Fase 9.2)
     "console.allowed": OPS,
@@ -207,7 +208,13 @@ def enforce():
 
     user = _load_user(session["user_id"]) if "user_id" in session else None
     if user is None or not user["active"]:
-        session.clear()
+        # Corrección (2026-10-25): solo se borra una sesión que SÍ tenía usuario
+        # (usuario eliminado o desactivado). Antes se borraba siempre: el navegador
+        # pide /favicon.ico justo después de mostrar el login, esa petición borraba
+        # el token del formulario y el inicio de sesión fallaba con "La sesión del
+        # formulario expiró" (hallazgo del 25-oct, en Chrome y Edge).
+        if "user_id" in session:
+            session.clear()
         if _is_api():
             return jsonify(errors=["Debe iniciar sesión"]), 401
         return redirect(url_for("auth.login_page", next=request.full_path.rstrip("?")))
@@ -304,6 +311,15 @@ def login():
     session["csrf"] = secrets.token_urlsafe(32)
     audit(conn, row["username"], "auth.login", "users", row["id"], f"rol={row['role']} ip={request.remote_addr}")
     return redirect(_safe_next(nxt))
+
+
+@bp.get("/favicon.ico")
+def favicon():
+    """Ícono de la pestaña (el punto verde de la marca). Es PÚBLICO: el navegador lo
+    pide solo, también desde la página de inicio de sesión (ver enforce())."""
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">'
+           '<circle cx="8" cy="8" r="6" fill="#3fb68b"/></svg>')
+    return Response(svg, mimetype="image/svg+xml", headers={"Cache-Control": "public, max-age=86400"})
 
 
 @bp.post("/logout")

@@ -75,6 +75,16 @@ DIAGNOSTIC_PATTERNS = {
     "Otro": [],
 }
 
+# Fase 10.1: lectura de la configuración completa. Sigue en DANGEROUS (expone
+# secretos): solo la acepta check(..., capture=True), que usa la captura de
+# versiones (app/configversions.py), la cual OCULTA los secretos antes de guardar.
+CAPTURE_PATTERNS = {
+    "Cisco": ["show running-config"],
+    "Huawei": ["display current-configuration"],
+    "Fortinet": ["show full-configuration"],
+    "Otro": [],
+}
+
 # Comandos que modifican, reinician, borran o exponen secretos
 DANGEROUS = [
     (r"^(conf(igure)?( t(erminal)?)?|system-view|config\b)", "entra a modo de configuración"),
@@ -85,7 +95,8 @@ DANGEROUS = [
     (r"^(debug|terminal monitor|tclsh|diagnose debug)", "consume recursos o abre un intérprete"),
     (r"^(username|password|enable secret|crypto key)", "maneja credenciales"),
     (r"^(show run(ning)?(-config)?|show startup|display current-configuration|show full-configuration)",
-     "expone la configuración completa (con secretos); requiere aprobación"),
+     "expone la configuración completa (con secretos). Use Versiones de configuración: "
+     "se guarda con los secretos ocultos"),
 ]
 
 
@@ -93,7 +104,8 @@ def _normalize(cmd: str) -> str:
     return re.sub(r"\s+", " ", cmd.strip()).lower()
 
 
-def check(vendor: str, command: str, actor: str, diagnostic: bool = False) -> tuple[bool, str]:
+def check(vendor: str, command: str, actor: str, diagnostic: bool = False,
+          capture: bool = False) -> tuple[bool, str]:
     """Aplica la política. Devuelve (permitido, motivo)."""
     if actor == "asistente_ia":
         return False, ("Un agente de IA no ejecuta comandos. Debe crear una PROPUESTA "
@@ -105,6 +117,8 @@ def check(vendor: str, command: str, actor: str, diagnostic: bool = False) -> tu
     if RE_META.search(command):
         return False, "Contiene caracteres de encadenamiento o redirección (; | & ` $ > <)"
     cmd = _normalize(command)
+    if capture and cmd in CAPTURE_PATTERNS.get(vendor, []):
+        return True, "Permitido (captura de configuración con secretos ocultos)"
     for pattern, why in DANGEROUS:
         if re.match(pattern, cmd):
             return False, f"Comando peligroso: {why}"

@@ -18,6 +18,7 @@ const FLAG_LABELS = {
   cambio_config: ["cambio de configuración", "dup"],
   fuerza_bruta: ["regla: fuerza bruta", "bad"],
   cambio_fuera_de_horario: ["regla: fuera de horario", "bad"],
+  cambio_autorizado: ["cambio autorizado (gestión de cambios)", "ok"],
   cuenta_servicio: ["regla: cuenta de servicio", "bad"],
   logs_deshabilitados: ["regla: logs deshabilitados", "bad"],
   puerto_invalido: ["puerto inválido", "warn"],

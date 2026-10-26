@@ -1,0 +1,83 @@
+Building configuration...
+
+Current configuration : 2718 bytes
+!
+! Last configuration change at 19:20:41 COT Wed Oct 21 2026
+!
+version 17.9
+service timestamps debug datetime msec localtime show-timezone year
+service timestamps log datetime msec localtime show-timezone year
+service password-encryption
+service sequence-numbers
+platform qfp utilization monitor load 80
+platform punt-keepalive disable-kernel-core
+!
+hostname SIM-CORE-RTR01
+!
+boot-start-marker
+boot-end-marker
+!
+logging buffered 16384 informational
+enable secret 9 $9$SIMULADOsoloDePrueba$NoEsUnHashRealDeNingunEquipoSIM0000000000
+!
+no aaa new-model
+clock timezone COT -5 0
+!
+no ip domain lookup
+!
+login on-failure log
+login on-success log
+!
+license udi pid C8200L-1N-4T sn FGL2601SIM1
+memory free low-watermark processor 68484
+!
+username noc_sim privilege 15 secret 9 $9$SIMULADOtambien$OtroHashFalsoSoloParaVerElEnmascarado00
+!
+archive
+ log config
+  logging enable
+  notify syslog contenttype plaintext
+!
+interface GigabitEthernet0/0/0
+ description Gestion NOC lab (192.168.100.0/24)
+ ip address 192.168.100.1 255.255.255.0
+ negotiation auto
+!
+interface GigabitEthernet0/0/1
+ no ip address
+ shutdown
+ negotiation auto
+!
+interface GigabitEthernet0/0/2
+ no ip address
+ shutdown
+ negotiation auto
+!
+interface GigabitEthernet0/0/3
+ no ip address
+ shutdown
+ negotiation auto
+!
+ip forward-protocol nd
+no ip http server
+no ip http secure-server
+!
+logging trap informational
+logging facility local7
+logging source-interface GigabitEthernet0/0/0
+logging host 192.168.100.10 transport udp port 5514
+snmp-server community SIM-comunidad-falsa RO
+!
+control-plane
+!
+line con 0
+ exec-timeout 30 0
+ logging synchronous
+ stopbits 1
+line vty 0 4
+ login
+ transport input ssh
+!
+ntp master 3
+!
+end
