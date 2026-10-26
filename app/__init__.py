@@ -42,10 +42,10 @@ def create_app(config_class=Config):
 
     # Registrar módulos
     from . import (admin_api, audit_api, auth, changeexec, changes, configgen, configversions, connector, consistency, console,
-                   dashboard, devices, diagnostics, events, incidents, interfaces, proposals, views)
+                   dashboard, devices, diagnostics, events, incidents, interfaces, metrics, proposals, views)
     for module in (auth, devices, interfaces, connector, diagnostics, consistency, configversions, changes,
                    changeexec, events,
-                   incidents, dashboard, configgen, console, proposals, audit_api, admin_api, views):
+                   incidents, dashboard, metrics, configgen, console, proposals, audit_api, admin_api, views):
         app.register_blueprint(module.bp)
 
     # Fase 8: cada petición pasa por el control de sesión, CSRF y roles
