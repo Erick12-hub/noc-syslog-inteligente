@@ -245,3 +245,25 @@ def test_usuario_duplicado_o_invalido(app, conn):
 
 def test_no_hay_usuarios_por_defecto(conn):
     assert conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0
+
+
+# ---------------------------------------------------------------------------
+# Corrección 2026-10-25: el ícono de la pestaña no debe romper el inicio de sesión
+# ---------------------------------------------------------------------------
+def test_favicon_publico(app):
+    r = app.test_client().get("/favicon.ico")
+    assert r.status_code == 200 and r.mimetype == "image/svg+xml"
+
+
+@pytest.mark.parametrize("extra", ["/favicon.ico", "/no-existe", "/api/devices"])
+def test_peticion_sin_sesion_no_borra_el_token_del_login(app, extra):
+    """El navegador pide /favicon.ico (u otra ruta) entre mostrar el login y enviarlo:
+    el token del formulario debe seguir siendo válido."""
+    make_user(app, "erick", "operador")
+    c = app.test_client()
+    c.get("/login")
+    with c.session_transaction() as s:
+        token = s["csrf"]
+    c.get(extra)
+    r = c.post("/login", data={"username": "erick", "password": TEST_PASSWORD, "csrf_token": token})
+    assert r.status_code == 302 and r.headers["Location"].endswith("/")
