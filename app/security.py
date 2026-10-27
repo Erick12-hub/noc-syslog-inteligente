@@ -12,6 +12,7 @@ que un humano los revise. Nada de lo que diga un log se ejecuta jamás.
 """
 import hashlib
 import re
+import unicodedata
 import threading
 import time
 
@@ -25,13 +26,33 @@ INJECTION_PATTERNS = [
     r"\b(?:ejecuta|ejecutar|execute|run)\s+(?:el\s+|the\s+|este\s+|this\s+)?(?:comando|command)",
     r"\b(?:asistente|assistant|\bIA\b|\bAI\b|LLM|agente|agent)\s*[:,]\s*\w+",
     r"\b(?:sin (?:aprobaci[oó]n|autorizaci[oó]n)|without (?:approval|authorization))\b",
+    # Fase 11.2: más formas de manipulación
+    r"\b(?:olvida|forget|disregard|omite|descarta)\b.{0,40}\b(?:anterior\w*|previous|prior|todo|everything|"
+    r"instrucciones|instructions|reglas|rules)\b",
+    r"\b(?:aprueba|apruebe|approve|autoriza|authorize)\w*\s+(?:\w+\s+){0,2}(?:cambio|change|propuesta|proposal)",
+    r"<\|?\s*(?:im_start|im_end|system|endoftext)\s*\|?>",
+    r"(?:^|\s)#{2,}\s*(?:system|sistema|instrucciones|instructions)\b",
+    r"\b(?:jailbreak|DAN mode|modo DAN)\b",
 ]
 _RE_INJECTION = [re.compile(p, re.I) for p in INJECTION_PATTERNS]
+# Caracteres invisibles que se usan para esconder frases de los filtros
+_RE_INVISIBLE = re.compile("[\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff\u00ad]")
+
+
+def normalize_for_detection(text: str) -> str:
+    """Fase 11.2: forma canónica antes de buscar patrones.
+    NFKC convierte letras "de ancho completo" o con estilos (ｉｇｎｏｒａ, 𝐢𝐠𝐧𝐨𝐫𝐚) en
+    letras normales; se quitan los caracteres invisibles (i\u200bgnora) y los
+    espacios repetidos o separadores raros."""
+    t = unicodedata.normalize("NFKC", text or "")
+    t = _RE_INVISIBLE.sub("", t)
+    return re.sub(r"\s+", " ", t)
 
 
 def detect_prompt_injection(text: str) -> bool:
     """True si el texto contiene frases típicas de prompt injection."""
-    return any(r.search(text or "") for r in _RE_INJECTION)
+    t = normalize_for_detection(text)
+    return any(r.search(t) for r in _RE_INJECTION)
 
 
 def fingerprint(source_ip: str, severity: int, mnemonic: str | None, message: str,

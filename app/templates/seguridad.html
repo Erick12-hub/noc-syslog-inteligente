@@ -53,6 +53,25 @@
   </section>
 </div>
 
+<!-- Fase 11: avisos por Telegram -->
+<section class="card" id="notify-card">
+  <div class="chart-head">
+    <div>
+      <h2>Avisos por Telegram</h2>
+      <p class="small" id="nt-status">cargando…</p>
+    </div>
+    <button class="btn" id="btn-nt-test">Enviar aviso de prueba</button>
+  </div>
+  <p class="muted small">El aviso lo arma el NOC con datos estructurados (número, severidad, equipo, título):
+    <b>nunca incluye el texto del log</b>. El token del bot solo está en <code>.env</code>.</p>
+  <div class="table-wrap">
+    <table class="compact">
+      <thead><tr><th>#</th><th>Fecha</th><th>Tipo</th><th>Sev.</th><th>Estado</th><th>Aviso</th></tr></thead>
+      <tbody id="tbl-notify"></tbody>
+    </table>
+  </div>
+</section>
+
 <!-- Crear usuario -->
 <dialog id="dlg-user">
   <form id="frm-user" method="dialog" novalidate>

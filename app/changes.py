@@ -295,10 +295,17 @@ def assess():
     return jsonify(assessment=assess_summary(v), errors=errors)
 
 
+AI_ACTOR = "asistente_ia"
+
+
 @bp.post("")
 def create_change():
     conn = get_db()
     user = actor()
+    if user == AI_ACTOR:          # Fase 11.2: un agente de IA no pide cambios sobre equipos
+        audit(conn, user, "change.bloqueado_ia", "change_requests", None, "intento de crear un cambio", "bloqueado")
+        return jsonify(errors=["Un agente de IA no crea solicitudes de cambio: solo propone acciones del "
+                               "catálogo en un incidente, para revisión humana"]), 403
     v, errors = validate(conn, request.get_json(silent=True) or {}, user)
     if errors:
         return jsonify(errors=errors), 400

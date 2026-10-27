@@ -157,6 +157,44 @@ document.getElementById("frm-pass").addEventListener("submit", async (ev) => {
   }
 });
 
+/* Fase 11: avisos por Telegram */
+const NT_MODE = { telegram: ["Telegram activo", "ok"], simulado: ["Modo simulado (sin enviar)", "warn"],
+                  apagado: ["Apagado", "bad"] };
+const NT_STATUS = { enviado: "ok", simulado: "warn", agrupado: "", limitado: "warn", fallido: "bad", pendiente: "" };
+
+async function loadNotify() {
+  const st = await api("/api/notifications/status");
+  const p = document.getElementById("nt-status");
+  const [label, cls] = NT_MODE[st.mode];
+  p.replaceChildren(el("span", label, `tag ${cls}`), " ",
+    el("span", st.mode === "apagado" ? "Configure TELEGRAM_BOT_TOKEN y TELEGRAM_CHAT_ID en .env (o NOTIFY_SIMULATE=1)"
+      : `destino ${st.chat || "—"} · incidentes de severidad ${st.min_severity} (${st.min_severity_name}) o más ` +
+        `graves · agrupa ${st.group_minutes} min · máx. ${st.max_per_minute}/min`, "small"));
+  document.getElementById("btn-nt-test").disabled = st.mode === "apagado";
+  const rows = await api("/api/notifications");
+  const tb = document.getElementById("tbl-notify");
+  tb.replaceChildren(...rows.map(n => {
+    const tr = el("tr");
+    const s = el("td"); s.append(el("span", n.status, `tag ${NT_STATUS[n.status] || ""}`));
+    const txt = el("td", n.text, "msg small notify-text");
+    if (n.error) txt.append(el("div", n.error, "muted small"));
+    tr.append(el("td", n.id, "mono small"), el("td", fmtDate(n.created_at), "small"), el("td", n.kind),
+              el("td", n.severity ?? "—", "mono"), s, txt);
+    return tr;
+  }));
+  if (!rows.length) {
+    const tr = el("tr"); const td = el("td", "Sin avisos todavía.", "muted"); td.colSpan = 6; tr.append(td); tb.append(tr);
+  }
+}
+document.getElementById("btn-nt-test").onclick = async () => {
+  try {
+    const r = await post("/api/notifications/test");
+    toast(`Aviso de prueba: ${r.status}`);
+  } catch (err) { toast(err.message, "err"); }
+  await loadNotify().catch(() => {});
+};
+
 document.getElementById("btn-refresh").onclick = () => refresh().catch(e => toast(e.message, "err"));
 
 api("/api/auth/me").then(u => { me = u; return refresh(); }).catch(err => toast(err.message, "err"));
+loadNotify().catch(err => toast(err.message, "err"));

@@ -136,6 +136,8 @@ def _finish(conn, cid, status, result, steps, post_version_id=None):
                  "COALESCE(?, post_version_id), closed_at = ?, updated_at = ? WHERE id = ?",
                  (status, result, json.dumps(steps, ensure_ascii=False), post_version_id, ts, ts, cid))
     conn.commit()
+    from .notify import notify_change            # Fase 11: aviso del resultado
+    notify_change(conn, cid)
 
 
 def execute_change(conn, row, user: str, now: datetime | None = None) -> tuple[dict, int]:

@@ -72,6 +72,8 @@ def create_incident(conn, *, title, severity, created_by, description=None,
     conn.commit()
     audit(conn, created_by, "incident.create", "incidents", incident_id,
           f"sev={severity} evento={event_id} titulo={title}")
+    from .notify import notify_incident          # Fase 11: aviso por Telegram (si corresponde)
+    notify_incident(conn, incident_id)
     return incident_id
 
 

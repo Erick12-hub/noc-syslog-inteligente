@@ -112,6 +112,20 @@ Los comandos de solo lectura registrados por Huawei (`display ...`) **no** cuent
 - El límite de frecuencia vive en memoria del receptor (se reinicia al reiniciarlo).
 - Pendientes: retención y respaldo de logs, verificación de integridad (hash encadenado) de la auditoría y alertas por Telegram.
 
+## 4.8b Avances del Corte 3 sobre esta política
+
+| Control | Fase | Implementación |
+|---|---|---|
+| Inicio de sesión con roles; la IA no tiene usuario ni rol | 8 | `app/auth.py`: nadie aprueba lo propio |
+| Auditoría encadenada y verificada sola cada 10 min | 8, 9.5 | SHA-256 + triggers; incidente de severidad 1 si se rompe |
+| Ejecución real solo por gestión de cambios con aprobación humana | 10 | `app/changeexec.py`: riesgo, 1 o 2 aprobadores, deriva, rollback |
+| La IA no crea cambios ni aplica configuración | 10, 11.2 | `change.bloqueado_ia` y `run_config` rechazan el actor `asistente_ia` |
+| Detección de inyección resistente a disfraces | 11.2 | Normalización NFKC, sin caracteres invisibles; patrones de "olvida lo anterior", "aprueba el cambio", marcadores de chat (`<\|im_start\|>`), "### system", modo DAN |
+| Interruptor y límite del asistente | 11.2 | `AI_ASSISTANT_ENABLED=0` lo apaga (503, auditado); `AI_MAX_SUGGESTIONS_PER_MINUTE` (429) |
+| Los avisos nunca reenvían el texto del log | 11 | El mensaje de Telegram se arma con datos estructurados; si el evento tiene posible inyección, solo se advierte |
+
+Pendiente: TLS para Syslog donde el equipo lo soporte y retención/respaldo de logs (Fase 12).
+
 ## 4.9 Referencias
 
 - IETF RFC 5424, *The Syslog Protocol*; RFC 5425, *TLS Transport Mapping for Syslog*; RFC 3164, *The BSD Syslog Protocol*.
