@@ -28,7 +28,9 @@ import re
 from flask import Blueprint, jsonify, request
 
 from .auth import actor
+from .config import Config
 from .db import audit, get_db, now_iso
+from .security import RateLimiter
 
 bp = Blueprint("proposals", __name__, url_prefix="/api")
 
@@ -124,9 +126,23 @@ def _incident(conn, incident_id):
         "WHERE i.id = ?", (incident_id,)).fetchone()
 
 
+SUGGEST_LIMITER = RateLimiter(window_seconds=60)
+
+
 @bp.post("/incidents/<int:incident_id>/suggest")
 def suggest(incident_id):
     conn = get_db()
+    # Fase 11.2: interruptor general y límite de uso del asistente
+    if not Config.AI_ASSISTANT_ENABLED:
+        audit(conn, actor(), "proposal.ia_apagada", "incidents", incident_id,
+              "AI_ASSISTANT_ENABLED=0: el asistente no propone acciones", "bloqueado")
+        return jsonify(errors=["El asistente de IA está desactivado (AI_ASSISTANT_ENABLED=0)"]), 503
+    allowed, first = SUGGEST_LIMITER.hit(actor(), Config.AI_MAX_SUGGESTIONS_PER_MINUTE)
+    if not allowed:
+        if first:
+            audit(conn, actor(), "proposal.ia_limite", "incidents", incident_id,
+                  f"más de {Config.AI_MAX_SUGGESTIONS_PER_MINUTE} pedidos por minuto al asistente", "bloqueado")
+        return jsonify(errors=["Demasiados pedidos al asistente: espere un minuto"]), 429
     inc = _incident(conn, incident_id)
     if inc is None:
         return jsonify(error="Incidente no encontrado"), 404

@@ -60,6 +60,9 @@ RULES = {
     "views.auditoria": AUDIT,
     "proposals.review": ADMIN,          # aprobar o rechazar propuestas
     "changeexec.review_change": ADMIN,  # Fase 10.3: aprobar o rechazar cambios
+    "notify.list_notifications": AUDIT, # Fase 11: avisos enviados por Telegram
+    "notify.status": AUDIT,
+    "notify.test_notification": ADMIN,
     "configgen.generate": OPS,          # es GET, pero queda auditado como acción
     "configgen.baseline_endpoint": OPS, # configuración base de laboratorio (Fase 9.2)
     "console.allowed": OPS,

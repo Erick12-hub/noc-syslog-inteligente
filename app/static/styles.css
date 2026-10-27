@@ -396,3 +396,7 @@ ol.steps li.bad .step-mark { color: var(--red-fg); }
 @media (max-width: 900px) { .mt-kpis { grid-template-columns: repeat(2, 1fr); } }
 table.mt-sev td { white-space: nowrap; }
 #metrics .dash-grid { margin-top: 8px; }
+
+/* ---------- Fase 11: avisos por Telegram ---------- */
+.notify-text { white-space: pre-line; max-width: 520px; }
+#notify-card .chart-head { align-items: flex-start; }

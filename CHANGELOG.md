@@ -3,6 +3,43 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y
 [versionado semántico](https://semver.org/lang/es/). Todos los datos son **SIMULADOS**.
 
+## [1.0.0] - 2026-10-26 — Versión final del Corte 3 (Fases 11, 12 y 13)
+
+Versión estable para la entrega del Corte 3. Agrega avisos por Telegram, refuerza la defensa ante la IA,
+permite respaldar y restaurar la base con verificación, mide la capacidad del NOC con una prueba de
+carga y documenta el uso, el despliegue y la vuelta atrás. 623 pruebas automáticas (564 en v0.5.0).
+
+### Agregado
+- **Avisos por Telegram** (`app/notify.py`): incidentes de severidad 0-2 y resultados de los cambios
+  llegan al celular. Modos `telegram`, `simulado` (registra sin enviar) y `apagado`; agrupación por
+  correlación (`NOTIFY_GROUP_MINUTES`), límite por minuto, envío en segundo plano, historial en la tabla
+  `notifications` y panel en **Seguridad** con aviso de prueba. Comandos `notify-test` y `telegram-chat-id`.
+  El aviso nunca incluye el texto del log; el token solo vive en `.env` y no aparece en los errores.
+- **Defensa ante IA:** detección de prompt injection sobre texto normalizado (NFKC, sin caracteres
+  invisibles) y patrones nuevos; interruptor `AI_ASSISTANT_ENABLED` (el asistente responde 503 y se
+  audita), límite `AI_MAX_SUGGESTIONS_PER_MINUTE` por usuario (429) y el actor `asistente_ia` no puede
+  crear solicitudes de cambio.
+- **Respaldos** (`app/backup.py`): copia consistente con la API de respaldo de SQLite, manifiesto con
+  SHA-256, `integrity_check` y verificación de la cadena de auditoría; restauración solo de respaldos
+  verificados, con `--confirmar` y respaldo previo de seguridad; retención `BACKUP_KEEP`. Comandos
+  `backup`, `backups`, `verify-backup` y `restore`. Carpeta `data/respaldos/` fuera de GitHub.
+- **Prueba de carga** (`scripts/prueba_carga.py`): ingesta, escritores simultáneos, control de
+  tormentas y consultas web con la base cargada, en una base temporal. Resultado en Windows 11:
+  415 mensajes/s, p95 3 ms por mensaje, 0 bloqueos, consultas web con p95 ≤ 26 ms.
+- **Reporte de pruebas** por categoría (`scripts/reporte_pruebas.py` → `docs/pruebas/`) y plan de pruebas
+  con criterios de aceptación y simulacro de restauración.
+- **Documentación:** manual de usuario por rol, manual técnico, guía de despliegue y operación, y plan de
+  vuelta atrás (versión, cambio de red, auditoría rota, base dañada, secreto filtrado).
+
+### Cambiado
+- Las pruebas nunca usan el bot real aunque el `.env` tenga el token (configuración de prueba y
+  anulación automática en `conftest.py`).
+- La verificación de respaldos abre la base en solo lectura e inmutable: verificar no modifica el archivo.
+
+### Seguridad
+- Observación del 26-oct: el token del bot se compartió por error en un chat durante la configuración.
+  Se revocó en @BotFather (`/revoke`) y el nuevo solo está en `.env`. Ningún token llegó al repositorio.
+
 ## [0.5.0] - 2026-10-26 — Gestión de cambios e indicadores de operación (Fase 10)
 
 Cuarta versión del Corte 3. Ningún cambio en un equipo se hace sin solicitud, evaluación de riesgo,

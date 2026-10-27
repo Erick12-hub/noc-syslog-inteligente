@@ -363,3 +363,24 @@ CREATE TABLE IF NOT EXISTS users (
     created_at      TEXT NOT NULL,
     updated_at      TEXT NOT NULL
 );
+
+-- ---------------------------------------------------------------------
+-- 8. Avisos enviados (Fase 11: Telegram). Trazabilidad de cada alerta:
+--    canal, qué se avisó, estado (enviado, simulado, agrupado, limitado,
+--    fallido) y el error SIN el token.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS notifications (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    channel    TEXT NOT NULL,              -- telegram | simulado
+    kind       TEXT NOT NULL,              -- incidente | cambio | prueba
+    ref_id     INTEGER,
+    severity   INTEGER,
+    text       TEXT NOT NULL,
+    status     TEXT NOT NULL CHECK (status IN ('pendiente', 'enviado', 'simulado', 'agrupado',
+                                               'limitado', 'fallido')),
+    error      TEXT,
+    dedup_key  TEXT,
+    created_at TEXT NOT NULL,
+    sent_at    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_key ON notifications(dedup_key, created_at);
