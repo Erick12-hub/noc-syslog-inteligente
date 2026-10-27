@@ -4,6 +4,7 @@ ASISTENTE DE IA LOCAL (fuera de la red), de SOLO LECTURA.
     python manage.py ia-estado                            ¿Ollama responde y el modelo está descargado?
     python manage.py ia-borrador bitacora [--dias 7]      Borrador de una entrada de bitácora
     python manage.py ia-borrador informe  [--dias 30]     Borrador de la sección de resultados del informe
+    Web: menú "IA local" (ver borradores y datos enviados; generar solo admin_seguridad)
 
 Qué hace: lee la base del NOC en SOLO LECTURA, arma un resumen con números y
 estados (eventos, incidentes, cambios, indicadores, auditoría) y le pide a un
@@ -29,13 +30,17 @@ import hashlib
 import json
 import re
 import sqlite3
+import threading
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
+from flask import Blueprint, current_app, jsonify, request
+
 from . import APP_VERSION
+from .auth import actor
 from .config import Config
 from .db import audit, connect, verify_audit_chain
 from .metrics import compute
@@ -239,3 +244,113 @@ def generate_draft(db_path, kind: str, days: int, user: str, out_dir=None) -> di
     finally:
         conn.close()
     return {"path": str(path), "sha256": sha, "kind": kind, "model": Config.LOCAL_AI_MODEL, "chars": len(text)}
+
+
+# ---------------------------------------------------------------------------
+# 6. Página web "IA local" (API). Ver: estado, borradores y datos enviados al
+#    modelo (todos los roles). Generar: solo admin_seguridad (auth.RULES).
+#    La generación tarda minutos en CPU: corre en un hilo y la página consulta
+#    el avance. Solo un borrador a la vez.
+# ---------------------------------------------------------------------------
+bp = Blueprint("ia_local", __name__, url_prefix="/api/ia-local")
+RE_DRAFT = re.compile(r"^borrador_(bitacora|informe)_\d{8}_\d{6}\.md$")
+_job = {"running": False, "kind": None, "user": None, "started": None, "result": None, "error": None}
+_job_lock = threading.Lock()
+
+
+def _drafts_dir() -> Path:
+    return Path(Config.LOCAL_AI_DIR)
+
+
+def _days(value, default=7) -> int:
+    try:
+        d = int(value if value not in (None, "") else default)
+    except (TypeError, ValueError):
+        raise IALocalError("Días inválidos: escriba un número entre 1 y 90") from None
+    if not 1 <= d <= 90:
+        raise IALocalError("Días inválidos: escriba un número entre 1 y 90")
+    return d
+
+
+@bp.get("/estado")
+def api_status():
+    ok, why = enabled()
+    st = {"ok": False, "url": Config.LOCAL_AI_URL, "model": Config.LOCAL_AI_MODEL, "models": [], "error": why}
+    if ok:
+        try:
+            st = status()
+        except IALocalError as e:
+            st["error"] = str(e)
+    with _job_lock:
+        job = dict(_job)
+    return jsonify(enabled=ok, **st, job=job)
+
+
+@bp.get("/borradores")
+def api_list():
+    d = _drafts_dir()
+    files = sorted(d.glob("borrador_*.md"), reverse=True) if d.is_dir() else []
+    return jsonify(drafts=[{"name": f.name, "kind": RE_DRAFT.match(f.name).group(1), "size": f.stat().st_size,
+                            "modified": datetime.fromtimestamp(f.stat().st_mtime, timezone.utc)
+                            .strftime("%Y-%m-%dT%H:%M:%SZ")}
+                           for f in files if RE_DRAFT.match(f.name)][:100])
+
+
+@bp.get("/borradores/<name>")
+def api_read(name):
+    # Solo nombres generados por el NOC: impide leer otros archivos (../../.env)
+    if not RE_DRAFT.match(name):
+        return jsonify(errors=["Nombre de borrador inválido"]), 400
+    f = _drafts_dir() / name
+    if not f.is_file():
+        return jsonify(errors=["El borrador no existe"]), 404
+    text = f.read_text(encoding="utf-8")
+    return jsonify(name=name, text=text, sha256=hashlib.sha256(text.encode("utf-8")).hexdigest())
+
+
+@bp.get("/contexto")
+def api_context():
+    try:
+        days = _days(request.args.get("dias"))
+    except IALocalError as e:
+        return jsonify(errors=[str(e)]), 400
+    return jsonify(collect_context(current_app.config["DATABASE_PATH"], days))
+
+
+def _run_job(db_path, kind, days, user):
+    try:
+        r = generate_draft(db_path, kind, days, user)
+        with _job_lock:
+            _job.update(running=False, result=Path(r["path"]).name, error=None)
+    except Exception as e:      # noqa: BLE001 - el error se muestra en la página
+        with _job_lock:
+            _job.update(running=False, result=None, error=str(e) if isinstance(e, IALocalError)
+                        else f"Error inesperado: {type(e).__name__}")
+
+
+@bp.post("/borradores")
+def create_draft():
+    data = request.get_json(silent=True) or {}
+    kind = data.get("tipo")
+    try:
+        if kind not in KINDS:
+            raise IALocalError(f"Tipo inválido. Opciones: {', '.join(KINDS)}")
+        days = _days(data.get("dias"))
+        ok, why = enabled()
+        if not ok:
+            raise IALocalError(why)
+    except IALocalError as e:
+        return jsonify(errors=[str(e)]), 400
+    user = actor()
+    with _job_lock:
+        if _job["running"]:
+            return jsonify(errors=[f"Ya se está generando un borrador (pedido por {_job['user']}): espere"]), 409
+        _job.update(running=True, kind=kind, user=user, result=None, error=None,
+                    started=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+    db_path = current_app.config["DATABASE_PATH"]
+    if current_app.config.get("TESTING"):
+        _run_job(db_path, kind, days, user)          # en las pruebas, sin hilo
+    else:
+        threading.Thread(target=_run_job, args=(db_path, kind, days, user), daemon=True).start()
+    with _job_lock:
+        return jsonify(job=dict(_job)), 202

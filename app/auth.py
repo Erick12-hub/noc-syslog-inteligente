@@ -63,6 +63,7 @@ RULES = {
     "notify.list_notifications": AUDIT, # Fase 11: avisos enviados por Telegram
     "notify.status": AUDIT,
     "notify.test_notification": ADMIN,
+    "ia_local.create_draft": ADMIN,     # IA local: generar borradores (ver: todos los roles)
     "configgen.generate": OPS,          # es GET, pero queda auditado como acción
     "configgen.baseline_endpoint": OPS, # configuración base de laboratorio (Fase 9.2)
     "console.allowed": OPS,

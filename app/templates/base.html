@@ -27,6 +27,7 @@
       {% if can('views.configuraciones') %}<a href="{{ url_for('views.configuraciones') }}" class="{{ 'active' if active == 'configuraciones' }}">Configuraciones</a>{% endif %}
       {% if can('views.consola') %}<a href="{{ url_for('views.consola') }}" class="{{ 'active' if active == 'consola' }}">Consola</a>{% endif %}
       {% if can('views.auditoria') %}<a href="{{ url_for('views.auditoria') }}" class="{{ 'active' if active == 'auditoria' }}">Auditoría</a>{% endif %}
+      <a href="{{ url_for('views.ia_local') }}" class="{{ 'active' if active == 'ia_local' }}" title="Asistente de IA local">IA</a>
       {% if can('views.seguridad') %}<a href="{{ url_for('views.seguridad') }}" class="{{ 'active' if active == 'seguridad' }}">Seguridad</a>{% endif %}
     </nav>
     <!-- Fase 7: selector de tema (el texto lo pone theme.js según el tema actual) -->

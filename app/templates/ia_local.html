@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}IA local{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <h1>Asistente de IA local</h1>
+    <p class="muted">Modelo de lenguaje en <b>este PC</b> (Ollama + Hermes 3), sin Internet. Lee un resumen de la base en
+      <b>solo lectura</b> y <b>sin el texto de los logs</b>, y redacta <b>borradores</b> de la bitácora o del informe.
+      Nada de lo que escribe se ejecuta: una persona lo revisa antes de usarlo.</p>
+  </div>
+  <div class="filter-actions"><button class="btn" id="btn-refresh">Actualizar</button></div>
+</section>
+
+<section class="card">
+  <h2>Estado</h2>
+  <div id="ia-status" class="muted">Consultando…</div>
+</section>
+
+{% if can('ia_local.create_draft', 'POST') %}
+<section class="card">
+  <h2>Generar borrador</h2>
+  <div class="filters"><form id="frm-draft">
+    <label>Tipo
+      <select name="tipo"><option value="bitacora">Entrada de bitácora</option><option value="informe">Sección de resultados del informe</option></select>
+    </label>
+    <label>Periodo (días)<input name="dias" type="number" min="1" max="90" value="7"></label>
+    <div class="filter-actions"><button class="btn primary" type="submit" id="btn-generate">Generar borrador</button></div>
+  </form></div>
+  <p class="muted small">Sin tarjeta gráfica tarda de 1 a 5 minutos. Puede seguir usando el NOC mientras tanto: esta página avisa al terminar.
+    Cada borrador queda en la auditoría (<span class="mono">ia_local.borrador</span>).</p>
+  <div id="job-status" class="small"></div>
+</section>
+{% else %}
+<section class="card"><p class="muted small">Su rol puede <b>ver</b> los borradores y los datos enviados al modelo. Generar borradores es solo para el administrador de seguridad.</p></section>
+{% endif %}
+
+<section class="card">
+  <h2>Borradores generados</h2>
+  <div class="table-wrap">
+    <table class="compact">
+      <thead><tr><th>Archivo</th><th>Tipo</th><th>Generado</th><th>Tamaño</th><th></th></tr></thead>
+      <tbody id="tbl-drafts"></tbody>
+    </table>
+  </div>
+  <p class="muted small" id="drafts-count"></p>
+</section>
+
+<section class="card" id="viewer" hidden>
+  <h2 id="viewer-title"></h2>
+  <p class="ia-warning">BORRADOR generado por IA: revise cifras, severidades y equipos contra el NOC antes de copiarlo.
+    Para comparar, use «Ver datos enviados al modelo».</p>
+  <pre class="ia-text" id="viewer-text"></pre>
+  <p class="muted small mono" id="viewer-sha"></p>
+</section>
+
+<section class="card">
+  <h2>Datos enviados al modelo</h2>
+  <p class="muted small">Es exactamente el resumen que recibe la IA (conteos, estados y títulos del NOC; nunca el mensaje de un log).
+    Sirve para encontrar errores del borrador.</p>
+  <div class="filters"><form id="frm-context">
+    <label>Periodo (días)<input name="dias" type="number" min="1" max="90" value="7"></label>
+    <div class="filter-actions"><button class="btn" type="submit">Ver datos enviados al modelo</button></div>
+  </form></div>
+  <pre class="ia-text" id="context-text" hidden></pre>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='ia_local.js') }}"></script>{% endblock %}

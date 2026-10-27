@@ -48,6 +48,12 @@ def auditoria():
     return render_template("auditoria.html", active="auditoria")
 
 
+@bp.get("/ia-local")
+def ia_local():
+    """Asistente de IA local: borradores en solo lectura (generar: solo admin_seguridad)."""
+    return render_template("ia_local.html", active="ia_local")
+
+
 @bp.get("/seguridad")
 def seguridad():
     """Fase 8.3: ventana de administración de seguridad (solo admin_seguridad)."""
