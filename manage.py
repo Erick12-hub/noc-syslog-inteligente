@@ -20,6 +20,8 @@ Uso:
     python manage.py backups                  Lista los respaldos y si están íntegros (Fase 12)
     python manage.py verify-backup ARCHIVO    Verifica huella, integridad y auditoría (Fase 12)
     python manage.py restore ARCHIVO --confirmar   Restaura (antes respalda la actual) (Fase 12)
+    python manage.py ia-estado                ¿Responde el modelo de IA local (Ollama)?
+    python manage.py ia-borrador bitacora|informe [--dias N]   Borrador con IA local (solo lectura)
 
 La contraseña se escribe en la consola SIN mostrarse (getpass) y nunca queda
 en el historial de comandos ni en el código. Solo quien tiene acceso al
@@ -452,6 +454,40 @@ def cmd_restore(name: str, confirm: bool):
     print("     Verifique con: python manage.py verify-audit   y luego inicie serve.py")
 
 
+def cmd_ia_estado():
+    """IA local: ¿Ollama responde en este PC y el modelo está descargado?"""
+    from app.ia_local import IALocalError, enabled, status
+    ok, why = enabled()
+    if not ok:
+        print(f"[!] {why}")
+        return
+    try:
+        st = status()
+    except IALocalError as e:
+        print(f"[!] {e}")
+        return
+    print(f"[{'OK' if st['ok'] else '!'}] Ollama en {st['url']} · modelo configurado: {st['model']}")
+    if st["models"]:
+        print(f"     Modelos descargados: {', '.join(st['models'])}")
+    if st["error"]:
+        print(f"     {st['error']}")
+
+
+def cmd_ia_borrador(kind: str, days: int):
+    """IA local: borrador de bitácora o de informe a partir de la base, en solo lectura."""
+    from app.ia_local import IALocalError, generate_draft
+    print(f"[NOC] Generando borrador '{kind}' de los últimos {days} días con {Config.LOCAL_AI_MODEL} "
+          f"(en este PC; puede tardar unos minutos) ...")
+    try:
+        r = generate_draft(Config.DATABASE_PATH, kind, days, "consola_servidor")
+    except IALocalError as e:
+        print(f"[!] {e}")
+        return
+    print(f"[OK] Borrador guardado: {r['path']}")
+    print(f"     {r['chars']} caracteres · SHA-256 {r['sha256'][:16]}... · registrado en la auditoría")
+    print("     Es un BORRADOR: revíselo y corríjalo antes de copiarlo a la bitácora o al informe.")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Administración NOC Syslog Inteligente")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -505,6 +541,10 @@ if __name__ == "__main__":
     p_rs = sub.add_parser("restore", help="Restaurar un respaldo verificado (Fase 12)")
     p_rs.add_argument("archivo", help="Nombre del respaldo (de 'backups') o ruta")
     p_rs.add_argument("--confirmar", action="store_true", help="Confirma que se reemplaza la base actual")
+    sub.add_parser("ia-estado", help="Estado del asistente de IA local (Ollama en este PC)")
+    p_ia = sub.add_parser("ia-borrador", help="Borrador de bitácora o informe con la IA local (solo lectura)")
+    p_ia.add_argument("tipo", choices=["bitacora", "informe"])
+    p_ia.add_argument("--dias", type=int, default=7, help="Periodo a resumir (días)")
     args = parser.parse_args()
 
     if args.command == "init-db":
@@ -554,3 +594,7 @@ if __name__ == "__main__":
         cmd_verify_backup(args.archivo)
     elif args.command == "restore":
         cmd_restore(args.archivo, args.confirmar)
+    elif args.command == "ia-estado":
+        cmd_ia_estado()
+    elif args.command == "ia-borrador":
+        cmd_ia_borrador(args.tipo, args.dias)
