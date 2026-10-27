@@ -214,3 +214,82 @@ def test_cli_commands(app, ollama, monkeypatch, tmp_path, capsys):
     manage.cmd_ia_borrador("bitacora", 7)
     out = capsys.readouterr().out
     assert "[OK] Borrador guardado" in out and "BORRADOR" in out
+
+
+# --- 5. Página web "IA local" ---------------------------------------------------
+@pytest.fixture
+def web(app, ollama, monkeypatch, tmp_path):
+    monkeypatch.setattr(Config, "LOCAL_AI_DIR", tmp_path / "borradores")
+    ia_local._job.update(running=False, result=None, error=None)
+    return app
+
+
+def test_page_visible_for_all_roles(web, role_client):
+    for role in ("operador", "auditor", "admin_seguridad"):
+        c = role_client(role)
+        r = c.get("/ia-local")
+        assert r.status_code == 200 and "Asistente de IA local" in r.get_data(as_text=True)
+
+
+def test_generate_button_only_for_admin(web, role_client):
+    assert "Generar borrador" in role_client("admin_seguridad").get("/ia-local").get_data(as_text=True)
+    page = role_client("operador").get("/ia-local").get_data(as_text=True)
+    assert 'id="frm-draft"' not in page and "solo para el administrador" in page
+
+
+def test_status_endpoint(web, role_client):
+    r = role_client("auditor").get("/api/ia-local/estado").get_json()
+    assert r["ok"] and r["model"] == "hermes3:3b" and r["job"]["running"] is False
+
+
+def test_admin_generates_and_everyone_reads(web, role_client):
+    admin = role_client("admin_seguridad")
+    r = admin.post("/api/ia-local/borradores", json={"tipo": "bitacora", "dias": 7})
+    assert r.status_code == 202 and r.get_json()["job"]["result"].startswith("borrador_bitacora_")
+    name = r.get_json()["job"]["result"]
+    aud = role_client("auditor")
+    assert name in [d["name"] for d in aud.get("/api/ia-local/borradores").get_json()["drafts"]]
+    body = aud.get(f"/api/ia-local/borradores/{name}").get_json()
+    assert body["text"].startswith("> **BORRADOR GENERADO POR IA LOCAL") and len(body["sha256"]) == 64
+
+
+@pytest.mark.parametrize("role", ["operador", "auditor"])
+def test_non_admin_cannot_generate(web, role_client, role):
+    r = role_client(role).post("/api/ia-local/borradores", json={"tipo": "bitacora", "dias": 7})
+    assert r.status_code == 403
+    assert FakeOllama.prompts == []
+
+
+@pytest.mark.parametrize("payload", [{"tipo": "borrar", "dias": 7}, {"tipo": "bitacora", "dias": 0},
+                                     {"tipo": "informe", "dias": 500}, {"tipo": "informe", "dias": "x"}])
+def test_generate_validates_input(web, role_client, payload):
+    assert role_client("admin_seguridad").post("/api/ia-local/borradores", json=payload).status_code == 400
+
+
+@pytest.mark.parametrize("name", ["..%2F..%2F.env", ".env", "borrador_bitacora_x.md", "noc.db"])
+def test_cannot_read_other_files(web, role_client, name):
+    r = role_client("auditor").get(f"/api/ia-local/borradores/{name}")
+    assert r.status_code in (400, 404)
+
+
+def test_one_job_at_a_time(web, role_client):
+    ia_local._job.update(running=True, user="otro_admin")
+    try:
+        r = role_client("admin_seguridad").post("/api/ia-local/borradores", json={"tipo": "bitacora", "dias": 7})
+        assert r.status_code == 409
+    finally:
+        ia_local._job.update(running=False)
+
+
+def test_context_endpoint_has_no_log_text(web, role_client, db):
+    c = role_client("operador")
+    r = c.get("/api/ia-local/contexto?dias=7")
+    assert r.status_code == 200
+    assert INJECTION not in r.get_data(as_text=True)
+    assert c.get("/api/ia-local/contexto?dias=0").status_code == 400
+
+
+def test_generation_disabled_from_web(web, role_client, monkeypatch):
+    monkeypatch.setattr(Config, "LOCAL_AI_ENABLED", False)
+    r = role_client("admin_seguridad").post("/api/ia-local/borradores", json={"tipo": "bitacora", "dias": 7})
+    assert r.status_code == 400 and "LOCAL_AI_ENABLED=0" in r.get_json()["errors"][0]
