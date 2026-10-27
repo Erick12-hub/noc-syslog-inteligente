@@ -2,7 +2,7 @@
 
 **Estado: PENDIENTE.** La sesión 2 estaba prevista para el viernes 23-oct-2026 y no se pudo realizar.
 El NOC ya está listo: todo lo que se prueba aquí funciona en modo simulado con salidas en el
-**formato real** de los mismos modelos (`samples/cli/`) y está cubierto por 564 pruebas automáticas.
+**formato real** de los mismos modelos (`samples/cli/`) y está cubierto por las pruebas automáticas (623 en v1.0.0).
 Este protocolo se ejecuta tal cual cuando haya turno de laboratorio; sus resultados se anotan en la
 bitácora (marcha blanca) y cualquier falla se corrige como hallazgo.
 

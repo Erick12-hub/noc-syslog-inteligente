@@ -102,7 +102,7 @@ abierto ──► asignado ──► en_progreso ──► cerrado
 
 **Pedir sugerencias al asistente:** la IA solo **propone** acciones; un administrador las aprueba o las
 rechaza, y nunca puede aprobar las suyas. Si el administrador apagó el asistente, el botón responde
-«El asistente de IA está apagado».
+«El asistente de IA está desactivado».
 
 ## 8. Cambios (gestión de cambios)
 

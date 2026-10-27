@@ -7,7 +7,7 @@ eventos Syslog de equipos **Cisco, Fortinet y Huawei**, con controles de segurid
 acciones no autorizadas de agentes de IA.
 
 > Proyecto individual · Administración y Gestión de Redes · 2026-2 · Ing. John Harold Pérez Calderón
-> **Versión:** v0.5.0 (gestión de cambios e indicadores de operación) · [CHANGELOG](CHANGELOG.md)
+> **Versión:** v1.0.0 (versión final del Corte 3: avisos por Telegram, respaldos, pruebas y manuales) · [CHANGELOG](CHANGELOG.md)
 > ⚠️ **Los equipos y eventos incluidos en el repositorio son DATOS SIMULADOS** (prefijo `SIM-`, IP de documentación RFC 5737).
 > Desde v0.4.0 el NOC también trabaja con equipos **reales y autorizados** del laboratorio (sin `SIM-`).
 
@@ -49,6 +49,10 @@ acciones no autorizadas de agentes de IA.
 | Gestión de cambios: matriz de riesgo, rollback obligatorio, aprobación por dos personas en riesgo alto, ventana | ✅ |
 | Ejecución verificada con detección de deriva y rollback automático | ✅ |
 | Indicadores de operación: MTTA, MTTR, cumplimiento por severidad, vencidos y éxito de los cambios | ✅ |
+| Avisos por Telegram de incidentes y cambios, con agrupación, límite y modo simulado | ✅ |
+| Asistente de IA con interruptor, límite por minuto y detección de inyección con normalización | ✅ |
+| Respaldo verificado (SHA-256, integridad, cadena de auditoría) y restauración con respaldo de seguridad | ✅ |
+| Prueba de carga, reporte de pruebas por categoría, manuales de usuario y técnico, despliegue y rollback | ✅ |
 
 ## Requisitos
 
@@ -142,7 +146,7 @@ limpieza están en [docs/laboratorio/plan_sesion_laboratorio.md](docs/laboratori
 python -m pytest -v
 ```
 
-564 pruebas automáticas: parser (PRI, Cisco, Huawei, Fortinet, RFC 5424, límites), ingesta
+623 pruebas automáticas ([reporte por categoría](docs/pruebas/reporte_pruebas.md)): parser (PRI, Cisco, Huawei, Fortinet, RFC 5424, límites), ingesta
 (lista permitida, deduplicación, prompt injection), API (CRUD, validaciones, filtros, importación),
 incidentes (creación automática, correlación, transiciones de estado, cierre con resolución), dashboard
 y seguridad (configuraciones, consola, reglas, tormentas, propuestas con aprobación humana, auditoría).
@@ -154,6 +158,13 @@ Desde v0.4.0: gestor de conexiones (consola, SSH, simulado; número de serie, ll
 configuración base, interfaces reales, diagnóstico (destinos y límite) y consistencia (reloj, IP, cadena).
 Desde v0.5.0: versiones y secretos ocultos, matriz de riesgo, aprobación y separación de funciones,
 ejecución verificada, deriva, rollback automático y manual, cambio autorizado e indicadores MTTA/MTTR.
+Desde v1.0.0: avisos por Telegram (sin red: el bot real nunca se usa en las pruebas), defensa ante IA
+(normalización, interruptor, límite, bloqueo de cambios), respaldo y restauración, y prueba de carga reducida.
+
+```bat
+python scripts\reporte_pruebas.py          :: genera docs/pruebas/reporte_pruebas.md
+python scripts\prueba_carga.py --reporte   :: ingesta, concurrencia, tormentas y web con carga
+```
 
 ## Variables de configuración (`.env`)
 
@@ -169,6 +180,12 @@ ejecución verificada, deriva, rollback automático y manual, cambio autorizado 
 | `DIAG_MAX_PER_MINUTE` | `5` | Diagnósticos por minuto, usuario y equipo |
 | `NTP_WARN_SECONDS` / `NTP_CRIT_SECONDS` | `2` / `60` | Desfase de reloj para aviso y crítico |
 | `CONSISTENCY_INTERVAL_MINUTES` | `10` | Cada cuánto el receptor revisa consistencia y cadena (0 = no) |
+| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | (vacío) | Avisos por Telegram. El token es un **secreto**: solo en `.env` |
+| `NOTIFY_MIN_SEVERITY` / `NOTIFY_SIMULATE` | `2` / `0` | Severidad que se avisa; registrar sin enviar (demostración) |
+| `AI_ASSISTANT_ENABLED` / `AI_MAX_SUGGESTIONS_PER_MINUTE` | `1` / `10` | Interruptor y límite del asistente de IA |
+| `BACKUP_DIR` / `BACKUP_KEEP` | `data/respaldos` / `10` | Carpeta (fuera de GitHub) y retención de respaldos |
+
+La lista completa está en el [manual técnico](docs/manual_tecnico.md#5-configuración-env).
 
 ## Seguridad
 
@@ -209,6 +226,12 @@ ejecución verificada, deriva, rollback automático y manual, cambio autorizado 
   imponen los comandos), rollback, aprobación de otra persona (dos en riesgo alto) y ventana. Al ejecutar se
   comprueba que la configuración sea la aprobada (deriva) y el equipo físico; si algo falla se revierte solo.
   Las configuraciones se guardan con los secretos ocultos y las versiones y revisiones no se pueden alterar.
+- **Avisos por Telegram (v1.0.0):** el token solo vive en `.env`; los avisos no incluyen el texto del log; se
+  agrupan por incidente y se limitan por minuto; los errores nunca muestran el token.
+- **Defensa ante IA (v1.0.0):** la detección normaliza el texto (NFKC, sin caracteres invisibles) antes de buscar
+  patrones; el asistente se puede apagar (`AI_ASSISTANT_ENABLED=0`), tiene límite por minuto y no puede crear cambios.
+- **Respaldos (v1.0.0):** copia consistente con la API de SQLite, manifiesto con SHA-256 y verificación de integridad
+  y de la cadena antes de restaurar; un respaldo alterado se rechaza ([plan de rollback](docs/rollback.md)).
 - **Consistencia (v0.4.0):** el receptor verifica la cadena de auditoría cada 10 minutos; si se rompe abre un
   incidente de severidad 1.
 
@@ -236,6 +259,9 @@ Política completa: [docs/04_politica_ia.md](docs/04_politica_ia.md).
 - El flujo de cambios se probó con equipos simulados en formato real; la prueba con el router del laboratorio
   está pendiente ([protocolo](docs/laboratorio/protocolo_pruebas_reales.md)).
 - El límite de tormentas vive en memoria del receptor (se reinicia con él).
+- Los respaldos quedan en el mismo PC (`data/respaldos/`); en producción se copiarían cifrados a otro medio.
+- Los avisos por Telegram dependen de Internet y de los servidores de Telegram; si fallan quedan como `fallido` en el registro.
+- La prueba de carga mide un solo PC con SQLite (415 mensajes/s en Windows 11), no una red de producción.
 - Syslog por UDP no cifra ni autentica; en producción se recomienda TLS (RFC 5425) donde el equipo lo soporte.
 
 ## Documentación
