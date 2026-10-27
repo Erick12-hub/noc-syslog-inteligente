@@ -11,6 +11,8 @@ data/*.db-wal
 data/*.db-shm
 # Fase 12: respaldos (contienen datos de operación)
 data/respaldos/
+# Borradores del asistente de IA local (datos de operación)
+data/borradores_ia/
 
 # --- Entorno virtual de Python ---
 .venv/

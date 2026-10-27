@@ -125,3 +125,12 @@ class Config:
     _backup_dir = Path(os.getenv("BACKUP_DIR", "data/respaldos"))
     BACKUP_DIR = _backup_dir if _backup_dir.is_absolute() else BASE_DIR / _backup_dir
     BACKUP_KEEP = int(os.getenv("BACKUP_KEEP", "10"))     # retención: últimos N respaldos
+
+    # --- Asistente de IA LOCAL (app/ia_local.py): modelo en este PC, solo lectura ---
+    # Solo se acepta una URL de este equipo (127.0.0.1/localhost): los datos no salen del PC.
+    LOCAL_AI_ENABLED = os.getenv("LOCAL_AI_ENABLED", "1") == "1"
+    LOCAL_AI_URL = os.getenv("LOCAL_AI_URL", "http://127.0.0.1:11434")
+    LOCAL_AI_MODEL = os.getenv("LOCAL_AI_MODEL", "hermes3:3b")
+    LOCAL_AI_TIMEOUT = int(os.getenv("LOCAL_AI_TIMEOUT", "600"))       # segundos (en CPU es lento)
+    _ai_dir = Path(os.getenv("LOCAL_AI_DIR", "data/borradores_ia"))
+    LOCAL_AI_DIR = _ai_dir if _ai_dir.is_absolute() else BASE_DIR / _ai_dir
