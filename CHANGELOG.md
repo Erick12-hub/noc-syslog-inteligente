@@ -6,7 +6,7 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y
 ## [1.1.0] - 2026-10-26 — Asistente de IA local
 
 A pedido del docente: un modelo de lenguaje que corre en el mismo PC, fuera de la red, procesa los datos
-del NOC y redacta borradores de la bitácora y del informe. 648 pruebas automáticas (623 en v1.0.0).
+del NOC y redacta borradores de la bitácora y del informe. 665 pruebas automáticas (623 en v1.0.0).
 
 ### Agregado
 - `app/ia_local.py` y comandos `ia-estado` e `ia-borrador bitacora|informe [--dias N]`: modelo **Hermes 3**
@@ -15,7 +15,9 @@ del NOC y redacta borradores de la bitácora y del informe. 648 pruebas automát
 - Controles: solo URL local (cualquier otra se rechaza antes de conectar), base en solo lectura, el modelo
   nunca recibe el texto de los logs (títulos con posible inyección se reemplazan), la respuesta nunca se
   ejecuta, interruptores `LOCAL_AI_ENABLED` y `AI_ASSISTANT_ENABLED`.
-- 25 pruebas con un servidor Ollama falso en 127.0.0.1 (sin red ni modelo real). Guía `docs/ia_local.md`.
+- Página web **IA** (menú): estado, lista y lectura de borradores y «datos enviados al modelo» para todos los
+  roles; generar en segundo plano solo `admin_seguridad`, un borrador a la vez, solo nombres de archivo del NOC.
+- 42 pruebas con un servidor Ollama falso en 127.0.0.1 (sin red ni modelo real). Guía `docs/ia_local.md`.
 
 ## [1.0.0] - 2026-10-26 — Versión final del Corte 3 (Fases 11, 12 y 13)
 

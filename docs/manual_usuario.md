@@ -152,6 +152,14 @@ SHA-256. Si sale **ROTA**, alguien alteró o borró registros: avise al administ
   aviso de prueba**. Llegan los incidentes de severidad 0 a 2 y los resultados de los cambios. El aviso
   nunca incluye el texto del log.
 
+## 11b. IA local (menú «IA»)
+
+Asistente de IA que corre en el PC del NOC, sin Internet, y redacta **borradores** de la bitácora o del informe.
+- Todos los roles ven el estado, los borradores (**Ver**) y los **datos enviados al modelo**.
+- Solo el administrador de seguridad pulsa **Generar borrador** (tarda de 1 a 5 minutos; uno a la vez).
+- El borrador puede tener errores de cifras o severidades: compárelo con «Datos enviados al modelo» y con el
+  NOC antes de copiarlo. Nada de lo que escribe la IA se ejecuta.
+
 ## 12. Buenas prácticas del turno
 
 1. Al empezar: revise el tablero, los incidentes vencidos y los avisos.

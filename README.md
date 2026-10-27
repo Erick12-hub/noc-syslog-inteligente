@@ -53,7 +53,7 @@ acciones no autorizadas de agentes de IA.
 | Asistente de IA con interruptor, límite por minuto y detección de inyección con normalización | ✅ |
 | Respaldo verificado (SHA-256, integridad, cadena de auditoría) y restauración con respaldo de seguridad | ✅ |
 | Prueba de carga, reporte de pruebas por categoría, manuales de usuario y técnico, despliegue y rollback | ✅ |
-| Asistente de IA **local** (Hermes 3 + Ollama, sin Internet): borradores de bitácora e informe en solo lectura | ✅ |
+| Asistente de IA **local** (Hermes 3 + Ollama, sin Internet): borradores de bitácora e informe en solo lectura, por consola y en la página **IA** | ✅ |
 
 ## Requisitos
 
@@ -147,7 +147,7 @@ limpieza están en [docs/laboratorio/plan_sesion_laboratorio.md](docs/laboratori
 python -m pytest -v
 ```
 
-648 pruebas automáticas ([reporte por categoría](docs/pruebas/reporte_pruebas.md)): parser (PRI, Cisco, Huawei, Fortinet, RFC 5424, límites), ingesta
+665 pruebas automáticas ([reporte por categoría](docs/pruebas/reporte_pruebas.md)): parser (PRI, Cisco, Huawei, Fortinet, RFC 5424, límites), ingesta
 (lista permitida, deduplicación, prompt injection), API (CRUD, validaciones, filtros, importación),
 incidentes (creación automática, correlación, transiciones de estado, cierre con resolución), dashboard
 y seguridad (configuraciones, consola, reglas, tormentas, propuestas con aprobación humana, auditoría).

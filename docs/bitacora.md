@@ -1026,7 +1026,9 @@ se tomó un respaldo completo del proyecto (zip del tag v1.0.0) y de la base y e
 |---|---|---|---|
 | 15.1 | Asistente local de solo lectura: URL solo local, base en `mode=ro`, resumen sin texto de logs, títulos con inyección reemplazados, borrador marcado «requiere revisión humana», auditoría con SHA-256, interruptores; comandos `ia-estado` e `ia-borrador` | `ia_local.py` (nuevo), `config.py`, `.env.example`, `.gitignore`, `manage.py` | 623 → 648 |
 | Docs | Guía `docs/ia_local.md`, política de IA (4.8c), manual técnico, README y CHANGELOG 1.1.0 | `docs/`, `README.md`, `CHANGELOG.md`, `app/__init__.py` | 648 |
+| 15.2 | Página web **IA**: estado, borradores (ver), datos enviados al modelo; generar en segundo plano solo admin_seguridad; nombres de archivo permitidos; texto del modelo nunca como HTML | `ia_local.py`, `views.py`, `auth.py`, `base.html`, `ia_local.html` y `ia_local.js` (nuevos), `styles.css` | 648 → 665 |
 
 Evidencias previstas: `C3-F15-01` pruebas en verde · `C3-F15-02` `ollama list` con `hermes3:3b` ·
 `C3-F15-03` `ia-estado` · `C3-F15-04` `ia-borrador bitacora` · `C3-F15-05` el borrador abierto ·
-`C3-F15-06` registro `ia_local.borrador` en la auditoría.
+`C3-F15-06` registro `ia_local.borrador` en la auditoría · `C3-F15-07` página IA con el borrador ·
+`C3-F15-08` datos enviados al modelo · `C3-F15-09` el operador ve pero no puede generar.

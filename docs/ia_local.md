@@ -51,6 +51,18 @@ El borrador queda en `data\borradores_ia\borrador_<tipo>_<fecha>.md` (fuera de G
 «BORRADOR GENERADO POR IA LOCAL — requiere revisión humana», el modelo, la fecha y el periodo. En un PC sin
 tarjeta gráfica puede tardar de 1 a 5 minutos.
 
+### Desde la web (menú «IA»)
+
+| Sección | Quién | Qué hace |
+|---|---|---|
+| Estado | Todos los roles | Si Ollama responde y el modelo está descargado |
+| Generar borrador | **Solo admin_seguridad** | Tipo (bitácora o informe) y días (1 a 90). Corre en segundo plano: la página avisa al terminar. Uno a la vez |
+| Borradores generados | Todos los roles | Lista y botón **Ver**: muestra el texto con el aviso de revisión y su SHA-256 |
+| Datos enviados al modelo | Todos los roles | El resumen exacto que recibe la IA, para comparar y encontrar errores |
+
+La página solo lee archivos con el nombre que genera el NOC (`borrador_<tipo>_<fecha>.md`): no se puede
+pedir otro archivo (por ejemplo `../.env`). El texto del modelo se muestra como texto, nunca como HTML.
+
 ## 4. Controles de seguridad
 
 | Riesgo | Control | Dónde |
@@ -74,13 +86,14 @@ tarjeta gráfica puede tardar de 1 a 5 minutos.
 
 ## 6. Pruebas
 
-`tests/test_ia_local.py` (25 pruebas) usa un servidor HTTP **falso** en 127.0.0.1 que responde como Ollama:
+`tests/test_ia_local.py` (42 pruebas) usa un servidor HTTP **falso** en 127.0.0.1 que responde como Ollama:
 URL externas rechazadas sin conectarse, contexto sin el texto de los logs, título con inyección reemplazado,
 conexión de solo lectura, borrador con encabezado y auditoría, salida del modelo nunca ejecutada, Ollama
-apagado, modelo faltante e interruptores.
+apagado, modelo faltante, interruptores y la página web (permisos por rol, validación, un trabajo a la vez,
+nombres de archivo permitidos).
 
 ## 7. Limitaciones
 
 - Un modelo de 3B redacta peor que uno grande y puede equivocarse: por eso es un **borrador**.
 - Trabaja sobre un resumen (máximo 25 incidentes y 15 cambios del periodo), no sobre todos los registros.
-- No tiene interfaz web todavía: se usa por consola.
+- La generación usa la CPU del PC del NOC durante unos minutos; se permite un borrador a la vez.
