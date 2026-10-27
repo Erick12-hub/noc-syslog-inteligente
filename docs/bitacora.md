@@ -1007,3 +1007,26 @@ Documento detallado: [`docs/FASE11_13_proceso_completo.txt`](FASE11_13_proceso_c
 | 13 | 26 oct | ✅ Cerrada (v1.0.0): manuales, despliegue y rollback |
 | 14 | 27 oct | Informe `Corte3_NOC_Syslog_Castro_Erick.pdf` y sustentación |
 | Pendiente | Cuando haya turno | Sesión 2 de laboratorio con el protocolo de pruebas reales |
+
+---
+
+## Fase 15 — Asistente de IA local (v1.1.0)
+
+**Fecha:** 2026-10-26 · **Rama:** `feature/ia-local` · **Estado:** en prueba (antes de la sustentación)
+
+Pedido del docente: integrar un modelo de IA **local**, fuera de la red y dedicado a este trabajo
+(mencionó Hermes), que procese los datos del NOC y genere, por ejemplo, la bitácora y el informe.
+
+**Decisión:** se usó el **modelo Hermes 3** (Nous Research, 3B, unos 2 GB) servido por **Ollama** en el mismo
+PC, y **no** el agente Hermes completo: el agente ejecuta comandos y edita archivos (contradice la política
+«la IA propone, el humano decide») y su guía pide unos 24 GB de RAM para usar herramientas. Antes de empezar
+se tomó un respaldo completo del proyecto (zip del tag v1.0.0) y de la base y el `.env` del PC.
+
+| Paso | Actividad | Archivo(s) | Pruebas |
+|---|---|---|---|
+| 15.1 | Asistente local de solo lectura: URL solo local, base en `mode=ro`, resumen sin texto de logs, títulos con inyección reemplazados, borrador marcado «requiere revisión humana», auditoría con SHA-256, interruptores; comandos `ia-estado` e `ia-borrador` | `ia_local.py` (nuevo), `config.py`, `.env.example`, `.gitignore`, `manage.py` | 623 → 648 |
+| Docs | Guía `docs/ia_local.md`, política de IA (4.8c), manual técnico, README y CHANGELOG 1.1.0 | `docs/`, `README.md`, `CHANGELOG.md`, `app/__init__.py` | 648 |
+
+Evidencias previstas: `C3-F15-01` pruebas en verde · `C3-F15-02` `ollama list` con `hermes3:3b` ·
+`C3-F15-03` `ia-estado` · `C3-F15-04` `ia-borrador bitacora` · `C3-F15-05` el borrador abierto ·
+`C3-F15-06` registro `ia_local.borrador` en la auditoría.

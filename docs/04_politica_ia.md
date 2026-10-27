@@ -126,6 +126,19 @@ Los comandos de solo lectura registrados por Huawei (`display ...`) **no** cuent
 
 Pendiente: TLS para Syslog donde el equipo lo soporte y retención/respaldo de logs (Fase 12).
 
+## 4.8c Asistente de IA local (v1.1.0)
+
+A pedido del docente se integró un modelo de lenguaje **local** (Hermes 3 de Nous Research, servido por
+Ollama en el mismo PC) que redacta borradores de bitácora e informe. Aplica la misma política:
+
+- **Fuera de la red:** solo acepta `http://127.0.0.1`, `localhost` o `::1`; los datos no salen del PC.
+- **Solo lectura:** abre la base con `mode=ro`; no crea incidentes, cambios ni propuestas.
+- **Sin texto de logs:** recibe conteos, estados y títulos del NOC; lo que parezca una instrucción se reemplaza.
+- **Solo texto:** la respuesta se guarda como borrador marcado «requiere revisión humana»; nada la ejecuta.
+- **Apagable y auditado:** `LOCAL_AI_ENABLED` y `AI_ASSISTANT_ENABLED`; registro `ia_local.borrador`.
+
+Detalle en [`docs/ia_local.md`](ia_local.md).
+
 ## 4.9 Referencias
 
 - IETF RFC 5424, *The Syslog Protocol*; RFC 5425, *TLS Transport Mapping for Syslog*; RFC 3164, *The BSD Syslog Protocol*.

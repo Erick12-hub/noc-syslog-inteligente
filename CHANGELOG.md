@@ -3,6 +3,20 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y
 [versionado semántico](https://semver.org/lang/es/). Todos los datos son **SIMULADOS**.
 
+## [1.1.0] - 2026-10-26 — Asistente de IA local
+
+A pedido del docente: un modelo de lenguaje que corre en el mismo PC, fuera de la red, procesa los datos
+del NOC y redacta borradores de la bitácora y del informe. 648 pruebas automáticas (623 en v1.0.0).
+
+### Agregado
+- `app/ia_local.py` y comandos `ia-estado` e `ia-borrador bitacora|informe [--dias N]`: modelo **Hermes 3**
+  (Nous Research) servido por **Ollama** en `127.0.0.1:11434`. El borrador se guarda en `data/borradores_ia/`
+  con el encabezado «requiere revisión humana» y queda en la auditoría (`ia_local.borrador`, con SHA-256).
+- Controles: solo URL local (cualquier otra se rechaza antes de conectar), base en solo lectura, el modelo
+  nunca recibe el texto de los logs (títulos con posible inyección se reemplazan), la respuesta nunca se
+  ejecuta, interruptores `LOCAL_AI_ENABLED` y `AI_ASSISTANT_ENABLED`.
+- 25 pruebas con un servidor Ollama falso en 127.0.0.1 (sin red ni modelo real). Guía `docs/ia_local.md`.
+
 ## [1.0.0] - 2026-10-26 — Versión final del Corte 3 (Fases 11, 12 y 13)
 
 Versión estable para la entrega del Corte 3. Agrega avisos por Telegram, refuerza la defensa ante la IA,

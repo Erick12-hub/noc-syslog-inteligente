@@ -7,7 +7,7 @@ eventos Syslog de equipos **Cisco, Fortinet y Huawei**, con controles de segurid
 acciones no autorizadas de agentes de IA.
 
 > Proyecto individual · Administración y Gestión de Redes · 2026-2 · Ing. John Harold Pérez Calderón
-> **Versión:** v1.0.0 (versión final del Corte 3: avisos por Telegram, respaldos, pruebas y manuales) · [CHANGELOG](CHANGELOG.md)
+> **Versión:** v1.1.0 (v1.0.0 del Corte 3 + asistente de IA local de solo lectura) · [CHANGELOG](CHANGELOG.md)
 > ⚠️ **Los equipos y eventos incluidos en el repositorio son DATOS SIMULADOS** (prefijo `SIM-`, IP de documentación RFC 5737).
 > Desde v0.4.0 el NOC también trabaja con equipos **reales y autorizados** del laboratorio (sin `SIM-`).
 
@@ -53,6 +53,7 @@ acciones no autorizadas de agentes de IA.
 | Asistente de IA con interruptor, límite por minuto y detección de inyección con normalización | ✅ |
 | Respaldo verificado (SHA-256, integridad, cadena de auditoría) y restauración con respaldo de seguridad | ✅ |
 | Prueba de carga, reporte de pruebas por categoría, manuales de usuario y técnico, despliegue y rollback | ✅ |
+| Asistente de IA **local** (Hermes 3 + Ollama, sin Internet): borradores de bitácora e informe en solo lectura | ✅ |
 
 ## Requisitos
 
@@ -146,7 +147,7 @@ limpieza están en [docs/laboratorio/plan_sesion_laboratorio.md](docs/laboratori
 python -m pytest -v
 ```
 
-623 pruebas automáticas ([reporte por categoría](docs/pruebas/reporte_pruebas.md)): parser (PRI, Cisco, Huawei, Fortinet, RFC 5424, límites), ingesta
+648 pruebas automáticas ([reporte por categoría](docs/pruebas/reporte_pruebas.md)): parser (PRI, Cisco, Huawei, Fortinet, RFC 5424, límites), ingesta
 (lista permitida, deduplicación, prompt injection), API (CRUD, validaciones, filtros, importación),
 incidentes (creación automática, correlación, transiciones de estado, cierre con resolución), dashboard
 y seguridad (configuraciones, consola, reglas, tormentas, propuestas con aprobación humana, auditoría).
@@ -273,5 +274,6 @@ Política completa: [docs/04_politica_ia.md](docs/04_politica_ia.md).
 - [Manual de usuario](docs/manual_usuario.md) · [Manual técnico](docs/manual_tecnico.md)
 - [Despliegue y operación](docs/despliegue.md) · [Plan de vuelta atrás (rollback)](docs/rollback.md)
 - [Plan y resultados de pruebas](docs/pruebas/README.md) · [Avisos por Telegram](docs/telegram.md)
+- [Asistente de IA local (Hermes 3 + Ollama)](docs/ia_local.md)
 - [Bitácora de desarrollo](docs/bitacora.md)
 - [Registro de cambios](CHANGELOG.md)

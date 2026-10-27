@@ -113,6 +113,7 @@ Se copia de `.env.example`. **Nunca** se sube a GitHub (`.gitignore`) ni se mues
 | Consistencia | `NTP_WARN_SECONDS`, `NTP_CRIT_SECONDS`, `CONSISTENCY_SILENT_HOURS`, `CONSISTENCY_INTERVAL_MINUTES` | |
 | Telegram | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `NOTIFY_MIN_SEVERITY`, `NOTIFY_SIMULATE`, `NOTIFY_MAX_PER_MINUTE`, `NOTIFY_GROUP_MINUTES`, `NOC_URL` | El token es un **secreto** |
 | IA | `AI_ASSISTANT_ENABLED`, `AI_MAX_SUGGESTIONS_PER_MINUTE` | 0 = asistente apagado |
+| IA local | `LOCAL_AI_ENABLED`, `LOCAL_AI_URL`, `LOCAL_AI_MODEL`, `LOCAL_AI_TIMEOUT`, `LOCAL_AI_DIR` | Solo URL local (127.0.0.1) |
 | Respaldos | `BACKUP_DIR`, `BACKUP_KEEP` | Fuera de GitHub |
 
 ## 6. Comandos de administración (`manage.py`)
@@ -130,6 +131,7 @@ Se copia de `.env.example`. **Nunca** se sube a GitHub (`.gitignore`) ni se mues
 | `device-config`, `device-configs`, `config-diff A B` | Versiones de configuración |
 | `metrics [--dias 7\|30\|90\|0] [--origen ...]` | Indicadores de operación |
 | `notify-test`, `telegram-chat-id` | Telegram |
+| `ia-estado`, `ia-borrador bitacora\|informe [--dias N]` | Asistente de IA local ([ia_local.md](ia_local.md)) |
 | `backup [--nota]`, `backups`, `verify-backup F`, `restore F --confirmar` | Respaldos |
 
 Scripts: `scripts/simulador.py` (eventos SIM), `scripts/simular_alteracion_auditoria.py` (demostración
